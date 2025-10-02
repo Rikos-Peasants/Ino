@@ -6,6 +6,7 @@ from views.embeds import EmbedViews
 from config import Config
 import logging
 import asyncio
+import random
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -495,8 +496,8 @@ class EventsController:
                 else:
                     break  # Found an image or empty message, reset count
             
-            # If we have 10 consecutive text messages, send a reminder
-            if text_message_count >= 10:
+            # If we have 5 consecutive text messages, send a reminder
+            if text_message_count >= 5:
                 # Check if we recently sent a reminder (to avoid spam)
                 recent_bot_messages = []
                 async for msg in message.channel.history(limit=20):
@@ -505,7 +506,13 @@ class EventsController:
                 
                 # Check if we already sent a chat reminder in the last 20 messages
                 for bot_msg in recent_bot_messages:
-                    if "this isn't exactly the channel to chat" in bot_msg.content.lower():
+                    if any(keyword in bot_msg.content.lower() for keyword in [
+                        "this isn't a chat channel",
+                        "wrong channel",
+                        "image channel",
+                        "save the chat",
+                        "this isn't exactly the channel to chat"
+                    ]):
                         return  # Already sent a reminder recently
                 
                 # Format chat channel mentions
@@ -515,10 +522,36 @@ class EventsController:
                 
                 chat_channels_text = " or ".join(chat_mentions)
                 
-                reminder_message = f"Umm Sorry guys, this isn't exactly the channel to chat about stuff, please move over to {chat_channels_text} 💬"
+                # Multiple message variations for variety - kuudere shrine maiden style
+                reminder_variations = [
+                    f"This channel is for images only.\nConversations belong in {chat_channels_text}.\nPlease relocate there.",
+                    
+                    f"...You're using the wrong channel.\nThis space is reserved for images.\nFor chatting, use {chat_channels_text}.",
+                    
+                    f"I must remind you that this is an image channel.\nText discussions should be moved to {chat_channels_text}.\nThank you for your cooperation.",
+                    
+                    f"Wrong channel.\nImages here. Conversations there: {chat_channels_text}.\nDon't make me repeat this.",
+                    
+                    f"As a shrine maiden, I must maintain order.\nThis channel is for images only.\nKindly move your conversation to {chat_channels_text}.",
+                    
+                    f"...This isn't the place for idle chatter.\nImages belong here, your words belong in {chat_channels_text}.\nPlease comply."
+                ]
                 
-                await message.channel.send(reminder_message)
+                reminder_message = random.choice(reminder_variations)
+                
+                # Send the reminder and delete after 60 seconds
+                reminder_msg = await message.channel.send(reminder_message)
                 logger.info(f"Sent chat reminder in #{message.channel.name} after {text_message_count} consecutive text messages")
+                
+                # Delete after 60 seconds
+                await asyncio.sleep(60)
+                try:
+                    await reminder_msg.delete()
+                    logger.info(f"Deleted chat reminder in #{message.channel.name}")
+                except discord.NotFound:
+                    pass  # Message already deleted
+                except discord.Forbidden:
+                    logger.warning(f"Missing permission to delete chat reminder in #{message.channel.name}")
                 
         except Exception as e:
             logger.error(f"Error checking for chat reminder: {e}")

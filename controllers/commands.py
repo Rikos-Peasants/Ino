@@ -3867,6 +3867,16 @@ class CommandsController:
                 
             except Exception as e:
                 await ctx.send(f"❌ Error closing thread: {str(e)}", ephemeral=True)
+        
+        # Register InoRep commands
+        inorep_cmds = self._register_inorep_commands()
+        if inorep_cmds:
+            self.inorep_group = inorep_cmds['inorep_group']
+            self.inorep_check_cmd = inorep_cmds['inorep_check_cmd']
+            self.inorep_warn_cmd = inorep_cmds['inorep_warn_cmd']
+            self.inorep_add_cmd = inorep_cmds['inorep_add_cmd']
+            self.inorep_remove_cmd = inorep_cmds['inorep_remove_cmd']
+            self.inorep_leaderboard_cmd = inorep_cmds['inorep_leaderboard_cmd']
     
     async def _execute_purge(self, ctx, filter_func, amount: int, filter_type: str):
         """Execute purge with the given filter"""
@@ -3910,7 +3920,9 @@ class CommandsController:
                 
         except Exception as e:
             await ctx.send(f"❌ Failed to initiate purge: {str(e)}", ephemeral=True)
-        
+    
+    def _register_inorep_commands(self):
+        """Register InoRep commands - called from register_commands"""
         # INOREP COMMANDS
         @self.bot.hybrid_group(name='inorep', description='InoRep commands - track who has been rude to Ino (just for fun!)')
         @public_command
@@ -4125,11 +4137,13 @@ class CommandsController:
                 logger.error(f"Error getting InoRep leaderboard: {e}")
                 await ctx.send(f"❌ Failed to get leaderboard: {str(e)}", ephemeral=True)
         
-        # Store InoRep command references to prevent garbage collection
-        self.inorep_group = inorep_group
-        self.inorep_check_cmd = inorep_check_cmd
-        self.inorep_warn_cmd = inorep_warn_cmd
-        self.inorep_add_cmd = inorep_add_cmd
-        self.inorep_remove_cmd = inorep_remove_cmd
-        self.inorep_leaderboard_cmd = inorep_leaderboard_cmd
+        # Return command references for storage
+        return {
+            'inorep_group': inorep_group,
+            'inorep_check_cmd': inorep_check_cmd,
+            'inorep_warn_cmd': inorep_warn_cmd,
+            'inorep_add_cmd': inorep_add_cmd,
+            'inorep_remove_cmd': inorep_remove_cmd,
+            'inorep_leaderboard_cmd': inorep_leaderboard_cmd
+        }
                 
