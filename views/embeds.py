@@ -750,16 +750,31 @@ class EmbedViews:
     @staticmethod
     def moderation_flagged_embed(moderation_data: dict) -> discord.Embed:
         """Create an embed for flagged content requiring review"""
+        # Get confidence and severity
+        max_confidence = moderation_data.get('max_confidence', 0)
+        severity = moderation_data.get('severity', 'unknown')
+        should_delete = moderation_data.get('should_delete', False)
+        
+        # Set color based on severity
+        if severity == "high":
+            color = discord.Color.red()
+            severity_text = "🔴 HIGH (≥75%)"
+            action_text = "Message has been deleted"
+        else:  # medium
+            color = discord.Color.orange()
+            severity_text = "🟡 MEDIUM (50-75%)"
+            action_text = "Message is still visible"
+        
         embed = discord.Embed(
             title="⚠️ Content Flagged for Review",
-            description="AI moderation has flagged this content for manual review.",
-            color=discord.Color.orange(),
+            description=f"AI moderation has flagged this content for manual review.\n**Confidence:** {max_confidence:.1%} | **Severity:** {severity_text}",
+            color=color,
             timestamp=datetime.utcnow()
         )
         
         embed.add_field(name="👤 Author", value=f"<@{moderation_data['author_id']}>\n`{moderation_data['author_name']}`", inline=True)
         embed.add_field(name="📍 Channel", value=f"<#{moderation_data['channel_id']}>", inline=True)
-        embed.add_field(name="🆔 Message ID", value=f"`{moderation_data['message_id']}`", inline=True)
+        embed.add_field(name="🗑️ Action", value=action_text, inline=True)
         
         # Show flagged categories
         flagged_categories = []

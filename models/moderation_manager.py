@@ -196,50 +196,73 @@ class ModerationManager:
                     
                     moderation_result = result['results'][0]
                     
-                    # Check if content was flagged
-                    if moderation_result.get('flagged', False):
-                        # Use enhanced similarity detection to check for existing decisions
-                        existing_decision = await self._check_similar_decisions(clean_content)
-                        
-                        # Generate primary content hash from the best normalized variant
-                        content_variants = self._generate_content_variants(clean_content)
-                        primary_variant = self._normalize_content(clean_content)
-                        content_hash = hash(primary_variant)
-                        
-                        moderation_data = {
-                            "message_id": str(message.id),
-                            "guild_id": str(message.guild.id) if message.guild else None,
-                            "channel_id": str(message.channel.id),
-                            "author_id": str(message.author.id),
-                            "author_name": message.author.display_name,
-                            "content": clean_content,
-                            "content_hash": content_hash,
-                            "flagged": True,
-                            "categories": moderation_result.get('categories', {}),
-                            "category_scores": moderation_result.get('category_scores', {}),
-                            "status": "auto_approved" if existing_decision and existing_decision['decision'] == "whitelist" else "pending_review",
-                            "existing_decision": existing_decision['decision'] if existing_decision else None,
-                            "created_at": datetime.utcnow(),
-                            "jump_url": message.jump_url
-                        }
-                        
-                        # Store in database
-                        await self.store_moderation_log(moderation_data)
-                        
-                        # If we have an existing whitelist decision, auto-approve
-                        if existing_decision and existing_decision['decision'] == "whitelist":
-                            logger.info(f"Auto-approved flagged message from {message.author.display_name} (whitelisted content)")
-                            return None
-                        
-                        # If we have an existing blacklist decision, take action
-                        if existing_decision and existing_decision['decision'] == "blacklist":
-                            moderation_data['status'] = "blacklisted"
-                            await self.update_moderation_log(str(message.id), {"status": "blacklisted"})
-                            logger.info(f"Blacklisted content detected from {message.author.display_name}")
-                            return moderation_data
-                        
-                        logger.info(f"Message flagged for review from {message.author.display_name} in #{message.channel.name}")
+                    # Get the maximum confidence score from all categories
+                    category_scores = moderation_result.get('category_scores', {})
+                    max_confidence = max(category_scores.values()) if category_scores else 0.0
+                    
+                    # Apply confidence-based thresholds:
+                    # < 50%: Do nothing
+                    # 50-75%: Flag but don't delete
+                    # >= 75%: Flag and mark for deletion
+                    
+                    if max_confidence < 0.50:
+                        # Below 50% confidence - ignore
+                        return None
+                    
+                    # Determine severity based on confidence
+                    if max_confidence >= 0.75:
+                        severity = "high"  # Should be deleted
+                        should_delete = True
+                    else:  # 0.50 <= max_confidence < 0.75
+                        severity = "medium"  # Flag for review only
+                        should_delete = False
+                    
+                    # Use enhanced similarity detection to check for existing decisions
+                    existing_decision = await self._check_similar_decisions(clean_content)
+                    
+                    # Generate primary content hash from the best normalized variant
+                    content_variants = self._generate_content_variants(clean_content)
+                    primary_variant = self._normalize_content(clean_content)
+                    content_hash = hash(primary_variant)
+                    
+                    moderation_data = {
+                        "message_id": str(message.id),
+                        "guild_id": str(message.guild.id) if message.guild else None,
+                        "channel_id": str(message.channel.id),
+                        "author_id": str(message.author.id),
+                        "author_name": message.author.display_name,
+                        "content": clean_content,
+                        "content_hash": content_hash,
+                        "flagged": True,
+                        "max_confidence": max_confidence,
+                        "severity": severity,
+                        "should_delete": should_delete,
+                        "categories": moderation_result.get('categories', {}),
+                        "category_scores": category_scores,
+                        "status": "auto_approved" if existing_decision and existing_decision['decision'] == "whitelist" else "pending_review",
+                        "existing_decision": existing_decision['decision'] if existing_decision else None,
+                        "created_at": datetime.utcnow(),
+                        "jump_url": message.jump_url
+                    }
+                    
+                    # Store in database
+                    await self.store_moderation_log(moderation_data)
+                    
+                    # If we have an existing whitelist decision, auto-approve
+                    if existing_decision and existing_decision['decision'] == "whitelist":
+                        logger.info(f"Auto-approved flagged message from {message.author.display_name} (whitelisted content, confidence: {max_confidence:.1%})")
+                        return None
+                    
+                    # If we have an existing blacklist decision, take action
+                    if existing_decision and existing_decision['decision'] == "blacklist":
+                        moderation_data['status'] = "blacklisted"
+                        moderation_data['should_delete'] = True  # Always delete blacklisted content
+                        await self.update_moderation_log(str(message.id), {"status": "blacklisted"})
+                        logger.info(f"Blacklisted content detected from {message.author.display_name}")
                         return moderation_data
+                    
+                    logger.info(f"Message flagged for review from {message.author.display_name} in #{message.channel.name} (confidence: {max_confidence:.1%}, severity: {severity})")
+                    return moderation_data
                     
                     return None
                     

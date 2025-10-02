@@ -5,6 +5,7 @@ from models.quest_manager import QuestManager
 from views.embeds import EmbedViews
 from config import Config
 import logging
+import asyncio
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -1153,10 +1154,34 @@ Here are some useful resources to help you:
                     embed = EmbedViews.moderation_blacklisted_content_embed(moderation_result)
                     await log_channel.send(embed=embed)
             
-            # Optionally delete the message (if bot has permissions)
+            # Check if self-harm is flagged and send help resources
+            categories = moderation_result.get('categories', {})
+            if categories.get('self-harm') or categories.get('self_harm') or categories.get('self-harm/intent') or categories.get('self-harm/instructions'):
+                await self._send_self_harm_help(message.author)
+            
+            # Delete the message (if bot has permissions)
             try:
                 await message.delete()
                 logger.info(f"Deleted blacklisted content from {message.author.display_name}")
+                
+                # Send notification in channel that auto-deletes after 60 seconds
+                notification_embed = discord.Embed(
+                    title="🚫 Blacklisted Content",
+                    description=f"{message.author.mention}, your message was automatically removed because it matches previously blacklisted content.\n\n"
+                              f"This content has been flagged by our moderation team and is not permitted in this server.",
+                    color=discord.Color.red()
+                )
+                notification_embed.set_footer(text="This message will be deleted in 60 seconds")
+                
+                notification_msg = await message.channel.send(embed=notification_embed)
+                
+                # Delete notification after 60 seconds
+                await asyncio.sleep(60)
+                try:
+                    await notification_msg.delete()
+                except (discord.Forbidden, discord.NotFound):
+                    pass
+                    
             except discord.Forbidden:
                 logger.warning("Missing permission to delete blacklisted message")
             except discord.NotFound:
@@ -1164,6 +1189,54 @@ Here are some useful resources to help you:
             
         except Exception as e:
             logger.error(f"Error handling blacklisted content: {e}")
+    
+    async def _send_self_harm_help(self, user: discord.User):
+        """Send mental health resources to a user who posted self-harm content"""
+        try:
+            help_embed = discord.Embed(
+                title="💚 We're Here to Help",
+                description="We noticed your message may indicate you're going through a difficult time. "
+                          "Please know that you're not alone, and there are people who care and want to help.",
+                color=discord.Color.green()
+            )
+            
+            help_embed.add_field(
+                name="🆘 Crisis Resources",
+                value="**National Suicide Prevention Lifeline (US)**\n"
+                      "📞 Call or text: **988**\n"
+                      "💬 Chat: [suicidepreventionlifeline.org/chat](https://suicidepreventionlifeline.org/chat)\n\n"
+                      "**Crisis Text Line (US/Canada/UK)**\n"
+                      "💬 Text **HOME** to **741741**\n\n"
+                      "**International Association for Suicide Prevention**\n"
+                      "🌍 [iasp.info/resources/Crisis_Centres](https://www.iasp.info/resources/Crisis_Centres)",
+                inline=False
+            )
+            
+            help_embed.add_field(
+                name="🤝 Additional Support",
+                value="• **r/SuicideWatch** - Reddit support community\n"
+                      "• **7 Cups** - [7cups.com](https://www.7cups.com) - Free emotional support\n"
+                      "• **BetterHelp** - [betterhelp.com](https://www.betterhelp.com) - Professional counseling",
+                inline=False
+            )
+            
+            help_embed.add_field(
+                name="💙 You Matter",
+                value="Your life has value and meaning. These feelings are temporary, even when they don't feel that way. "
+                      "Please reach out to someone who can help - whether it's one of the resources above, a friend, "
+                      "family member, or our server's moderation team.",
+                inline=False
+            )
+            
+            help_embed.set_footer(text="These resources are confidential and available 24/7")
+            
+            await user.send(embed=help_embed)
+            logger.info(f"Sent mental health resources to {user.display_name}")
+            
+        except discord.Forbidden:
+            logger.warning(f"Could not send mental health resources DM to {user.display_name} (DMs disabled)")
+        except Exception as e:
+            logger.error(f"Error sending mental health resources: {e}")
     
     async def _send_moderation_review(self, message: discord.Message, moderation_result: dict):
         """Send moderation review request to staff with UI buttons"""
@@ -1225,14 +1298,43 @@ Here are some useful resources to help you:
                 {"review_message_id": str(review_message.id), "review_channel_id": str(log_channel.id)}
             )
             
-            # Delete the original message since it's flagged for review
-            try:
-                await message.delete()
-                logger.info(f"Deleted flagged message from {message.author.display_name} for review")
-            except discord.Forbidden:
-                logger.warning("Missing permission to delete flagged message")
-            except discord.NotFound:
-                pass  # Message already deleted
+            # Check if self-harm is flagged and send help resources
+            categories = moderation_result.get('categories', {})
+            if categories.get('self-harm') or categories.get('self_harm') or categories.get('self-harm/intent') or categories.get('self-harm/instructions'):
+                await self._send_self_harm_help(message.author)
+            
+            # Delete the original message only if confidence is 75% or higher
+            should_delete = moderation_result.get('should_delete', False)
+            if should_delete:
+                try:
+                    await message.delete()
+                    logger.info(f"Deleted flagged message from {message.author.display_name} (confidence >= 75%)")
+                    
+                    # Send notification in channel that auto-deletes after 60 seconds
+                    severity = moderation_result.get('severity', 'high')
+                    notification_embed = discord.Embed(
+                        title="🛡️ Content Moderation",
+                        description=f"{message.author.mention}, your message was automatically removed by our AI moderation system and will be reviewed by our moderation team.\n\n"
+                                  f"If you believe this was done in error, please wait for a moderator to review your message. They may restore it if appropriate.",
+                        color=discord.Color.orange()
+                    )
+                    notification_embed.set_footer(text="This message will be deleted in 60 seconds")
+                    
+                    notification_msg = await message.channel.send(embed=notification_embed)
+                    
+                    # Delete notification after 60 seconds
+                    await asyncio.sleep(60)
+                    try:
+                        await notification_msg.delete()
+                    except (discord.Forbidden, discord.NotFound):
+                        pass
+                    
+                except discord.Forbidden:
+                    logger.warning("Missing permission to delete flagged message")
+                except discord.NotFound:
+                    pass  # Message already deleted
+            else:
+                logger.info(f"Message flagged but not deleted (confidence 50-75%) from {message.author.display_name}")
             
             logger.info(f"Sent moderation review request with UI buttons for message from {message.author.display_name}")
             
