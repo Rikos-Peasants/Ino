@@ -60,7 +60,10 @@ class ModerationManager:
             logger.error(f"Error creating moderation indexes: {e}")
     
     def _normalize_content(self, content: str) -> str:
-        """Normalize content for better similarity detection"""
+        """
+        Normalize content for better similarity detection
+        Handles leet speak, character substitution, spacing tricks, etc.
+        """
         # Convert to lowercase
         normalized = content.lower()
         
@@ -70,54 +73,134 @@ class ModerationManager:
         normalized = re.sub(r'<#[0-9]+>', '', normalized)  # Remove channel references
         normalized = re.sub(r'<:[a-zA-Z0-9_]+:[0-9]+>', '', normalized)  # Remove custom emojis
         
-        # Remove excessive punctuation and special characters
-        normalized = re.sub(r'[^\w\s]', '', normalized)  # Keep only alphanumeric and spaces
+        # Comprehensive leet speak and character substitution normalization
+        # This catches things like "n4gger", "f@ck", "sh1t", etc.
+        substitutions = {
+            '0': 'o', '1': 'i', '!': 'i', '|': 'i', 
+            '3': 'e', '4': 'a', '@': 'a', 
+            '5': 's', '$': 's', 
+            '7': 't', '+': 't',
+            '8': 'b',
+            '9': 'g',
+            '6': 'g',
+            '(': 'c',
+            '<': 'c',
+            '\/': 'v',
+            '|\/|': 'm',
+            '><': 'x',
+            '/-\\': 'a',
+        }
         
-        # Remove excessive whitespace and normalize spacing
-        normalized = re.sub(r'\s+', ' ', normalized).strip()
+        for leet, normal in substitutions.items():
+            normalized = normalized.replace(leet, normal)
         
-        # Remove common filler characters that users add to bypass detection
-        normalized = re.sub(r'(.)\1{2,}', r'\1', normalized)  # Remove repeated characters (aaa -> a)
+        # Remove all non-alphanumeric except spaces (after substitutions)
+        normalized = re.sub(r'[^a-z0-9\s]', '', normalized)
+        
+        # Remove excessive whitespace (including spaces between letters like "n i g g e r")
+        normalized = re.sub(r'\s+', '', normalized)  # Remove ALL spaces for better matching
+        
+        # Remove repeated characters (aaa -> a, but keep double letters like "ee" in "tree")
+        normalized = re.sub(r'(.)\1{2,}', r'\1\1', normalized)  # aaa -> aa
         
         return normalized
     
     def _generate_content_variants(self, content: str) -> Set[str]:
-        """Generate multiple variants of content for hash checking"""
+        """
+        Generate multiple variants of content for hash checking
+        Catches evasion techniques like spacing, vowel removal, repetition, etc.
+        """
         variants = set()
         
-        # Base normalized version
+        # Base normalized version (already handles leet speak and character substitution)
         normalized = self._normalize_content(content)
         variants.add(normalized)
         
-        # Remove all spaces
-        variants.add(normalized.replace(' ', ''))
+        # If already short, don't generate too many variants
+        if len(normalized) < 3:
+            return variants
         
-        # Remove all vowels (common obfuscation technique)
+        # Variant 1: Remove all vowels (common obfuscation like "fck", "sht")
         no_vowels = re.sub(r'[aeiou]', '', normalized)
-        if no_vowels and no_vowels != normalized:
+        if no_vowels and len(no_vowels) >= 2:
             variants.add(no_vowels)
         
-        # Replace common letter substitutions
-        substitutions = {
-            '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', 
-            '7': 't', '@': 'a', '$': 's', '!': 'i'
-        }
-        leet_normalized = normalized
-        for leet, normal in substitutions.items():
-            leet_normalized = leet_normalized.replace(leet, normal)
-        if leet_normalized != normalized:
-            variants.add(leet_normalized)
+        # Variant 2: Keep only first letter of repeated chars (helllo -> helo)
+        no_repeats = re.sub(r'(.)\1+', r'\1', normalized)
+        if no_repeats != normalized:
+            variants.add(no_repeats)
         
-        # Remove only punctuation and spaces, keep letters and numbers
-        alpha_only = re.sub(r'[^a-zA-Z0-9]', '', content.lower())
-        if alpha_only and len(alpha_only) > 2:
-            variants.add(alpha_only)
+        # Variant 3: Phonetic variants (common sound-alike evasions)
+        # Example: "ck" -> "k", "ph" -> "f"
+        phonetic = normalized
+        phonetic = phonetic.replace('ck', 'k')
+        phonetic = phonetic.replace('ph', 'f')
+        phonetic = phonetic.replace('kk', 'k')
+        phonetic = phonetic.replace('gg', 'g')
+        if phonetic != normalized:
+            variants.add(phonetic)
+        
+        # Variant 4: First and last chars only (extreme shortening)
+        if len(normalized) >= 4:
+            extreme_short = normalized[0] + normalized[-1]
+            variants.add(extreme_short)
+        
+        # Variant 5: Consonant skeleton (keep only consonants in order)
+        consonants = re.sub(r'[aeiou]', '', normalized)
+        if consonants and len(consonants) >= 2:
+            variants.add(consonants)
         
         return variants
     
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """Calculate similarity between two texts using SequenceMatcher"""
         return SequenceMatcher(None, text1, text2).ratio()
+    
+    def _contains_slurs_or_extreme_harm(self, content: str) -> Tuple[bool, str]:
+        """
+        Check for known slurs and extreme harmful content with evasion detection
+        Returns: (is_harmful, reason)
+        """
+        # Normalize the content to catch evasion attempts
+        normalized = self._normalize_content(content)
+        
+        # Known harmful patterns (normalized forms)
+        # These are checked after normalization so "n4gger", "n i g g e r", etc. all match
+        harmful_patterns = {
+            # Racial slurs (normalized - the actual words are blocked)
+            'nigger': 'racial slur',
+            'nig': 'racial slur',  # Even shortened versions
+            'faggot': 'homophobic slur',
+            'fag': 'homophobic slur',
+            'tranny': 'transphobic slur',
+            'retard': 'ableist slur',
+            
+            # Extreme harm phrases
+            'killyourself': 'suicide encouragement',
+            'kys': 'suicide encouragement',
+            'neckyourself': 'suicide encouragement',
+            'ropeyourself': 'suicide encouragement',
+            
+            # Violent threats (common patterns)
+            'illkillyou': 'violent threat',
+            'imgonnakillyou': 'violent threat',
+            'illmurderyou': 'violent threat',
+        }
+        
+        # Check for exact matches in normalized content
+        for pattern, reason in harmful_patterns.items():
+            if pattern in normalized:
+                logger.warning(f"Detected harmful content via pattern matching: '{pattern}' -> {reason}")
+                return True, reason
+        
+        # Check with additional spacing removal for extra evasion
+        no_space_content = normalized.replace(' ', '')
+        for pattern, reason in harmful_patterns.items():
+            if pattern in no_space_content:
+                logger.warning(f"Detected harmful content via spacing evasion: '{pattern}' -> {reason}")
+                return True, reason
+        
+        return False, ""
     
     async def _check_similar_decisions(self, content: str, similarity_threshold: float = 0.85) -> Optional[Dict]:
         """Check for existing decisions on similar content"""
@@ -308,6 +391,49 @@ class ModerationManager:
             clean_content = message.clean_content.strip()
             if not clean_content or len(clean_content) < 3:
                 return None
+            
+            # FIRST: Check for known slurs and extreme harm with evasion detection
+            # This catches things AI might miss like "n4gger", "k y s", etc.
+            contains_slur, slur_reason = self._contains_slurs_or_extreme_harm(clean_content)
+            if contains_slur:
+                logger.warning(f"Known harmful content detected via pattern matching: {slur_reason}")
+                
+                # Generate hash for tracking
+                content_variants = self._generate_content_variants(clean_content)
+                primary_variant = self._normalize_content(clean_content)
+                content_hash = hash(primary_variant)
+                
+                # Create moderation data with maximum severity
+                moderation_data = {
+                    "message_id": str(message.id),
+                    "guild_id": str(message.guild.id) if message.guild else None,
+                    "channel_id": str(message.channel.id),
+                    "author_id": str(message.author.id),
+                    "author_name": message.author.display_name,
+                    "content": clean_content,
+                    "content_hash": content_hash,
+                    "flagged": True,
+                    "max_confidence": 1.0,  # Maximum confidence for known patterns
+                    "severity": "high",
+                    "should_delete": True,
+                    "categories": {"pattern_match": True},
+                    "category_scores": {"pattern_match": 1.0},
+                    "detection_method": "pattern_matching",
+                    "pattern_reason": slur_reason,
+                    "google_nl_confidence": None,
+                    "google_nl_categories": None,
+                    "moderation_source": "pattern_match",
+                    "status": "pending_review",
+                    "existing_decision": None,
+                    "created_at": datetime.utcnow(),
+                    "jump_url": message.jump_url
+                }
+                
+                # Store in database
+                await self.store_moderation_log(moderation_data)
+                
+                logger.info(f"Pattern-matched harmful content flagged for deletion: {slur_reason}")
+                return moderation_data
             
             # Call OpenAI Moderation API
             headers = {
