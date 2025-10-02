@@ -506,7 +506,8 @@ class EventsController:
                 
                 # Check if we already sent a chat reminder in the last 20 messages
                 for bot_msg in recent_bot_messages:
-                    if any(keyword in bot_msg.content.lower() for keyword in [
+                    # Check content or embed title/footer for reminder indicators
+                    if bot_msg.content and any(keyword in bot_msg.content.lower() for keyword in [
                         "this isn't a chat channel",
                         "wrong channel",
                         "image channel",
@@ -514,6 +515,12 @@ class EventsController:
                         "this isn't exactly the channel to chat"
                     ]):
                         return  # Already sent a reminder recently
+                    
+                    # Check embeds for chat reminder
+                    if bot_msg.embeds:
+                        for embed in bot_msg.embeds:
+                            if embed.footer and "Image Channel Reminder" in embed.footer.text:
+                                return  # Already sent a reminder recently
                 
                 # Format chat channel mentions
                 chat_mentions = []
@@ -537,10 +544,18 @@ class EventsController:
                     f"...This isn't the place for idle chatter.\nImages belong here, your words belong in {chat_channels_text}.\nPlease comply."
                 ]
                 
-                reminder_message = random.choice(reminder_variations)
+                reminder_description = random.choice(reminder_variations)
+                
+                # Create embed with Ino's annoyed image
+                embed = discord.Embed(
+                    description=reminder_description,
+                    color=0xE8E8E8  # Light gray/white color for shrine maiden aesthetic
+                )
+                embed.set_image(url="https://i.ibb.co/B2W5WQ2Y/ef4f7402-aa4b-4440-9ae9-ef1415824688.png")
+                embed.set_footer(text="Image Channel Reminder • This message will be deleted in 60 seconds")
                 
                 # Send the reminder and delete after 60 seconds
-                reminder_msg = await message.channel.send(reminder_message)
+                reminder_msg = await message.channel.send(embed=embed)
                 logger.info(f"Sent chat reminder in #{message.channel.name} after {text_message_count} consecutive text messages")
                 
                 # Delete after 60 seconds
