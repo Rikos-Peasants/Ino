@@ -765,9 +765,18 @@ class EmbedViews:
             severity_text = "🟡 MEDIUM (50-75%)"
             action_text = "Message is still visible"
         
+        # Check if dual moderation was used
+        moderation_source = moderation_data.get('moderation_source', 'openai_only')
+        google_confidence = moderation_data.get('google_nl_confidence', 0)
+        
+        description = f"AI moderation has flagged this content for manual review.\n**Combined Confidence:** {max_confidence:.1%} | **Severity:** {severity_text}"
+        
+        if moderation_source == "dual" and google_confidence:
+            description += f"\n\n🔍 **Dual-API Check**\n• OpenAI + Google Natural Language\n• Google NL: {google_confidence:.1%}"
+        
         embed = discord.Embed(
             title="⚠️ Content Flagged for Review",
-            description=f"AI moderation has flagged this content for manual review.\n**Confidence:** {max_confidence:.1%} | **Severity:** {severity_text}",
+            description=description,
             color=color,
             timestamp=datetime.utcnow()
         )

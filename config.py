@@ -25,7 +25,8 @@ class Config:
     MONGO_URI = os.getenv('MONGO_URI')
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')  # For YouTube video announcements
     YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')  # For YouTube Data API
-    OPENAI_KEY = os.getenv('OPENAI_KEY')  # For content moderation
+    OPENAI_KEY = os.getenv('OPENAI_KEY')  # For content moderation (primary)
+    GOOGLE_NL_API_KEY = os.getenv('GOOGLE_NL_API_KEY', 'AIzaSyBmueN3s6sT5g7c5YkhNs-7fugg1C3zrHI')  # For secondary moderation check
     
     # Moderation system default role IDs (can be configured per guild)
     DEFAULT_MODERATION_REVIEW_ROLE_ID = 1372477845997359244  # Seraphs role (default reviewers)

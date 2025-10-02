@@ -20,6 +20,7 @@ class ModerationManager:
         from config import Config
         
         self.openai_api_key = Config.OPENAI_KEY
+        self.google_nl_api_key = Config.GOOGLE_NL_API_KEY
         self.db = mongo_client[database_name]
         
         # Collections for moderation system
@@ -30,10 +31,11 @@ class ModerationManager:
         # Create indexes for better performance
         self._create_indexes()
         
-        # OpenAI Moderation API endpoint
-        self.moderation_endpoint = "https://api.openai.com/v1/moderations"
+        # API endpoints
+        self.openai_moderation_endpoint = "https://api.openai.com/v1/moderations"
+        self.google_nl_endpoint = "https://language.googleapis.com/v1/documents:moderateText"
         
-        logger.info("Moderation Manager initialized")
+        logger.info("Moderation Manager initialized with dual-API support")
     
     def _create_indexes(self):
         """Create database indexes for moderation collections"""
@@ -156,6 +158,140 @@ class ModerationManager:
             logger.error(f"Error checking similar decisions: {e}")
             return None
     
+    def _is_serious_harm(self, openai_categories: Dict, openai_scores: Dict, google_categories: Dict = None) -> Tuple[bool, float]:
+        """
+        Determine if content is seriously harmful vs just light profanity
+        
+        Serious harm includes:
+        - Hate speech / slurs
+        - Self-harm / suicide encouragement
+        - Violence / threats
+        - Sexual harassment
+        - Targeted harassment
+        
+        Light profanity (allowed):
+        - General swearing (fuck, shit, damn, etc.)
+        - Mild toxicity without targeting
+        
+        Returns:
+            Tuple[is_serious, adjusted_confidence]
+        """
+        # Categories that indicate SERIOUS harm (should be moderated)
+        serious_categories_openai = {
+            'hate',
+            'hate/threatening', 
+            'self-harm',
+            'self-harm/intent',
+            'self-harm/instructions',
+            'violence',
+            'violence/graphic',
+            'harassment/threatening',
+            'sexual/minors'
+        }
+        
+        # Light categories that are okay if alone
+        light_categories_openai = {
+            'sexual',  # Generic "sexual" without minors/harassment is often just swearing
+            'harassment',  # Generic harassment without threats
+        }
+        
+        # Check OpenAI categories for serious harm
+        flagged_serious = []
+        flagged_light = []
+        
+        for category, is_flagged in openai_categories.items():
+            if is_flagged:
+                score = openai_scores.get(category, 0.0)
+                
+                if category in serious_categories_openai:
+                    flagged_serious.append((category, score))
+                elif category in light_categories_openai:
+                    flagged_light.append((category, score))
+        
+        # If Google NL provided results, check those too
+        if google_categories:
+            serious_categories_google = {
+                'Violent',
+                'Death, Harm & Tragedy',
+                'Firearms & Weapons',
+                'Illicit Drugs'
+            }
+            
+            for category, confidence in google_categories.items():
+                if confidence > 0.6 and category in serious_categories_google:
+                    flagged_serious.append((f"Google:{category}", confidence))
+        
+        # If ANY serious category is flagged, it's serious harm
+        if flagged_serious:
+            max_serious = max(score for _, score in flagged_serious)
+            logger.info(f"Serious harm detected: {flagged_serious}")
+            return True, max_serious
+        
+        # If ONLY light categories are flagged, it's probably just swearing
+        if flagged_light and not flagged_serious:
+            max_light = max(score for _, score in flagged_light)
+            # Reduce confidence for light profanity
+            adjusted = max_light * 0.3  # Reduce by 70%
+            logger.info(f"Only light profanity detected: {flagged_light}. Confidence reduced from {max_light:.1%} to {adjusted:.1%}")
+            return False, adjusted
+        
+        # No serious harm detected
+        return False, 0.0
+    
+    async def _check_with_google_nl(self, content: str) -> Optional[Dict]:
+        """
+        Secondary moderation check using Google Natural Language API
+        Returns moderation categories and confidence scores
+        """
+        if not self.google_nl_api_key:
+            logger.warning("Google Natural Language API key not configured")
+            return None
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{self.google_nl_endpoint}?key={self.google_nl_api_key}"
+                
+                data = {
+                    "document": {
+                        "type": "PLAIN_TEXT",
+                        "content": content
+                    }
+                }
+                
+                async with session.post(url, json=data) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Google NL API error: {response.status} - {error_text}")
+                        return None
+                    
+                    result = await response.json()
+                    
+                    if not result.get('moderationCategories'):
+                        return None
+                    
+                    # Extract categories with confidence >= 0.5 (moderate to high)
+                    flagged_categories = {}
+                    max_confidence = 0.0
+                    
+                    for category in result['moderationCategories']:
+                        confidence = category.get('confidence', 0.0)
+                        name = category.get('name', 'Unknown')
+                        
+                        flagged_categories[name] = confidence
+                        max_confidence = max(max_confidence, confidence)
+                    
+                    logger.info(f"Google NL moderation check: max_confidence={max_confidence:.2%}, categories={len(flagged_categories)}")
+                    
+                    return {
+                        'flagged_categories': flagged_categories,
+                        'max_confidence': max_confidence,
+                        'raw_result': result
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Error calling Google Natural Language API: {e}")
+            return None
+    
     async def scan_message(self, message: discord.Message) -> Optional[Dict]:
         """
         Scan a message using OpenAI's Moderation API
@@ -184,7 +320,7 @@ class ModerationManager:
             }
             
             async with aiohttp.ClientSession() as session:
-                async with session.post(self.moderation_endpoint, headers=headers, json=data) as response:
+                async with session.post(self.openai_moderation_endpoint, headers=headers, json=data) as response:
                     if response.status != 200:
                         logger.error(f"OpenAI Moderation API error: {response.status}")
                         return None
@@ -209,7 +345,41 @@ class ModerationManager:
                         # Below 50% confidence - ignore
                         return None
                     
-                    # Determine severity based on confidence
+                    # Secondary check with Google Natural Language API for all flagged content (50-100%)
+                    google_result = None
+                    google_max_confidence = 0.0
+                    
+                    logger.info(f"OpenAI flagged content at {max_confidence:.1%} confidence. Running secondary check with Google NL...")
+                    google_result = await self._check_with_google_nl(clean_content)
+                    
+                    if google_result:
+                        google_max_confidence = google_result['max_confidence']
+                        logger.info(f"Google NL secondary check: {google_max_confidence:.1%} confidence")
+                        
+                        # Use the HIGHER confidence from both APIs
+                        combined_confidence = max(max_confidence, google_max_confidence)
+                        logger.info(f"Combined confidence: OpenAI={max_confidence:.1%}, Google={google_max_confidence:.1%}, Final={combined_confidence:.1%}")
+                        max_confidence = combined_confidence
+                    
+                    # Check if this is serious harm vs light profanity
+                    google_categories = google_result['flagged_categories'] if google_result else None
+                    is_serious, adjusted_confidence = self._is_serious_harm(
+                        moderation_result.get('categories', {}),
+                        category_scores,
+                        google_categories
+                    )
+                    
+                    # If it's ONLY light profanity, allow it (reduce confidence)
+                    if not is_serious and adjusted_confidence < 0.50:
+                        logger.info(f"Light profanity detected and allowed. Confidence adjusted to {adjusted_confidence:.1%}")
+                        return None  # Don't flag light profanity
+                    
+                    # If serious harm was detected, use that confidence
+                    if is_serious:
+                        max_confidence = adjusted_confidence
+                        logger.info(f"Serious harm confirmed. Using adjusted confidence: {max_confidence:.1%}")
+                    
+                    # Determine severity based on final confidence
                     if max_confidence >= 0.75:
                         severity = "high"  # Should be deleted
                         should_delete = True
@@ -239,6 +409,9 @@ class ModerationManager:
                         "should_delete": should_delete,
                         "categories": moderation_result.get('categories', {}),
                         "category_scores": category_scores,
+                        "google_nl_confidence": google_max_confidence if google_result else None,
+                        "google_nl_categories": google_result['flagged_categories'] if google_result else None,
+                        "moderation_source": "dual" if google_result else "openai_only",
                         "status": "auto_approved" if existing_decision and existing_decision['decision'] == "whitelist" else "pending_review",
                         "existing_decision": existing_decision['decision'] if existing_decision else None,
                         "created_at": datetime.utcnow(),
