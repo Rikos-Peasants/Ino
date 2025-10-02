@@ -3917,8 +3917,14 @@ class CommandsController:
         async def inorep_group(ctx):
             """InoRep command group"""
             if ctx.invoked_subcommand is None:
-                # Show user's own rep if no subcommand
-                await inorep_check_cmd(ctx, ctx.author)
+                await ctx.send("💭 **InoRep System** - Track who's been rude to Ino (just for fun!)\n\n"
+                              "**Commands:**\n"
+                              "• `/inorep check [@user]` - Check InoRep score\n"
+                              "• `/inorep warn @user [reason]` - Warn for rudeness (-1 rep)\n"
+                              "• `/inorep leaderboard [worst:True]` - View leaderboard\n"
+                              "• `/inorep add @user amount reason` - [MODS] Add rep\n"
+                              "• `/inorep remove @user amount reason` - [MODS] Remove rep", 
+                              ephemeral=True)
         
         @inorep_group.command(name='check', description='Check your or someone else\'s InoRep')
         @public_command
@@ -4119,4 +4125,11 @@ class CommandsController:
                 logger.error(f"Error getting InoRep leaderboard: {e}")
                 await ctx.send(f"❌ Failed to get leaderboard: {str(e)}", ephemeral=True)
         
+        # Store InoRep command references to prevent garbage collection
+        self.inorep_group = inorep_group
+        self.inorep_check_cmd = inorep_check_cmd
+        self.inorep_warn_cmd = inorep_warn_cmd
+        self.inorep_add_cmd = inorep_add_cmd
+        self.inorep_remove_cmd = inorep_remove_cmd
+        self.inorep_leaderboard_cmd = inorep_leaderboard_cmd
                 
