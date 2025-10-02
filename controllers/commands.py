@@ -3911,4 +3911,212 @@ class CommandsController:
         except Exception as e:
             await ctx.send(f"❌ Failed to initiate purge: {str(e)}", ephemeral=True)
         
+        # INOREP COMMANDS
+        @self.bot.hybrid_group(name='inorep', description='InoRep commands - track who has been rude to Ino (just for fun!)')
+        @public_command
+        async def inorep_group(ctx):
+            """InoRep command group"""
+            if ctx.invoked_subcommand is None:
+                # Show user's own rep if no subcommand
+                await inorep_check_cmd(ctx, ctx.author)
+        
+        @inorep_group.command(name='check', description='Check your or someone else\'s InoRep')
+        @public_command
+        async def inorep_check_cmd(ctx, user: discord.Member = None):
+            """Check InoRep for yourself or another user"""
+            try:
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager or not leaderboard_manager.inorep_manager:
+                    await ctx.send("❌ InoRep system is not available.", ephemeral=True)
+                    return
+                
+                # Default to command user if no user specified
+                target_user = user or ctx.author
+                
+                # Get rep score
+                rep = await leaderboard_manager.inorep_manager.get_user_rep(
+                    str(target_user.id),
+                    str(ctx.guild.id)
+                )
+                
+                # Create embed
+                embed = EmbedViews.inorep_check_embed(target_user, rep)
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error checking InoRep: {e}")
+                await ctx.send(f"❌ Failed to check InoRep: {str(e)}", ephemeral=True)
+        
+        @inorep_group.command(name='warn', description='Warn someone for being rude to Ino (-1 rep)')
+        @public_command
+        async def inorep_warn_cmd(ctx, user: discord.Member, *, reason: str = "Being rude to Ino"):
+            """Warn a user for being rude to Ino"""
+            try:
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager or not leaderboard_manager.inorep_manager:
+                    await ctx.send("❌ InoRep system is not available.", ephemeral=True)
+                    return
+                
+                # Can't warn yourself
+                if user.id == ctx.author.id:
+                    await ctx.send("❌ You can't warn yourself!", ephemeral=True)
+                    return
+                
+                # Can't warn bots
+                if user.bot:
+                    await ctx.send("❌ You can't warn bots!", ephemeral=True)
+                    return
+                
+                # Add -1 rep
+                success = await leaderboard_manager.inorep_manager.add_rep(
+                    user_id=str(user.id),
+                    guild_id=str(ctx.guild.id),
+                    user_name=user.display_name,
+                    amount=-1,
+                    reason=reason,
+                    moderator_id=str(ctx.author.id),
+                    moderator_name=ctx.author.display_name
+                )
+                
+                if not success:
+                    await ctx.send("❌ Failed to warn user.", ephemeral=True)
+                    return
+                
+                # Get new rep
+                new_rep = await leaderboard_manager.inorep_manager.get_user_rep(
+                    str(user.id),
+                    str(ctx.guild.id)
+                )
+                
+                # Create embed
+                embed = EmbedViews.inorep_warned_embed(user, ctx.author, new_rep)
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error warning user in InoRep: {e}")
+                await ctx.send(f"❌ Failed to warn user: {str(e)}", ephemeral=True)
+        
+        @inorep_group.command(name='add', description='[MODERATOR] Add InoRep to a user')
+        @moderator_command
+        async def inorep_add_cmd(ctx, user: discord.Member, amount: int, *, reason: str = "Admin reward"):
+            """Add InoRep to a user (moderator only)"""
+            try:
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager or not leaderboard_manager.inorep_manager:
+                    await ctx.send("❌ InoRep system is not available.", ephemeral=True)
+                    return
+                
+                # Can't modify bots
+                if user.bot:
+                    await ctx.send("❌ You can't modify rep for bots!", ephemeral=True)
+                    return
+                
+                # Amount must be positive
+                if amount <= 0:
+                    await ctx.send("❌ Amount must be positive! Use `/inorep remove` to remove rep.", ephemeral=True)
+                    return
+                
+                # Add rep
+                success = await leaderboard_manager.inorep_manager.add_rep(
+                    user_id=str(user.id),
+                    guild_id=str(ctx.guild.id),
+                    user_name=user.display_name,
+                    amount=amount,
+                    reason=reason,
+                    moderator_id=str(ctx.author.id),
+                    moderator_name=ctx.author.display_name
+                )
+                
+                if not success:
+                    await ctx.send("❌ Failed to add rep.", ephemeral=True)
+                    return
+                
+                # Get new rep
+                new_rep = await leaderboard_manager.inorep_manager.get_user_rep(
+                    str(user.id),
+                    str(ctx.guild.id)
+                )
+                
+                # Create embed
+                embed = EmbedViews.inorep_admin_add_embed(user, ctx.author, amount, new_rep, reason)
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error adding rep: {e}")
+                await ctx.send(f"❌ Failed to add rep: {str(e)}", ephemeral=True)
+        
+        @inorep_group.command(name='remove', description='[MODERATOR] Remove InoRep from a user')
+        @moderator_command
+        async def inorep_remove_cmd(ctx, user: discord.Member, amount: int, *, reason: str = "Admin penalty"):
+            """Remove InoRep from a user (moderator only)"""
+            try:
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager or not leaderboard_manager.inorep_manager:
+                    await ctx.send("❌ InoRep system is not available.", ephemeral=True)
+                    return
+                
+                # Can't modify bots
+                if user.bot:
+                    await ctx.send("❌ You can't modify rep for bots!", ephemeral=True)
+                    return
+                
+                # Amount must be positive (we'll negate it)
+                if amount <= 0:
+                    await ctx.send("❌ Amount must be positive! Use `/inorep add` to add rep.", ephemeral=True)
+                    return
+                
+                # Remove rep (negate the amount)
+                success = await leaderboard_manager.inorep_manager.add_rep(
+                    user_id=str(user.id),
+                    guild_id=str(ctx.guild.id),
+                    user_name=user.display_name,
+                    amount=-amount,
+                    reason=reason,
+                    moderator_id=str(ctx.author.id),
+                    moderator_name=ctx.author.display_name
+                )
+                
+                if not success:
+                    await ctx.send("❌ Failed to remove rep.", ephemeral=True)
+                    return
+                
+                # Get new rep
+                new_rep = await leaderboard_manager.inorep_manager.get_user_rep(
+                    str(user.id),
+                    str(ctx.guild.id)
+                )
+                
+                # Create embed
+                embed = EmbedViews.inorep_admin_add_embed(user, ctx.author, -amount, new_rep, reason)
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error removing rep: {e}")
+                await ctx.send(f"❌ Failed to remove rep: {str(e)}", ephemeral=True)
+        
+        @inorep_group.command(name='leaderboard', description='View the InoRep leaderboard')
+        @public_command
+        async def inorep_leaderboard_cmd(ctx, worst: bool = False):
+            """View the InoRep leaderboard (best or worst)"""
+            try:
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager or not leaderboard_manager.inorep_manager:
+                    await ctx.send("❌ InoRep system is not available.", ephemeral=True)
+                    return
+                
+                # Get leaderboard data
+                leaderboard_data = await leaderboard_manager.inorep_manager.get_leaderboard(
+                    str(ctx.guild.id),
+                    limit=10,
+                    reverse=worst
+                )
+                
+                # Create embed
+                embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=worst)
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error getting InoRep leaderboard: {e}")
+                await ctx.send(f"❌ Failed to get leaderboard: {str(e)}", ephemeral=True)
+        
                 

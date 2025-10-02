@@ -960,6 +960,147 @@ class EmbedViews:
             embed.add_field(name="🎯 Review Rate", value=f"{accuracy:.1f}%", inline=True)
         
         return embed
+    
+    @staticmethod
+    def inorep_check_embed(user: discord.Member, rep: int) -> discord.Embed:
+        """Create an embed for checking InoRep"""
+        # Determine color and message based on rep
+        if rep >= 10:
+            color = discord.Color.green()
+            status = "🌟 Ino's Best Friend!"
+            message = "You're doing great! Ino loves you!"
+        elif rep >= 5:
+            color = discord.Color.blue()
+            status = "😊 Good Standing"
+            message = "Keep being nice to Ino!"
+        elif rep >= 0:
+            color = discord.Color.gold()
+            status = "😐 Neutral"
+            message = "Not bad, not great. Ino is watching..."
+        elif rep >= -5:
+            color = discord.Color.orange()
+            status = "😠 On Thin Ice"
+            message = "Ino is starting to dislike you..."
+        elif rep >= -10:
+            color = discord.Color.red()
+            status = "🤬 Ino's Nemesis"
+            message = "Ino really doesn't like you right now!"
+        else:
+            color = discord.Color.dark_red()
+            status = "💀 Ino's Worst Enemy"
+            message = "Ino absolutely despises you! How did you get this bad?!"
+        
+        embed = discord.Embed(
+            title=f"🎭 InoRep Score",
+            description=f"**{user.display_name}'s** reputation with Ino",
+            color=color,
+            timestamp=datetime.utcnow()
+        )
+        
+        embed.add_field(name="📊 Current Rep", value=f"**{rep:+d}**", inline=True)
+        embed.add_field(name="🏷️ Status", value=status, inline=True)
+        embed.add_field(name="💭 Message", value=message, inline=False)
+        
+        embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
+        embed.set_footer(text="InoRep • Just for fun!")
+        
+        return embed
+    
+    @staticmethod
+    def inorep_warned_embed(warned_user: discord.Member, warner: discord.Member, new_rep: int) -> discord.Embed:
+        """Create an embed for InoRep warning"""
+        embed = discord.Embed(
+            title="⚠️ InoRep Warning!",
+            description=f"**{warned_user.display_name}** has been warned for being rude to Ino!",
+            color=discord.Color.red(),
+            timestamp=datetime.utcnow()
+        )
+        
+        embed.add_field(name="👤 Warned User", value=f"{warned_user.mention}", inline=True)
+        embed.add_field(name="👮 Warned By", value=f"{warner.mention}", inline=True)
+        embed.add_field(name="📉 Rep Change", value="**-1**", inline=True)
+        embed.add_field(name="📊 New Rep", value=f"**{new_rep:+d}**", inline=True)
+        embed.add_field(name="💬 Reason", value="Being rude to Ino", inline=False)
+        
+        embed.set_thumbnail(url=warned_user.display_avatar.url if warned_user.display_avatar else None)
+        embed.set_footer(text="Be nicer to Ino! (This is just for fun)")
+        
+        return embed
+    
+    @staticmethod
+    def inorep_admin_add_embed(target_user: discord.Member, admin: discord.Member, amount: int, new_rep: int, reason: str) -> discord.Embed:
+        """Create an embed for admin adding/removing InoRep"""
+        is_positive = amount > 0
+        
+        embed = discord.Embed(
+            title=f"{'✨' if is_positive else '⚖️'} InoRep {'Added' if is_positive else 'Removed'}",
+            description=f"**{admin.display_name}** {'rewarded' if is_positive else 'penalized'} **{target_user.display_name}**",
+            color=discord.Color.green() if is_positive else discord.Color.orange(),
+            timestamp=datetime.utcnow()
+        )
+        
+        embed.add_field(name="👤 Target User", value=f"{target_user.mention}", inline=True)
+        embed.add_field(name="👑 Admin", value=f"{admin.mention}", inline=True)
+        embed.add_field(name="📈 Rep Change", value=f"**{amount:+d}**", inline=True)
+        embed.add_field(name="📊 New Rep", value=f"**{new_rep:+d}**", inline=True)
+        embed.add_field(name="📝 Reason", value=reason, inline=False)
+        
+        embed.set_thumbnail(url=target_user.display_avatar.url if target_user.display_avatar else None)
+        embed.set_footer(text="InoRep Management • Just for fun!")
+        
+        return embed
+    
+    @staticmethod
+    def inorep_leaderboard_embed(leaderboard_data: list, worst: bool = False) -> discord.Embed:
+        """Create an embed for InoRep leaderboard"""
+        if worst:
+            title = "💀 Worst InoRep Offenders"
+            description = "The people Ino dislikes the most"
+            color = discord.Color.dark_red()
+        else:
+            title = "🌟 Best InoRep Holders"
+            description = "The people Ino loves the most"
+            color = discord.Color.gold()
+        
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=datetime.utcnow()
+        )
+        
+        if not leaderboard_data:
+            embed.add_field(
+                name="📭 No Data",
+                value="No one has any InoRep yet!",
+                inline=False
+            )
+            return embed
+        
+        # Add leaderboard entries
+        medal_emojis = ["🥇", "🥈", "🥉"]
+        
+        for i, user_data in enumerate(leaderboard_data[:10]):
+            position = i + 1
+            
+            # Use medal emojis for top 3, numbers for others
+            if position <= 3:
+                position_emoji = medal_emojis[position - 1]
+            else:
+                position_emoji = f"{position}."
+            
+            user_name = user_data.get('user_name', 'Unknown')
+            rep = user_data.get('rep', 0)
+            
+            embed.add_field(
+                name=f"{position_emoji} {user_name}",
+                value=f"**Rep:** {rep:+d}",
+                inline=True
+            )
+        
+        embed.set_footer(text="InoRep Leaderboard • Just for fun! • Showing top 10")
+        
+        return embed
 
 
 class PurgeConfirmationView(discord.ui.View):

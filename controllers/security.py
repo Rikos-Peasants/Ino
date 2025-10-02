@@ -23,13 +23,13 @@ class CommandSecurity:
         SecurityLevel.PUBLIC: {
             'leaderboard', 'stats', 'uptime', 'quests', 'achievements', 'streaks', 
             'events', 'bookmarks', 'bookmark', 'unbookmark', 'liked_images', 
-            'closethread', 'debug'
+            'closethread', 'debug', 'inorep', 'check'  # inorep subcommands (check, warn)
         },
         
         # MODERATOR - Requires manage_guild permission or specific roles
         SecurityLevel.MODERATOR: {
             'warn', 'warnings', 'clearwarnings', 'setlogchannel',
-            'greet', 'welcome', 'leave', 'disable', 'embed'  # greet subcommands
+            'greet', 'welcome', 'leave', 'disable', 'embed', 'add', 'remove'  # greet & inorep subcommands
         },
         
         # ADMIN - Requires administrator permission or bot owner

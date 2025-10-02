@@ -28,6 +28,7 @@ class MongoLeaderboardManager:
         self.user_reactions_collection = None  # New collection for tracking user reactions
         self.help_threads_collection = None  # New collection for help channel threads
         self.moderation_manager = None  # Moderation manager instance
+        self.inorep_manager = None  # InoRep manager instance
         self._connect()
     
     def _connect(self):
@@ -93,6 +94,15 @@ class MongoLeaderboardManager:
             except Exception as e:
                 logger.error(f"Failed to initialize moderation manager: {e}")
                 self.moderation_manager = None
+            
+            # Initialize InoRep manager
+            try:
+                from models.inorep_manager import InoRepManager
+                self.inorep_manager = InoRepManager(self.client, self.database_name)
+                logger.info("InoRep manager initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize InoRep manager: {e}")
+                self.inorep_manager = None
             
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
