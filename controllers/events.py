@@ -389,6 +389,9 @@ class EventsController:
         if not message.guild or message.guild.id != Config.GUILD_ID:
             return
         
+        # Check for positive Ino mentions first (reward good behavior!)
+        await self._check_positive_ino_mention(message)
+        
         # Check moderation before other processing
         await self._handle_message_moderation(message)
         
@@ -451,6 +454,9 @@ class EventsController:
                 
                 # Update quest progress and check achievements
                 await self._update_quest_progress_and_achievements(message.author, message)
+                
+                # Reward InoRep for posting images
+                await self._apply_image_post_inorep_reward(message)
                 
             except discord.Forbidden:
                 logger.error(f"Missing permission to add reactions in {message.channel.name}")
@@ -1176,6 +1182,9 @@ Here are some useful resources to help you:
             if not moderation_result:
                 return  # No issues found
             
+            # Reduce InoRep for flagged content (severity-based penalty)
+            await self._apply_moderation_inorep_penalty(message, moderation_result)
+            
             # Handle blacklisted content (auto-rejected)
             if moderation_result.get('status') == 'blacklisted':
                 await self._handle_blacklisted_content(message, moderation_result)
@@ -1390,4 +1399,161 @@ Here are some useful resources to help you:
             logger.error(f"Error sending moderation review: {e}")
     
     # Old reaction-based moderation system has been replaced with UI buttons
-    # See views/moderation_view.py for the new interactive moderation system 
+    # See views/moderation_view.py for the new interactive moderation system
+    
+    async def _apply_moderation_inorep_penalty(self, message: discord.Message, moderation_result: dict):
+        """Apply InoRep penalty based on moderation severity"""
+        try:
+            # Check if InoRep manager is available
+            if not hasattr(self.bot.leaderboard_manager, 'inorep_manager') or not self.bot.leaderboard_manager.inorep_manager:
+                return
+            
+            inorep_manager = self.bot.leaderboard_manager.inorep_manager
+            
+            # Determine penalty based on severity and detection method
+            severity = moderation_result.get('severity', 'medium')
+            detection_method = moderation_result.get('detection_method', 'ai')
+            pattern_reason = moderation_result.get('pattern_reason', '')
+            max_confidence = moderation_result.get('max_confidence', 0.5)
+            
+            # Severity-based penalties
+            if detection_method == 'pattern_matching':
+                # Pattern-matched content (slurs, extreme harm) - harsh penalty
+                penalty = -10
+                reason = f"Severe violation detected: {pattern_reason}"
+            elif severity == "high":
+                # High severity (75%+ confidence, will be deleted)
+                penalty = -5
+                reason = f"Harmful content flagged ({max_confidence:.0%} confidence)"
+            else:  # medium severity (50-75%)
+                # Medium severity (flagged for review only)
+                penalty = -2
+                reason = f"Content flagged for review ({max_confidence:.0%} confidence)"
+            
+            # Apply the penalty
+            await inorep_manager.add_rep(
+                user_id=str(message.author.id),
+                guild_id=str(message.guild.id),
+                user_name=message.author.display_name,
+                amount=penalty,
+                reason=reason,
+                moderator_id="0",  # System action
+                moderator_name="Ino's Moderation System"
+            )
+            
+            logger.info(f"Applied InoRep penalty ({penalty}) to {message.author.display_name} for {reason}")
+            
+        except Exception as e:
+            logger.error(f"Error applying InoRep penalty: {e}")
+    
+    async def _check_positive_ino_mention(self, message: discord.Message) -> bool:
+        """
+        Check if message contains positive mentions of Ino
+        Returns True if positive mention detected
+        """
+        try:
+            content_lower = message.content.lower()
+            
+            # Positive keywords/phrases about Ino
+            positive_patterns = [
+                # Direct compliments
+                ('ino is cute', +3),
+                ('ino is adorable', +3),
+                ('ino is the best', +4),
+                ('ino is great', +3),
+                ('ino is amazing', +3),
+                ('ino is awesome', +3),
+                ('ino is wonderful', +3),
+                ('ino is perfect', +4),
+                ('ino is beautiful', +3),
+                ('ino is pretty', +3),
+                
+                # Appreciation
+                ('love ino', +3),
+                ('love you ino', +4),
+                ('thank you ino', +2),
+                ('thanks ino', +2),
+                ('appreciate ino', +2),
+                ('appreciate you ino', +3),
+                
+                # General positive
+                ('good job ino', +2),
+                ('well done ino', +2),
+                ('nice work ino', +2),
+                ('ino best bot', +3),
+                ('ino best girl', +4),
+                ('ino waifu', +3),
+            ]
+            
+            for pattern, reward in positive_patterns:
+                if pattern in content_lower:
+                    # Apply InoRep reward
+                    if hasattr(self.bot.leaderboard_manager, 'inorep_manager'):
+                        inorep_manager = self.bot.leaderboard_manager.inorep_manager
+                        await inorep_manager.add_rep(
+                            user_id=str(message.author.id),
+                            guild_id=str(message.guild.id),
+                            user_name=message.author.display_name,
+                            amount=reward,
+                            reason=f"Said something nice about Ino: '{pattern}'",
+                            moderator_id="0",
+                            moderator_name="Ino"
+                        )
+                        logger.info(f"{message.author.display_name} gained {reward} InoRep for positive mention: '{pattern}'")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking positive Ino mention: {e}")
+            return False
+    
+    async def _apply_image_post_inorep_reward(self, message: discord.Message):
+        """Reward users for posting images in image channels"""
+        try:
+            # Check if InoRep manager is available
+            if not hasattr(self.bot.leaderboard_manager, 'inorep_manager') or not self.bot.leaderboard_manager.inorep_manager:
+                return
+            
+            from config import Config
+            
+            # Only reward in image channels
+            if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
+                return
+            
+            # Check if message has images
+            has_image = False
+            
+            # Check for attachments
+            for attachment in message.attachments:
+                if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                    has_image = True
+                    break
+            
+            # Check for embeds with images
+            if not has_image:
+                for embed in message.embeds:
+                    if embed.image or embed.thumbnail:
+                        has_image = True
+                        break
+            
+            if has_image:
+                inorep_manager = self.bot.leaderboard_manager.inorep_manager
+                
+                # Reward for posting image
+                reward = +1
+                
+                await inorep_manager.add_rep(
+                    user_id=str(message.author.id),
+                    guild_id=str(message.guild.id),
+                    user_name=message.author.display_name,
+                    amount=reward,
+                    reason="Posted an image in image channel",
+                    moderator_id="0",
+                    moderator_name="Ino"
+                )
+                
+                logger.info(f"{message.author.display_name} gained {reward} InoRep for posting image")
+            
+        except Exception as e:
+            logger.error(f"Error applying image post InoRep reward: {e}") 
