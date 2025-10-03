@@ -109,7 +109,7 @@ class MongoLeaderboardManager:
             raise Exception(f"MongoDB connection failed: {e}")
 
     # NSFWBAN Management Methods
-    async def add_nsfwban_user(self, user_id: int, user_name: str, banned_by_id: int, banned_by_name: str, reason: str = None) -> bool:
+    async def add_nsfwban_user(self, user_id: int, user_name: str, banned_by_id: int, banned_by_name: str, guild_id: int = None, reason: str = None) -> bool:
         """Add a user to the NSFWBAN list"""
         try:
             doc = {
@@ -117,6 +117,7 @@ class MongoLeaderboardManager:
                 "user_name": user_name,
                 "banned_by_id": str(banned_by_id),
                 "banned_by_name": banned_by_name,
+                "guild_id": str(guild_id) if guild_id else None,
                 "reason": reason or "No reason provided",
                 "banned_at": datetime.now(),
                 "is_active": True
