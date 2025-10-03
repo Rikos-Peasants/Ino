@@ -80,9 +80,15 @@ class EventsController:
                 nsfwban_role = discord.utils.get(member.guild.roles, id=Config.NSFWBAN_BANNED_ROLE_ID)
                 
                 if nsfwban_role:
-                    # Add the role back to the user
+                    # Add the banned role back to the user
                     await member.add_roles(nsfwban_role, reason="Reapplying NSFWBAN role on rejoin")
                     logger.info(f"Reapplied NSFWBAN role to {member.display_name} on rejoin")
+                    
+                    # Also remove the NSFW/restricted role if they somehow have it
+                    restricted_role = discord.utils.get(member.guild.roles, id=Config.RESTRICTED_ROLE_ID)
+                    if restricted_role and restricted_role in member.roles:
+                        await member.remove_roles(restricted_role, reason="NSFWBAN user - removing NSFW access on rejoin")
+                        logger.info(f"Removed NSFW role from {member.display_name} on rejoin (NSFWBAN user)")
                     
                     # Get ban info for DM
                     ban_info = await self.bot.leaderboard_manager.get_nsfwban_user_info(member.id)

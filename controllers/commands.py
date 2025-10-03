@@ -679,9 +679,19 @@ class CommandsController:
                         await ctx.send(error_msg)
                     return
                 
-                # Add the role to the user
+                # Get the NSFW/restricted role (to be removed from banned users)
+                restricted_role = discord.utils.get(ctx.guild.roles, id=Config.RESTRICTED_ROLE_ID)
+                
+                # Add the banned role and remove the NSFW role (if they have it)
                 try:
+                    # Add the NSFWBAN role
                     await user.add_roles(nsfwban_role, reason=f"NSFWBAN by {ctx.author.display_name}: {reason}")
+                    
+                    # Remove the NSFW/restricted role if they have it
+                    if restricted_role and restricted_role in user.roles:
+                        await user.remove_roles(restricted_role, reason=f"NSFWBAN by {ctx.author.display_name}: Removing NSFW access")
+                        logger.info(f"Removed NSFW role from {user.display_name} during NSFWBAN")
+                    
                 except discord.Forbidden:
                     error_msg = "❌ I don't have permission to manage roles!"
                     if hasattr(ctx, 'followup'):
@@ -690,7 +700,7 @@ class CommandsController:
                         await ctx.send(error_msg)
                     return
                 except discord.HTTPException as e:
-                    error_msg = f"❌ Failed to add role: {str(e)}"
+                    error_msg = f"❌ Failed to manage roles: {str(e)}"
                     if hasattr(ctx, 'followup'):
                         await ctx.followup.send(error_msg, ephemeral=True)
                     else:
