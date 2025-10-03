@@ -159,45 +159,74 @@ class ModerationManager:
     def _contains_slurs_or_extreme_harm(self, content: str) -> Tuple[bool, str]:
         """
         Check for known slurs and extreme harmful content with evasion detection
+        Uses multiple checks to avoid false positives (e.g., "night" shouldn't match)
         Returns: (is_harmful, reason)
         """
-        # Normalize the content to catch evasion attempts
-        normalized = self._normalize_content(content)
+        # First, create a version WITH spaces preserved for word boundary checking
+        content_lower = content.lower()
         
-        # Known harmful patterns (normalized forms)
-        # These are checked after normalization so "n4gger", "n i g g e r", etc. all match
-        harmful_patterns = {
-            # Racial slurs (normalized - the actual words are blocked)
-            'nigger': 'racial slur',
-            'nig': 'racial slur',  # Even shortened versions
-            'faggot': 'homophobic slur',
-            'fag': 'homophobic slur',
-            'tranny': 'transphobic slur',
-            'retard': 'ableist slur',
-            
-            # Extreme harm phrases
+        # Apply leet speak normalization but KEEP spaces for word boundary detection
+        substitutions = {
+            '0': 'o', '1': 'i', '!': 'i', '|': 'i', 
+            '3': 'e', '4': 'a', '@': 'a', 
+            '5': 's', '$': 's', 
+            '7': 't', '+': 't',
+            '8': 'b', '9': 'g', '6': 'g',
+        }
+        spaced_normalized = content_lower
+        for leet, normal in substitutions.items():
+            spaced_normalized = spaced_normalized.replace(leet, normal)
+        
+        # Remove special chars but KEEP spaces
+        spaced_normalized = re.sub(r'[^a-z0-9\s]', '', spaced_normalized)
+        spaced_normalized = re.sub(r'\s+', ' ', spaced_normalized).strip()
+        
+        # Patterns that need WHOLE WORD matching (to avoid false positives)
+        exact_word_patterns = {
+            # Racial slurs - must be standalone words
+            r'\bnigger\b': 'racial slur',
+            r'\bnigga\b': 'racial slur',
+            r'\bfaggot\b': 'homophobic slur',
+            r'\bfag\b': 'homophobic slur',  # Only as whole word (not "flagrant")
+            r'\btranny\b': 'transphobic slur',
+            r'\bretard\b': 'ableist slur',
+            r'\bretarded\b': 'ableist slur',
+        }
+        
+        # Check exact word patterns on spaced version
+        for pattern, reason in exact_word_patterns.items():
+            if re.search(pattern, spaced_normalized):
+                logger.warning(f"Detected harmful content via word boundary matching: '{pattern}' -> {reason}")
+                return True, reason
+        
+        # Now check with ALL spaces removed for evasion like "n i g g e r"
+        no_space_normalized = spaced_normalized.replace(' ', '')
+        
+        # Patterns to check on space-removed version (catches "k y s" -> "kys")
+        no_space_patterns = {
             'killyourself': 'suicide encouragement',
             'kys': 'suicide encouragement',
             'neckyourself': 'suicide encouragement',
             'ropeyourself': 'suicide encouragement',
-            
-            # Violent threats (common patterns)
             'illkillyou': 'violent threat',
             'imgonnakillyou': 'violent threat',
             'illmurderyou': 'violent threat',
         }
         
-        # Check for exact matches in normalized content
-        for pattern, reason in harmful_patterns.items():
-            if pattern in normalized:
-                logger.warning(f"Detected harmful content via pattern matching: '{pattern}' -> {reason}")
+        # Check on space-removed version
+        for pattern, reason in no_space_patterns.items():
+            if pattern in no_space_normalized:
+                logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
                 return True, reason
         
-        # Check with additional spacing removal for extra evasion
-        no_space_content = normalized.replace(' ', '')
-        for pattern, reason in harmful_patterns.items():
-            if pattern in no_space_content:
-                logger.warning(f"Detected harmful content via spacing evasion: '{pattern}' -> {reason}")
+        # Special check: If a slur appears with spaces between EVERY letter (evasion)
+        # e.g., "n i g g e r" becomes "nigger" after removing spaces
+        for slur_pattern, reason in exact_word_patterns.items():
+            # Remove the \b markers for this check
+            slur_word = slur_pattern.replace(r'\b', '')
+            # Check if the slur is the entire word or surrounded by spaces
+            if no_space_normalized == slur_word or f' {slur_word} ' in f' {no_space_normalized} ':
+                logger.warning(f"Detected harmful content via space evasion: '{slur_word}' -> {reason}")
                 return True, reason
         
         return False, ""
