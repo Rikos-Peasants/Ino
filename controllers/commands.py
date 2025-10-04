@@ -56,6 +56,18 @@ class CommandsController:
             """Test command to verify bot owner status"""
             await ctx.send("✅ You are verified as a bot owner! Owner commands should work for you.")
         
+        # Patreon command
+        @self.bot.hybrid_command(name="patreon", description="Support Rayen on Patreon and get exclusive perks!")
+        @public_command
+        async def patreon_command(ctx):
+            """Show Patreon information and link"""
+            try:
+                embed = EmbedViews.patreon_embed()
+                await ctx.send(embed=embed)
+            except Exception as e:
+                logger.error(f"Error in patreon command: {e}")
+                await ctx.send("❌ An error occurred while fetching Patreon information.")
+        
         # Define the hybrid command
         @self.bot.hybrid_command(name="uptime", description="Check how long the bot has been running")
         @public_command
@@ -1205,6 +1217,37 @@ class CommandsController:
             except Exception as e:
                 logger.error(f"Error in achievements command: {e}")
                 error_embed = EmbedViews.error_embed(f"Failed to get achievements: {str(e)}")
+                await ctx.send(embed=error_embed, ephemeral=True)
+        
+        @self.bot.hybrid_command(name="pointsleaderboard", description="View the quest points leaderboard")
+        @public_command
+        async def points_leaderboard_command(ctx):
+            """View the quest points leaderboard"""
+            try:
+                # Check if quest manager is available
+                events_controller = self.get_events_controller()
+                if not events_controller or not events_controller.quest_manager:
+                    error_embed = EmbedViews.error_embed("Quest system is not available at the moment.")
+                    await ctx.send(embed=error_embed, ephemeral=True)
+                    return
+                
+                quest_manager = events_controller.quest_manager
+                
+                # Get quest points leaderboard
+                leaderboard = await quest_manager.get_quest_points_leaderboard(limit=10)
+                
+                if not leaderboard:
+                    error_embed = EmbedViews.error_embed("No quest data available yet. Complete quests to appear on the leaderboard!")
+                    await ctx.send(embed=error_embed)
+                    return
+                
+                # Create and send embed
+                embed = EmbedViews.quest_points_leaderboard_embed(leaderboard, ctx.author.id)
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in points leaderboard command: {e}")
+                error_embed = EmbedViews.error_embed(f"Failed to get points leaderboard: {str(e)}")
                 await ctx.send(embed=error_embed, ephemeral=True)
         
         @self.bot.hybrid_command(name="streaks", description="View your streaks and consistency stats")

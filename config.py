@@ -36,6 +36,10 @@ class Config:
     NSFWBAN_MODERATOR_ROLE_ID = 1372477845997359244  # Role that can use nsfwban commands
     NSFWBAN_BANNED_ROLE_ID = get_int_env('BANNED_ROLE_ID')  # Role given to NSFWBAN'd users (same as BANNED_ROLE_ID)
     
+    # Patreon role for bonuses
+    PATREON_ROLE_ID = get_int_env('PATREON_ROLE_ID', None)  # "Riko's Agent" role for 1.5x quest points
+    PATREON_URL = "https://www.patreon.com/RayenAI"
+    
     # Image reaction channels
     IMAGE_REACTION_CHANNELS = [
         1282209034916855809,

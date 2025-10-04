@@ -7,6 +7,7 @@ from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from pymongo.collection import Collection
 from pymongo.database import Database
 import random
+import discord
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +80,19 @@ class QuestManager:
         if not self._ensure_connected():
             logger.error("Cannot initialize quests and achievements: Database not connected")
             return
-        # Daily Quests
+        # Daily Quests with difficulty levels and categories
         daily_quests = [
+            # ========== POSTING QUESTS ==========
             {
                 "quest_id": "daily_post_1",
-                "name": "Image Poster",
+                "name": "First Steps",
                 "description": "Post 1 image",
                 "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "easy",
                 "target_count": 1,
                 "reward_points": 10,
+                "rarity_chance": 1.0,  # 100% chance
                 "is_daily": True
             },
             {
@@ -95,17 +100,37 @@ class QuestManager:
                 "name": "Active Poster",
                 "description": "Post 3 images",
                 "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "medium",
                 "target_count": 3,
-                "reward_points": 25,
+                "reward_points": 30,
+                "rarity_chance": 0.8,  # 80% chance
                 "is_daily": True
             },
             {
+                "quest_id": "daily_post_5",
+                "name": "Content Creator",
+                "description": "Post 5 images",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "hard",
+                "target_count": 5,
+                "reward_points": 50,
+                "rarity_chance": 0.5,  # 50% chance
+                "is_daily": True
+            },
+            
+            # ========== ENGAGEMENT QUESTS ==========
+            {
                 "quest_id": "daily_like_5",
-                "name": "Like Collector",
+                "name": "Rising Star",
                 "description": "Earn 5 likes on your images",
                 "quest_type": "earn_likes",
+                "category": "engagement",
+                "difficulty": "easy",
                 "target_count": 5,
                 "reward_points": 15,
+                "rarity_chance": 0.9,  # 90% chance
                 "is_daily": True
             },
             {
@@ -113,26 +138,99 @@ class QuestManager:
                 "name": "Popular Creator",
                 "description": "Earn 10 likes on your images",
                 "quest_type": "earn_likes",
+                "category": "engagement",
+                "difficulty": "medium",
                 "target_count": 10,
-                "reward_points": 30,
+                "reward_points": 35,
+                "rarity_chance": 0.7,  # 70% chance
                 "is_daily": True
             },
             {
+                "quest_id": "daily_like_20",
+                "name": "Community Favorite",
+                "description": "Earn 20 likes on your images",
+                "quest_type": "earn_likes",
+                "category": "engagement",
+                "difficulty": "hard",
+                "target_count": 20,
+                "reward_points": 60,
+                "rarity_chance": 0.4,  # 40% chance
+                "is_daily": True
+            },
+            
+            # ========== RATING QUESTS ==========
+            {
                 "quest_id": "daily_rate_5",
-                "name": "Image Critic",
+                "name": "Art Appreciator",
                 "description": "Rate 5 images (👍 or 👎)",
                 "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "easy",
                 "target_count": 5,
-                "reward_points": 10,
+                "reward_points": 12,
+                "rarity_chance": 1.0,  # 100% chance
                 "is_daily": True
             },
             {
                 "quest_id": "daily_rate_10",
-                "name": "Active Rater",
+                "name": "Active Critic",
                 "description": "Rate 10 images (👍 or 👎)",
                 "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "medium",
                 "target_count": 10,
-                "reward_points": 20,
+                "reward_points": 25,
+                "rarity_chance": 0.8,  # 80% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_rate_20",
+                "name": "Master Curator",
+                "description": "Rate 20 images (👍 or 👎)",
+                "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "hard",
+                "target_count": 20,
+                "reward_points": 45,
+                "rarity_chance": 0.6,  # 60% chance
+                "is_daily": True
+            },
+            
+            # ========== COMBO QUESTS ==========
+            {
+                "quest_id": "daily_combo_post_rate",
+                "name": "Content & Critic",
+                "description": "Post 2 images AND rate 10 images",
+                "quest_type": "combo",
+                "category": "combo",
+                "difficulty": "medium",
+                "target_count": 1,  # Special handling needed
+                "reward_points": 40,
+                "rarity_chance": 0.6,  # 60% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_hot_streak",
+                "name": "Hot Streak",
+                "description": "Post 3 images that each get at least 3 likes",
+                "quest_type": "hot_images",
+                "category": "special",
+                "difficulty": "hard",
+                "target_count": 3,
+                "reward_points": 70,
+                "rarity_chance": 0.3,  # 30% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_support_others",
+                "name": "Community Support",
+                "description": "Give likes to 15 different images",
+                "quest_type": "like_diverse",
+                "category": "community",
+                "difficulty": "medium",
+                "target_count": 15,
+                "reward_points": 35,
+                "rarity_chance": 0.7,  # 70% chance
                 "is_daily": True
             }
         ]
@@ -304,8 +402,8 @@ class QuestManager:
         
         logger.info("Initialized default quests and achievements")
     
-    async def generate_daily_quests(self, user_id: int) -> List[Dict]:
-        """Generate 3-5 random daily quests for a user"""
+    async def generate_daily_quests(self, user_id: int, member: 'discord.Member' = None) -> List[Dict]:
+        """Generate 3-5 random daily quests for a user with difficulty/rarity system"""
         try:
             today = datetime.now().date()
             
@@ -321,22 +419,78 @@ class QuestManager:
             # Get all available daily quests
             available_quests = list(self.quests_collection.find({"is_daily": True}))
             
-            # Randomly select 3-5 quests
+            # Filter quests by rarity chance
+            potential_quests = []
+            for quest in available_quests:
+                rarity_chance = quest.get("rarity_chance", 1.0)
+                if random.random() <= rarity_chance:
+                    potential_quests.append(quest)
+            
+            # Ensure we have at least some quests
+            if len(potential_quests) < 3:
+                # Add some easy quests to guarantee at least 3
+                easy_quests = [q for q in available_quests if q.get("difficulty") == "easy"]
+                potential_quests.extend(easy_quests[:3])
+                potential_quests = list({q["quest_id"]: q for q in potential_quests}.values())  # Remove duplicates
+            
+            # Select 3-5 quests, ensuring no duplicate categories
             selected_count = random.randint(3, 5)
-            selected_quests = random.sample(available_quests, min(selected_count, len(available_quests)))
+            selected_quests = []
+            used_categories = set()
+            
+            # Shuffle for randomness
+            random.shuffle(potential_quests)
+            
+            for quest in potential_quests:
+                if len(selected_quests) >= selected_count:
+                    break
+                
+                category = quest.get("category", "general")
+                
+                # Skip if we already have a quest from this category
+                if category in used_categories and len(potential_quests) > selected_count:
+                    continue
+                
+                selected_quests.append(quest)
+                used_categories.add(category)
+            
+            # If we still don't have enough, add more without category restriction
+            if len(selected_quests) < 3:
+                for quest in potential_quests:
+                    if quest not in selected_quests:
+                        selected_quests.append(quest)
+                        if len(selected_quests) >= 3:
+                            break
+            
+            # Check for Patreon multiplier
+            patreon_multiplier = 1.0
+            if member:
+                from config import Config
+                if Config.PATREON_ROLE_ID:
+                    patreon_role = discord.utils.get(member.roles, id=Config.PATREON_ROLE_ID)
+                    if patreon_role:
+                        patreon_multiplier = 1.5
+                        logger.info(f"User {user_id} has Patreon role - 1.5x points multiplier applied")
             
             # Create user quest records
             user_quests = []
             for quest in selected_quests:
+                base_points = quest["reward_points"]
+                final_points = int(base_points * patreon_multiplier)
+                
                 user_quest = {
                     "user_id": str(user_id),
                     "quest_id": quest["quest_id"],
                     "name": quest["name"],
                     "description": quest["description"],
                     "quest_type": quest["quest_type"],
+                    "category": quest.get("category", "general"),
+                    "difficulty": quest.get("difficulty", "medium"),
                     "target_count": quest["target_count"],
                     "current_count": 0,
-                    "reward_points": quest["reward_points"],
+                    "reward_points": final_points,
+                    "base_reward_points": base_points,
+                    "patreon_multiplier": patreon_multiplier,
                     "completed": False,
                     "date": today.isoformat(),
                     "created_at": datetime.now()
@@ -345,7 +499,7 @@ class QuestManager:
                 self.user_quests_collection.insert_one(user_quest)
                 user_quests.append(user_quest)
             
-            logger.info(f"Generated {len(user_quests)} daily quests for user {user_id}")
+            logger.info(f"Generated {len(user_quests)} daily quests for user {user_id} (Patreon: {patreon_multiplier}x)")
             return user_quests
             
         except Exception as e:
@@ -399,6 +553,74 @@ class QuestManager:
             
         except Exception as e:
             logger.error(f"Error updating quest progress: {e}")
+            return []
+    
+    async def get_user_total_quest_points(self, user_id: int) -> int:
+        """Calculate total quest points earned by a user (completed quests + achievements)"""
+        try:
+            # Get all completed quests
+            completed_quests = list(self.user_quests_collection.find({
+                "user_id": str(user_id),
+                "completed": True
+            }))
+            
+            quest_points = sum(quest.get("reward_points", 0) for quest in completed_quests)
+            
+            # Get all earned achievements
+            achievements = list(self.user_achievements_collection.find({
+                "user_id": str(user_id)
+            }))
+            
+            achievement_points = sum(achievement.get("reward_points", 0) for achievement in achievements)
+            
+            total_points = quest_points + achievement_points
+            logger.debug(f"User {user_id} total points: {total_points} (Quests: {quest_points}, Achievements: {achievement_points})")
+            return total_points
+            
+        except Exception as e:
+            logger.error(f"Error calculating user total quest points: {e}")
+            return 0
+    
+    async def get_quest_points_leaderboard(self, limit: int = 10) -> List[Tuple[str, int, int, int]]:
+        """Get quest points leaderboard with user details"""
+        try:
+            # Get all unique users who have completed quests or earned achievements
+            user_ids_quests = set(doc["user_id"] for doc in self.user_quests_collection.find({"completed": True}))
+            user_ids_achievements = set(doc["user_id"] for doc in self.user_achievements_collection.find())
+            all_user_ids = user_ids_quests | user_ids_achievements
+            
+            # Calculate points for each user
+            leaderboard_data = []
+            for user_id in all_user_ids:
+                total_points = await self.get_user_total_quest_points(int(user_id))
+                if total_points > 0:
+                    # Get user name from a recent quest or achievement
+                    recent_quest = self.user_quests_collection.find_one({"user_id": user_id})
+                    recent_achievement = self.user_achievements_collection.find_one({"user_id": user_id})
+                    
+                    user_name = "Unknown"
+                    if recent_quest and "user_name" in recent_quest:
+                        user_name = recent_quest["user_name"]
+                    elif recent_achievement and "user_name" in recent_achievement:
+                        user_name = recent_achievement["user_name"]
+                    
+                    # Count completed quests and achievements
+                    completed_quest_count = self.user_quests_collection.count_documents({
+                        "user_id": user_id,
+                        "completed": True
+                    })
+                    achievement_count = self.user_achievements_collection.count_documents({"user_id": user_id})
+                    
+                    leaderboard_data.append((user_name, int(user_id), total_points, completed_quest_count, achievement_count))
+            
+            # Sort by total points descending
+            leaderboard_data.sort(key=lambda x: x[2], reverse=True)
+            
+            # Return top N
+            return leaderboard_data[:limit]
+            
+        except Exception as e:
+            logger.error(f"Error getting quest points leaderboard: {e}")
             return []
     
     async def check_achievements(self, user_id: int, leaderboard_manager) -> List[Dict]:

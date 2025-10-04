@@ -107,6 +107,28 @@ class EmbedViews:
         return embed
     
     @staticmethod
+    def patreon_embed() -> discord.Embed:
+        """Create an embed for the Patreon command"""
+        from config import Config
+        embed = discord.Embed(
+            title="💖 Support Rayen on Patreon!",
+            description=(
+                "Love what Rayen does? Support him on Patreon and get exclusive perks!\n\n"
+                "**🎁 Patreon Benefits:**\n"
+                "• **1.5x Quest Points** - Earn 50% more points on all quests!\n"
+                "• **Exclusive Role** - Get the \"Riko's Agent\" role\n"
+                "• **Early Access** - Be the first to see new content\n"
+                "• **Direct Support** - Help Rayen create more amazing content\n\n"
+                f"[**👉 Become a Patron Now!**]({Config.PATREON_URL})"
+            ),
+            color=0xff424d,  # Patreon red color
+            timestamp=datetime.utcnow()
+        )
+        embed.set_footer(text="Thank you for your support! ❤️")
+        embed.set_thumbnail(url="https://c5.patreon.com/external/logo/become_a_patron_button.png")
+        return embed
+    
+    @staticmethod
     async def best_image_embed(message: discord.Message, period: str, score: int) -> discord.Embed:
         """Create an embed for the best image of the week/month"""
         # Determine color and emojis based on period
@@ -427,6 +449,49 @@ class EmbedViews:
                 )
             
             embed.set_footer(text=f"Total Achievements: {len(achievements)} • Total Points: {total_points}")
+        
+        return embed
+    
+    @staticmethod
+    def quest_points_leaderboard_embed(leaderboard: list, current_user_id: int) -> discord.Embed:
+        """Create an embed for the quest points leaderboard"""
+        embed = discord.Embed(
+            title="🏆 Quest Points Leaderboard",
+            description="Top users by total quest and achievement points!",
+            color=discord.Color.gold(),
+            timestamp=datetime.utcnow()
+        )
+        
+        if not leaderboard:
+            embed.add_field(
+                name="No Data Available",
+                value="Be the first to complete quests and earn points!",
+                inline=False
+            )
+        else:
+            leaderboard_text = []
+            medals = ["🥇", "🥈", "🥉"]
+            
+            for i, (user_name, user_id, total_points, completed_quests, achievements) in enumerate(leaderboard, 1):
+                medal = medals[i-1] if i <= 3 else f"**{i}.**"
+                
+                # Highlight current user
+                if user_id == current_user_id:
+                    user_display = f"**{user_name}** ⭐"
+                else:
+                    user_display = user_name
+                
+                # Check for Patreon role indicator
+                patreon_indicator = ""
+                # We can't check role here, but we can show if they have the multiplier in their name
+                
+                leaderboard_text.append(
+                    f"{medal} {user_display} - **{total_points:,}** pts\n"
+                    f"　└ {completed_quests} quests • {achievements} achievements"
+                )
+            
+            embed.description = "\n\n".join(leaderboard_text)
+            embed.set_footer(text="💖 Patreon supporters get 1.5x points! Use /patreon to learn more")
         
         return embed
     
@@ -1131,7 +1196,13 @@ class PurgeConfirmationView(discord.ui.View):
                 await interaction.response.send_message("❌ You don't have permission to purge messages!", ephemeral=True)
                 return
             
-            await interaction.response.defer(ephemeral=True)
+            # Update the original message to show confirmation
+            confirm_embed = discord.Embed(
+                title="⏳ Purging Messages...",
+                description=f"Confirmed! Purging up to {self.amount} messages...",
+                color=0xf39c12
+            )
+            await interaction.response.edit_message(embed=confirm_embed, view=None)
             
             # Perform the purge
             purged_messages = await self.ctx.channel.purge(
@@ -1140,18 +1211,18 @@ class PurgeConfirmationView(discord.ui.View):
             )
             
             # Create result embed
-            embed = discord.Embed(
+            result_embed = discord.Embed(
                 title="✅ Purge Complete",
                 description=f"Successfully purged **{len(purged_messages)}** messages",
                 color=0x2ecc71
             )
-            embed.add_field(name="Filter Used", value=self.filter_type.title(), inline=True)
-            embed.add_field(name="Messages Deleted", value=str(len(purged_messages)), inline=True)
-            embed.add_field(name="Channel", value=self.ctx.channel.mention, inline=True)
-            embed.set_footer(text=f"Purged by {interaction.user.display_name}")
+            result_embed.add_field(name="Filter Used", value=self.filter_type.title(), inline=True)
+            result_embed.add_field(name="Messages Deleted", value=str(len(purged_messages)), inline=True)
+            result_embed.add_field(name="Channel", value=self.ctx.channel.mention, inline=True)
+            result_embed.set_footer(text=f"Purged by {interaction.user.display_name}")
             
-            # Send result
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            # Update the message with the result
+            await interaction.edit_original_response(embed=result_embed)
             
             # Log the purge
             logger.info(f"Purge executed by {interaction.user.display_name} in {self.ctx.channel.name}: {len(purged_messages)} messages deleted (filter: {self.filter_type})")
@@ -1161,11 +1232,26 @@ class PurgeConfirmationView(discord.ui.View):
                 item.disabled = True
             
         except discord.Forbidden:
-            await interaction.followup.send("❌ I don't have permission to delete messages in this channel!", ephemeral=True)
+            error_embed = discord.Embed(
+                title="❌ Permission Error",
+                description="I don't have permission to delete messages in this channel!",
+                color=0xe74c3c
+            )
+            await interaction.edit_original_response(embed=error_embed)
         except discord.HTTPException as e:
-            await interaction.followup.send(f"❌ Failed to purge messages: {str(e)}", ephemeral=True)
+            error_embed = discord.Embed(
+                title="❌ Error",
+                description=f"Failed to purge messages: {str(e)}",
+                color=0xe74c3c
+            )
+            await interaction.edit_original_response(embed=error_embed)
         except Exception as e:
-            await interaction.followup.send(f"❌ An error occurred: {str(e)}", ephemeral=True)
+            error_embed = discord.Embed(
+                title="❌ Error",
+                description=f"An error occurred: {str(e)}",
+                color=0xe74c3c
+            )
+            await interaction.edit_original_response(embed=error_embed)
             logger.error(f"Error during purge: {e}")
     
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.secondary)
