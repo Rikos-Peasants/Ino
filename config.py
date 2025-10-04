@@ -26,7 +26,7 @@ class Config:
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')  # For YouTube video announcements
     YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')  # For YouTube Data API
     OPENAI_KEY = os.getenv('OPENAI_KEY')  # For content moderation (primary)
-    GOOGLE_NL_API_KEY = os.getenv('GOOGLE_NL_API_KEY', 'AIzaSyBmueN3s6sT5g7c5YkhNs-7fugg1C3zrHI')  # For secondary moderation check
+    GOOGLE_NL_API_KEY = os.getenv('GOOGLE_NL_API_KEY')  # For secondary moderation check
     
     # Moderation system default role IDs (can be configured per guild)
     DEFAULT_MODERATION_REVIEW_ROLE_ID = 1372477845997359244  # Seraphs role (default reviewers)
@@ -36,9 +36,10 @@ class Config:
     NSFWBAN_MODERATOR_ROLE_ID = 1372477845997359244  # Role that can use nsfwban commands
     NSFWBAN_BANNED_ROLE_ID = get_int_env('BANNED_ROLE_ID')  # Role given to NSFWBAN'd users (same as BANNED_ROLE_ID)
     
-    # Patreon role for bonuses
-    PATREON_ROLE_ID = get_int_env('PATREON_ROLE_ID', None)  # "Riko's Agent" role for 1.5x quest points
-    PATREON_URL = "https://www.patreon.com/RayenAI"
+    # Patreon system
+    PATREON_ROLE_ID = get_int_env('PATREON_ROLE_ID', None)  # "Riko's Agent" role for Patreon supporters (1.5x quest points)
+    PATREON_URL = "https://www.patreon.com/RayenAI"  # Patreon page URL
+    PATREON_POINTS_MULTIPLIER = 1.5  # Points multiplier for Patreon supporters
     
     # Image reaction channels
     IMAGE_REACTION_CHANNELS = [
@@ -77,7 +78,10 @@ class Config:
         
         # Optional but recommended vars
         optional_vars = [
-            ('OPENAI_KEY', cls.OPENAI_KEY)
+            ('OPENAI_KEY', cls.OPENAI_KEY),
+            ('GOOGLE_NL_API_KEY', cls.GOOGLE_NL_API_KEY),
+            ('GEMINI_API_KEY', cls.GEMINI_API_KEY),
+            ('YOUTUBE_API_KEY', cls.YOUTUBE_API_KEY)
         ]
         
         missing_vars = [var_name for var_name, var_value in required_vars if not var_value]

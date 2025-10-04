@@ -232,6 +232,187 @@ class QuestManager:
                 "reward_points": 35,
                 "rarity_chance": 0.7,  # 70% chance
                 "is_daily": True
+            },
+            # Creative/Fun Quests
+            {
+                "quest_id": "daily_early_bird",
+                "name": "Early Bird",
+                "description": "Post an image before 10 AM (server time)",
+                "quest_type": "early_post",
+                "category": "time_based",
+                "difficulty": "medium",
+                "target_count": 1,
+                "reward_points": 30,
+                "rarity_chance": 0.5,  # 50% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_night_owl",
+                "name": "Night Owl",
+                "description": "Post an image after 10 PM (server time)",
+                "quest_type": "late_post",
+                "category": "time_based",
+                "difficulty": "medium",
+                "target_count": 1,
+                "reward_points": 30,
+                "rarity_chance": 0.5,  # 50% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_triple_threat",
+                "name": "Triple Threat",
+                "description": "Post 3 images in different channels",
+                "quest_type": "diverse_posts",
+                "category": "special",
+                "difficulty": "hard",
+                "target_count": 3,
+                "reward_points": 55,
+                "rarity_chance": 0.4,  # 40% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_generous_rater",
+                "name": "Generous Rater",
+                "description": "Give out 20 thumbs up today",
+                "quest_type": "give_likes",
+                "category": "community",
+                "difficulty": "medium",
+                "target_count": 20,
+                "reward_points": 30,
+                "rarity_chance": 0.7,  # 70% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_critic",
+                "name": "Honest Critic",
+                "description": "Rate 30 images (any combination of 👍👎)",
+                "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "hard",
+                "target_count": 30,
+                "reward_points": 50,
+                "rarity_chance": 0.5,  # 50% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_social_butterfly",
+                "name": "Social Butterfly",
+                "description": "React to images from 10 different users",
+                "quest_type": "diverse_reactions",
+                "category": "community",
+                "difficulty": "medium",
+                "target_count": 10,
+                "reward_points": 40,
+                "rarity_chance": 0.6,  # 60% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_marathon",
+                "name": "Image Marathon",
+                "description": "Post 7 images in a single day",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "very_hard",
+                "target_count": 7,
+                "reward_points": 80,
+                "rarity_chance": 0.3,  # 30% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_quality_over_quantity",
+                "name": "Quality Over Quantity",
+                "description": "Post 1 image that gets at least 10 likes",
+                "quest_type": "quality_post",
+                "category": "special",
+                "difficulty": "hard",
+                "target_count": 1,
+                "reward_points": 60,
+                "rarity_chance": 0.35,  # 35% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_curator",
+                "name": "Image Curator",
+                "description": "Rate 50 images (curator level)",
+                "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "very_hard",
+                "target_count": 50,
+                "reward_points": 75,
+                "rarity_chance": 0.25,  # 25% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_balanced",
+                "name": "Balanced Creator",
+                "description": "Post 2 images AND rate 15 images",
+                "quest_type": "combo",
+                "category": "combo",
+                "difficulty": "medium",
+                "target_count": 1,
+                "reward_points": 45,
+                "rarity_chance": 0.65,  # 65% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_popularity_contest",
+                "name": "Popularity Contest",
+                "description": "Get a total of 20 likes across all your images today",
+                "quest_type": "earn_likes",
+                "category": "engagement",
+                "difficulty": "very_hard",
+                "target_count": 20,
+                "reward_points": 90,
+                "rarity_chance": 0.2,  # 20% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_explorer",
+                "name": "Channel Explorer",
+                "description": "React to images in both image channels",
+                "quest_type": "explore_channels",
+                "category": "community",
+                "difficulty": "easy",
+                "target_count": 2,
+                "reward_points": 20,
+                "rarity_chance": 0.8,  # 80% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_consistency",
+                "name": "Consistency is Key",
+                "description": "Post at least 1 image (streaks matter!)",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "easy",
+                "target_count": 1,
+                "reward_points": 15,
+                "rarity_chance": 0.95,  # 95% chance
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_engagement_king",
+                "name": "Engagement King/Queen",
+                "description": "Get 15 likes on a single image",
+                "quest_type": "viral_image",
+                "category": "special",
+                "difficulty": "very_hard",
+                "target_count": 1,
+                "reward_points": 100,
+                "rarity_chance": 0.15,  # 15% chance (rare!)
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_supportive",
+                "name": "Supportive Community Member",
+                "description": "Like images from 5 different new users today",
+                "quest_type": "support_new_users",
+                "category": "community",
+                "difficulty": "medium",
+                "target_count": 5,
+                "reward_points": 35,
+                "rarity_chance": 0.6,  # 60% chance
+                "is_daily": True
             }
         ]
         

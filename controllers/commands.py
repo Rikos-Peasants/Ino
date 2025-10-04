@@ -1277,6 +1277,20 @@ class CommandsController:
                 error_embed = EmbedViews.error_embed(f"Failed to get streaks: {str(e)}")
                 await ctx.send(embed=error_embed, ephemeral=True)
         
+        @self.bot.hybrid_command(name="patreon", description="Support Rayen on Patreon and get exclusive perks!")
+        @public_command
+        async def patreon_command(ctx):
+            """Show information about Patreon support and benefits"""
+            try:
+                # Create and send Patreon embed
+                embed = EmbedViews.patreon_embed()
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in patreon command: {e}")
+                error_embed = EmbedViews.error_embed(f"Failed to show Patreon info: {str(e)}")
+                await ctx.send(embed=error_embed, ephemeral=True)
+        
         @self.bot.hybrid_command(name="events", description="View active image contest events")
         @public_command
         async def events_command(ctx):
