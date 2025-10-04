@@ -1224,11 +1224,18 @@ class CommandsController:
         async def points_leaderboard_command(ctx):
             """View the quest points leaderboard"""
             try:
+                # Defer immediately to prevent timeout
+                if hasattr(ctx, 'interaction') and ctx.interaction:
+                    await ctx.defer()
+                
                 # Check if quest manager is available
                 events_controller = self.get_events_controller()
                 if not events_controller or not events_controller.quest_manager:
                     error_embed = EmbedViews.error_embed("Quest system is not available at the moment.")
-                    await ctx.send(embed=error_embed, ephemeral=True)
+                    if hasattr(ctx, 'interaction') and ctx.interaction:
+                        await ctx.send(embed=error_embed, ephemeral=True)
+                    else:
+                        await ctx.send(embed=error_embed)
                     return
                 
                 quest_manager = events_controller.quest_manager
@@ -1248,7 +1255,10 @@ class CommandsController:
             except Exception as e:
                 logger.error(f"Error in points leaderboard command: {e}")
                 error_embed = EmbedViews.error_embed(f"Failed to get points leaderboard: {str(e)}")
-                await ctx.send(embed=error_embed, ephemeral=True)
+                try:
+                    await ctx.send(embed=error_embed, ephemeral=True)
+                except:
+                    await ctx.send(embed=error_embed)
         
         @self.bot.hybrid_command(name="streaks", description="View your streaks and consistency stats")
         @public_command
