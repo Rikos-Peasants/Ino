@@ -85,10 +85,10 @@ class ModerationManager:
             '6': 'g',
             '(': 'c',
             '<': 'c',
-            '\/': 'v',
-            '|\/|': 'm',
+            '\\/': 'v',
+            '|\\/|': 'm',
             '><': 'x',
-            '/-\\': 'a',
+            '/-\\\\': 'a',
         }
         
         for leet, normal in substitutions.items():

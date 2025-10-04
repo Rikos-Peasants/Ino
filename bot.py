@@ -150,10 +150,21 @@ class RikoBot(commands.Bot):
         # Sync commands to enable slash command functionality
         logger.info("Syncing hybrid commands...")
         try:
-            synced = await self.tree.sync()
-            logger.info(f"✅ Synced {len(synced)} hybrid commands")
+            # Sync to the configured guild first (instant updates for development)
+            if Config.GUILD_ID:
+                guild = discord.Object(id=Config.GUILD_ID)
+                synced_guild = await self.tree.sync(guild=guild)
+                logger.info(f"✅ Synced {len(synced_guild)} commands to guild {Config.GUILD_ID}")
+                for cmd in synced_guild:
+                    logger.info(f"   - /{cmd.name}: {cmd.description}")
+            
+            # Also sync globally (takes up to 1 hour to propagate)
+            synced_global = await self.tree.sync()
+            logger.info(f"✅ Synced {len(synced_global)} commands globally")
+            
         except Exception as e:
             logger.error(f"❌ Failed to sync commands: {e}")
+            logger.error(f"   Make sure bot has 'applications.commands' scope!")
         
         # Start scheduler tasks for best image posting
         if self.scheduler_controller:

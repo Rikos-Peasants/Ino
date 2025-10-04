@@ -21,15 +21,34 @@ async def sync_commands():
         
         bot = commands.Bot(command_prefix='R!', intents=intents)
         
-        # Add a simple command for testing
+        # Add test commands for sync verification
         @bot.hybrid_command(name="test", description="Test command for sync verification")
         async def test_command(ctx):
             await ctx.send("✅ Hybrid commands are working!")
         
-        # Add the uptime command like in the main bot
         @bot.hybrid_command(name="uptime", description="Check how long the bot has been running")
         async def uptime_command(ctx):
             await ctx.send("✅ Uptime command working! Use this in the main bot.")
+        
+        @bot.hybrid_command(name="patreon", description="Support Rayen on Patreon and get exclusive perks!")
+        async def patreon_command(ctx):
+            await ctx.send("✅ Patreon command working!")
+        
+        @bot.hybrid_command(name="pointsleaderboard", description="View the quest points leaderboard")
+        async def pointsleaderboard_command(ctx):
+            await ctx.send("✅ Points leaderboard command working!")
+        
+        @bot.hybrid_command(name="quests", description="View your daily quests")
+        async def quests_command(ctx):
+            await ctx.send("✅ Quests command working!")
+        
+        @bot.hybrid_command(name="achievements", description="View your achievements")
+        async def achievements_command(ctx):
+            await ctx.send("✅ Achievements command working!")
+        
+        @bot.hybrid_command(name="streaks", description="View your streaks and consistency stats")
+        async def streaks_command(ctx):
+            await ctx.send("✅ Streaks command working!")
         
         @bot.event
         async def on_ready():
