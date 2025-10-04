@@ -762,7 +762,7 @@ class QuestManager:
             logger.error(f"Error calculating user total quest points: {e}")
             return 0
     
-    async def get_quest_points_leaderboard(self, limit: int = 10) -> List[Tuple[str, int, int, int]]:
+    async def get_quest_points_leaderboard(self, limit: int = 10, guild=None) -> List[Tuple[str, int, int, int]]:
         """Get quest points leaderboard with user details"""
         try:
             # Get all unique users who have completed quests or earned achievements
@@ -775,15 +775,27 @@ class QuestManager:
             for user_id in all_user_ids:
                 total_points = await self.get_user_total_quest_points(int(user_id))
                 if total_points > 0:
-                    # Get user name from a recent quest or achievement
-                    recent_quest = self.user_quests_collection.find_one({"user_id": user_id})
-                    recent_achievement = self.user_achievements_collection.find_one({"user_id": user_id})
-                    
-                    user_name = "Unknown"
-                    if recent_quest and "user_name" in recent_quest:
-                        user_name = recent_quest["user_name"]
-                    elif recent_achievement and "user_name" in recent_achievement:
-                        user_name = recent_achievement["user_name"]
+                    # Try to get user name from Discord guild
+                    user_name = "Unknown User"
+                    if guild:
+                        try:
+                            member = guild.get_member(int(user_id))
+                            if member:
+                                user_name = member.display_name
+                            else:
+                                # Try fetching if not in cache
+                                member = await guild.fetch_member(int(user_id))
+                                if member:
+                                    user_name = member.display_name
+                        except:
+                            # Fall back to database lookup
+                            recent_quest = self.user_quests_collection.find_one({"user_id": user_id})
+                            recent_achievement = self.user_achievements_collection.find_one({"user_id": user_id})
+                            
+                            if recent_quest and "user_name" in recent_quest:
+                                user_name = recent_quest["user_name"]
+                            elif recent_achievement and "user_name" in recent_achievement:
+                                user_name = recent_achievement["user_name"]
                     
                     # Count completed quests and achievements
                     completed_quest_count = self.user_quests_collection.count_documents({

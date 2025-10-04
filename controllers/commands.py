@@ -1240,8 +1240,8 @@ class CommandsController:
                 
                 quest_manager = events_controller.quest_manager
                 
-                # Get quest points leaderboard
-                leaderboard = await quest_manager.get_quest_points_leaderboard(limit=10)
+                # Get quest points leaderboard (pass guild for username resolution)
+                leaderboard = await quest_manager.get_quest_points_leaderboard(limit=10, guild=ctx.guild)
                 
                 if not leaderboard:
                     error_embed = EmbedViews.error_embed("No quest data available yet. Complete quests to appear on the leaderboard!")
