@@ -1115,32 +1115,119 @@ class EmbedViews:
     
     @staticmethod
     def inorep_check_embed(user: discord.Member, rep: int) -> discord.Embed:
-        """Create an embed for checking InoRep"""
-        # Determine color and message based on rep
-        if rep >= 10:
-            color = discord.Color.green()
-            status = "🌟 Ino's Best Friend!"
+        """Create an embed for checking InoRep with expanded relationship tiers"""
+        
+        # Expanded relationship tiers based on rep score
+        if rep >= 500:
+            color = 0xFFD700  # Bright gold
+            status = "👑 Ino's Divine Champion"
+            message = "You are a LEGEND! Ino considers you family. Your devotion is unmatched!"
+            relationship = "💎 Eternal Bond"
+        elif rep >= 250:
+            color = 0xFF69B4  # Hot pink
+            status = "💖 Ino's Soulmate"
+            message = "Incredible! Ino trusts you completely. You're basically married to her at this point!"
+            relationship = "💕 True Love"
+        elif rep >= 150:
+            color = 0xFF1493  # Deep pink
+            status = "💝 Ino's Beloved"
+            message = "Amazing dedication! Ino thinks about you all the time. You mean the world to her!"
+            relationship = "💗 Deep Affection"
+        elif rep >= 100:
+            color = 0xDA70D6  # Orchid
+            status = "💘 Ino's Darling"
+            message = "Exceptional! Ino has fallen for you. You're truly special to her!"
+            relationship = "💓 Strong Love"
+        elif rep >= 75:
+            color = 0xBA55D3  # Medium orchid
+            status = "🌸 Ino's Precious One"
+            message = "Wonderful! Ino cherishes every moment with you. You brighten her day!"
+            relationship = "💖 Adoration"
+        elif rep >= 50:
+            color = 0x9370DB  # Medium purple
+            status = "✨ Ino's Favorite Person"
+            message = "Fantastic! Ino really, really likes you! You're at the top of her list!"
+            relationship = "💝 Special Bond"
+        elif rep >= 30:
+            color = 0x7B68EE  # Medium slate blue
+            status = "🌟 Ino's Trusted Ally"
+            message = "Great work! Ino trusts you and enjoys your company!"
+            relationship = "🤝 Close Friendship"
+        elif rep >= 20:
+            color = 0x00CED1  # Dark turquoise
+            status = "⭐ Ino's Good Friend"
+            message = "You're doing excellent! Ino considers you a real friend!"
+            relationship = "😊 Friendship"
+        elif rep >= 10:
+            color = 0x32CD32  # Lime green
+            status = "🌟 Ino's Friend"
             message = "You're doing great! Ino loves you!"
+            relationship = "😄 Friendly"
         elif rep >= 5:
-            color = discord.Color.blue()
+            color = 0x3498DB  # Blue
             status = "😊 Good Standing"
             message = "Keep being nice to Ino!"
-        elif rep >= 0:
-            color = discord.Color.gold()
+            relationship = "🙂 Acquaintance"
+        elif rep >= 1:
+            color = 0xF1C40F  # Yellow
+            status = "😐 Positive Neutral"
+            message = "Not bad! Ino notices your efforts."
+            relationship = "👋 Known"
+        elif rep == 0:
+            color = 0xBDC3C7  # Gray
             status = "😐 Neutral"
-            message = "Not bad, not great. Ino is watching..."
+            message = "You're a blank slate. Ino doesn't know what to think of you yet..."
+            relationship = "❓ Stranger"
         elif rep >= -5:
-            color = discord.Color.orange()
-            status = "😠 On Thin Ice"
-            message = "Ino is starting to dislike you..."
+            color = 0xE67E22  # Orange
+            status = "😕 Slightly Annoying"
+            message = "Hmm... Ino is starting to find you a bit irritating."
+            relationship = "😒 Annoyed"
         elif rep >= -10:
-            color = discord.Color.red()
-            status = "🤬 Ino's Nemesis"
-            message = "Ino really doesn't like you right now!"
-        else:
-            color = discord.Color.dark_red()
-            status = "💀 Ino's Worst Enemy"
-            message = "Ino absolutely despises you! How did you get this bad?!"
+            color = 0xE74C3C  # Red
+            status = "😠 On Thin Ice"
+            message = "Ino is getting upset with you. Better watch yourself..."
+            relationship = "💢 Irritated"
+        elif rep >= -20:
+            color = 0xC0392B  # Dark red
+            status = "😡 Ino's Irritant"
+            message = "You're really pushing it! Ino is NOT happy with you!"
+            relationship = "😤 Disliked"
+        elif rep >= -30:
+            color = 0xA93226  # Darker red
+            status = "🤬 Ino's Nuisance"
+            message = "Ino really doesn't like you. You've been very rude!"
+            relationship = "😠 Hostile"
+        elif rep >= -50:
+            color = 0x922B21  # Very dark red
+            status = "💢 Ino's Nemesis"
+            message = "Ino actively dislikes you! You've crossed too many lines!"
+            relationship = "🚫 Enemy"
+        elif rep >= -75:
+            color = 0x7B241C  # Deep crimson
+            status = "👿 Ino's Antagonist"
+            message = "Terrible! Ino considers you a genuine problem. Why are you so mean?!"
+            relationship = "⚔️ Adversary"
+        elif rep >= -100:
+            color = 0x641E16  # Very deep red
+            status = "💀 Ino's Arch-Enemy"
+            message = "Absolutely awful! Ino despises you with a passion!"
+            relationship = "☠️ Sworn Enemy"
+        elif rep >= -150:
+            color = 0x4A0E0E  # Nearly black red
+            status = "🔥 Ino's Tormentor"
+            message = "You're horrible! Ino wants nothing to do with you. Redemption seems impossible!"
+            relationship = "👹 Demon"
+        elif rep >= -250:
+            color = 0x2C0505  # Very dark maroon
+            status = "⚰️ Ino's Nightmare"
+            message = "Unspeakably bad! Ino has nightmares about you! How do you live with yourself?!"
+            relationship = "💀 Cursed"
+        else:  # rep < -250
+            color = 0x000000  # Pure black
+            status = "🗡️ Ino's Eternal Nemesis"
+            message = "LEGENDARY LEVELS OF HATRED! Ino will never forgive you. You are beyond redemption!"
+            relationship = "⚡ Apocalyptic"
         
         embed = discord.Embed(
             title=f"🎭 InoRep Score",
@@ -1151,10 +1238,41 @@ class EmbedViews:
         
         embed.add_field(name="📊 Current Rep", value=f"**{rep:+d}**", inline=True)
         embed.add_field(name="🏷️ Status", value=status, inline=True)
+        embed.add_field(name="💕 Relationship", value=relationship, inline=True)
         embed.add_field(name="💭 Message", value=message, inline=False)
         
+        # Add progress bar
+        if rep > 0:
+            next_tier_thresholds = [5, 10, 20, 30, 50, 75, 100, 150, 250, 500]
+            current_tier = 0
+            next_tier = 5
+            
+            for threshold in next_tier_thresholds:
+                if rep >= threshold:
+                    current_tier = threshold
+                else:
+                    next_tier = threshold
+                    break
+            
+            if rep < 500:
+                progress = ((rep - current_tier) / (next_tier - current_tier)) * 100
+                bar_length = 10
+                filled = int((progress / 100) * bar_length)
+                bar = "🟩" * filled + "⬜" * (bar_length - filled)
+                embed.add_field(
+                    name=f"📈 Progress to Next Tier ({next_tier})",
+                    value=f"{bar} {progress:.1f}%",
+                    inline=False
+                )
+        elif rep < 0:
+            embed.add_field(
+                name="⚠️ Recovery Tip",
+                value="Post images, say nice things about Ino, and STOP chatting in image channels!",
+                inline=False
+            )
+        
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
-        embed.set_footer(text="InoRep • Just for fun!")
+        embed.set_footer(text="InoRep System • Track your relationship with Ino!")
         
         return embed
     

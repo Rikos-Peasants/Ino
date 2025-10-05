@@ -1488,37 +1488,197 @@ Here are some useful resources to help you:
         try:
             content_lower = message.content.lower()
             
-            # Positive keywords/phrases about Ino
+            # Expanded positive keywords/phrases about Ino (40+ variations)
             positive_patterns = [
-                # Direct compliments
+                # Direct compliments (Tier 1 - High praise)
+                ('ino is the best', +4),
+                ('ino is perfect', +4),
+                ('ino best girl', +4),
+                ('love you ino', +4),
+                ('ino is my favorite', +4),
+                ('ino is incredible', +4),
+                ('ino is flawless', +4),
+                ('ino is outstanding', +4),
+                ('ino is exceptional', +4),
+                ('ino is phenomenal', +4),
+                
+                # Direct compliments (Tier 2 - Strong praise)
                 ('ino is cute', +3),
                 ('ino is adorable', +3),
-                ('ino is the best', +4),
                 ('ino is great', +3),
                 ('ino is amazing', +3),
                 ('ino is awesome', +3),
                 ('ino is wonderful', +3),
-                ('ino is perfect', +4),
                 ('ino is beautiful', +3),
                 ('ino is pretty', +3),
-                
-                # Appreciation
+                ('ino is sweet', +3),
+                ('ino is lovely', +3),
+                ('ino is fantastic', +3),
+                ('ino is brilliant', +3),
+                ('ino is gorgeous', +3),
+                ('ino is stunning', +3),
+                ('ino is charming', +3),
+                ('ino is elegant', +3),
+                ('ino is graceful', +3),
+                ('ino is precious', +3),
+                ('ino is delightful', +3),
+                ('ino is magnificent', +3),
                 ('love ino', +3),
-                ('love you ino', +4),
+                ('ino best bot', +3),
+                ('ino waifu', +3),
+                ('ino best waifu', +3),
+                ('ino queen', +3),
+                ('ino goddess', +3),
+                ('ino is life', +3),
+                ('ino is love', +3),
+                
+                # Appreciation (Tier 3 - Gratitude)
+                ('appreciate you ino', +3),
+                ('you\'re the best ino', +3),
                 ('thank you ino', +2),
                 ('thanks ino', +2),
                 ('appreciate ino', +2),
-                ('appreciate you ino', +3),
+                ('grateful for ino', +2),
+                ('ino you\'re great', +2),
+                ('ino you\'re amazing', +2),
+                ('ino you\'re awesome', +2),
+                ('blessed by ino', +2),
+                ('ino saves the day', +2),
+                ('ino always helps', +2),
+                ('ino never disappoints', +2),
                 
-                # General positive
+                # General positive (Tier 4 - Encouragement)
                 ('good job ino', +2),
                 ('well done ino', +2),
                 ('nice work ino', +2),
-                ('ino best bot', +3),
-                ('ino best girl', +4),
-                ('ino waifu', +3),
+                ('proud of ino', +2),
+                ('ino rocks', +2),
+                ('ino slays', +2),
+                ('ino is helpful', +2),
+                ('ino is kind', +2),
+                ('ino is nice', +2),
+                ('ino is cool', +2),
+                ('ino is smart', +2),
+                ('ino is reliable', +2),
+                ('ino is trustworthy', +2),
+                ('ino deserves praise', +2),
+                ('ino doing great', +2),
+                ('keep it up ino', +2),
+                
+                # Affectionate (Tier 5 - Extra cute)
+                ('headpat ino', +2),
+                ('pat pat ino', +2),
+                ('hug ino', +2),
+                ('protecc ino', +2),
+                ('ino deserves headpats', +2),
+                ('good girl ino', +2),
+                ('ino kawaii', +3),
+                ('ino chan', +2),
+                ('ino sama', +2),
+                ('ino senpai', +2),
             ]
             
+            # Check negative patterns first (to prevent abuse)
+            negative_patterns = [
+                # Strong insults (Tier 1 - Severe)
+                ('ino is trash', -5),
+                ('ino is garbage', -5),
+                ('ino is useless', -5),
+                ('ino is terrible', -5),
+                ('ino is awful', -5),
+                ('ino is horrible', -5),
+                ('ino is stupid', -5),
+                ('ino is dumb', -5),
+                ('ino is worthless', -5),
+                ('ino is pathetic', -5),
+                ('hate ino', -5),
+                ('ino sucks', -5),
+                ('ino worst', -5),
+                ('ino is annoying', -4),
+                ('ino is irritating', -4),
+                ('ino is cringe', -4),
+                
+                # Medium insults (Tier 2 - Moderate)
+                ('ino is bad', -3),
+                ('ino is lame', -3),
+                ('ino is boring', -3),
+                ('ino is weak', -3),
+                ('ino is slow', -3),
+                ('ino is broken', -3),
+                ('ino doesn\'t work', -3),
+                ('ino is buggy', -3),
+                ('ino is glitchy', -3),
+                ('ino is laggy', -3),
+                ('dislike ino', -3),
+                ('ino is ugly', -4),
+                ('ino is disgusting', -4),
+                ('ino is gross', -3),
+                
+                # Light insults (Tier 3 - Minor)
+                ('ino is meh', -2),
+                ('ino is okay', -1),
+                ('ino is mid', -2),
+                ('ino is overrated', -3),
+                ('ino could be better', -1),
+                ('ino needs work', -1),
+                ('ino is confusing', -2),
+                ('ino is complicated', -1),
+                
+                # Dismissive (Tier 4 - Rude)
+                ('shut up ino', -4),
+                ('stfu ino', -5),
+                ('go away ino', -3),
+                ('nobody cares ino', -4),
+                ('nobody asked ino', -4),
+                ('ino be quiet', -3),
+                ('ino stop', -2),
+                ('ignore ino', -2),
+                ('mute ino', -3),
+                ('delete ino', -4),
+                ('remove ino', -3),
+                ('kick ino', -4),
+                ('ban ino', -4),
+                
+                # Comparative insults (Tier 5 - Comparison)
+                ('ino worst bot', -4),
+                ('ino worst girl', -5),
+                ('ino worst waifu', -5),
+                ('other bots better', -3),
+                ('prefer other bots', -2),
+                ('ino not good as', -2),
+                ('ino inferior', -3),
+                
+                # Disrespectful (Tier 6 - Condescending)
+                ('ino is disappointing', -3),
+                ('expected better ino', -2),
+                ('ino let me down', -2),
+                ('ino failed', -2),
+                ('ino embarrassing', -3),
+                ('ino is shameful', -3),
+                ('ino is a joke', -4),
+                ('ino is a meme', -3),
+                ('ino clown', -4),
+            ]
+            
+            # Check negative patterns first
+            for pattern, penalty in negative_patterns:
+                if pattern in content_lower:
+                    # Apply InoRep penalty
+                    if hasattr(self.bot.leaderboard_manager, 'inorep_manager'):
+                        inorep_manager = self.bot.leaderboard_manager.inorep_manager
+                        await inorep_manager.add_rep(
+                            user_id=str(message.author.id),
+                            guild_id=str(message.guild.id),
+                            user_name=message.author.display_name,
+                            amount=penalty,
+                            reason=f"Said something mean about Ino: '{pattern}'",
+                            moderator_id="0",
+                            moderator_name="Ino"
+                        )
+                        logger.info(f"{message.author.display_name} lost {abs(penalty)} InoRep for negative mention: '{pattern}'")
+                    return True
+            
+            # Then check positive patterns
             for pattern, reward in positive_patterns:
                 if pattern in content_lower:
                     # Apply InoRep reward
@@ -1593,7 +1753,7 @@ Here are some useful resources to help you:
             logger.error(f"Error applying image post InoRep reward: {e}")
     
     async def _apply_text_spam_inorep_penalty(self, message: discord.Message):
-        """Penalize users for sending text messages in image-only channels"""
+        """Penalize users for sending text messages in image-only channels (-10 per message)"""
         try:
             # Check if InoRep manager is available
             if not hasattr(self.bot.leaderboard_manager, 'inorep_manager') or not self.bot.leaderboard_manager.inorep_manager:
@@ -1605,31 +1765,30 @@ Here are some useful resources to help you:
             if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
                 return
             
-            # Don't penalize if the message has substantial content that might be context
-            # Only penalize short text spam or excessive chatting
-            if not message.content or len(message.content.strip()) < 3:
-                return  # Empty or very short messages don't get penalized
+            # Don't penalize empty messages or commands
+            if not message.content or len(message.content.strip()) == 0:
+                return  # Empty messages don't get penalized
             
-            # Don't penalize commands
+            # Don't penalize bot commands
             if message.content.startswith(Config.COMMAND_PREFIX) or message.content.startswith('/'):
                 return
             
             inorep_manager = self.bot.leaderboard_manager.inorep_manager
             
-            # Penalty for text spamming in image channel
-            penalty = -1
+            # HEAVY penalty for text spamming in image channel
+            penalty = -10
             
             await inorep_manager.add_rep(
                 user_id=str(message.author.id),
                 guild_id=str(message.guild.id),
                 user_name=message.author.display_name,
                 amount=penalty,
-                reason="Sent text message in image-only channel",
+                reason="Chatting in image-only channel (not allowed)",
                 moderator_id="0",
                 moderator_name="Ino"
             )
             
-            logger.info(f"{message.author.display_name} lost {abs(penalty)} InoRep for text spam in image channel")
+            logger.info(f"{message.author.display_name} lost {abs(penalty)} InoRep for chatting in image channel")
             
         except Exception as e:
-            logger.error(f"Error applying image post InoRep reward: {e}") 
+            logger.error(f"Error applying text spam InoRep penalty: {e}") 
