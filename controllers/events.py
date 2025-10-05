@@ -49,7 +49,9 @@ class EventsController:
         @self.bot.event
         async def on_command(ctx: commands.Context):
             """Log when commands are successfully invoked"""
-            logger.info(f"Command '{ctx.command.name}' invoked by {ctx.author.display_name} in #{ctx.channel.name}")
+            # Handle DM channels
+            channel_name = ctx.channel.name if hasattr(ctx.channel, 'name') else 'DM'
+            logger.info(f"Command '{ctx.command.name}' invoked by {ctx.author.display_name} in #{channel_name}")
         
         @self.bot.event
         async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
@@ -1138,7 +1140,7 @@ Here are some useful resources to help you:
                     user_id=user.id,
                     message_id=str(message.id),
                     like_count=thumbs_up_count
-                )
+            )
             
             # Send notifications for completed quests
             for quest in completed_quests:
@@ -1181,7 +1183,7 @@ Here are some useful resources to help you:
                 await self.quest_manager.track_channel_exploration(
                     user_id=user.id,
                     channel_id=message.channel.id
-                )
+            )
             
             # Send notifications for completed quests
             for quest in completed_quests:
@@ -1750,7 +1752,7 @@ Here are some useful resources to help you:
                 logger.info(f"{message.author.display_name} gained {reward} InoRep for posting image")
             
         except Exception as e:
-            logger.error(f"Error applying image post InoRep reward: {e}")
+            logger.error(f"Error applying image post InoRep reward: {e}") 
     
     async def _apply_text_spam_inorep_penalty(self, message: discord.Message):
         """Penalize users for sending text messages in image-only channels (-10 per message)"""

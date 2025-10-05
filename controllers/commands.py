@@ -4029,6 +4029,11 @@ class CommandsController:
         async def inorep_check_cmd(ctx, user: discord.Member = None):
             """Check InoRep for yourself or another user"""
             try:
+                # Safety check (should be caught by global check, but just in case)
+                if not ctx.guild:
+                    await ctx.send("❌ Sorry, this bot only works in discord.gg/RayenAI")
+                    return
+                
                 leaderboard_manager = self.get_leaderboard_manager()
                 if not leaderboard_manager or not leaderboard_manager.inorep_manager:
                     await ctx.send("❌ InoRep system is not available.", ephemeral=True)

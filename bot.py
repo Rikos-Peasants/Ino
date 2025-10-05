@@ -43,6 +43,23 @@ class RikoBot(commands.Bot):
             status=discord.Status.online
         )
         
+        # Add a check to restrict the bot to the Rayen server only
+        @self.check
+        async def globally_block_dms_and_other_guilds(ctx):
+            """Block all commands in DMs and guilds other than the configured one"""
+            # Allow in the configured guild
+            if ctx.guild and ctx.guild.id == Config.GUILD_ID:
+                return True
+            
+            # Block in DMs
+            if not ctx.guild:
+                await ctx.send("❌ Sorry, this bot only works in discord.gg/RayenAI")
+                return False
+            
+            # Block in other guilds
+            await ctx.send("❌ Sorry, this bot only works in discord.gg/RayenAI")
+            return False
+        
         # Initialize components with proper typing
         self.leaderboard_manager: Optional[object] = None
         self.events_controller: Optional['EventsController'] = None
