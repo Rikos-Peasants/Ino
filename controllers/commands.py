@@ -1178,10 +1178,10 @@ class CommandsController:
                 quest_manager = events_controller.quest_manager
                 user_id = ctx.author.id
                 
-                # Get or generate daily quests
+                # Get or generate daily quests (pass member for Patreon multiplier)
                 quests = await quest_manager.get_user_daily_quests(user_id)
                 if not quests:
-                    quests = await quest_manager.generate_daily_quests(user_id)
+                    quests = await quest_manager.generate_daily_quests(user_id, member=ctx.author)
                 
                 # Create and send embed
                 embed = EmbedViews.daily_quests_embed(quests, ctx.author.display_name)

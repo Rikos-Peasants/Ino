@@ -374,42 +374,161 @@ class EmbedViews:
     
     @staticmethod
     def daily_quests_embed(quests: list, user_name: str) -> discord.Embed:
-        """Create an embed for daily quests"""
+        """Create an enhanced embed for daily quests"""
+        
+        if not quests:
+            embed = discord.Embed(
+                title="📋 Daily Quests",
+                description=f"**{user_name}**, you don't have any quests yet!\n\nUse `/quests` to generate your daily quests.",
+                color=discord.Color.blue(),
+                timestamp=datetime.utcnow()
+            )
+            embed.set_footer(text="Quest system by Riko Bot")
+            return embed
+        
+        # Calculate stats
+        total_points = 0
+        potential_points = 0
+        completed_count = 0
+        patreon_multiplier = quests[0].get('patreon_multiplier', 1.0) if quests else 1.0
+        
+        # Group quests by category
+        categories = {}
+        for quest in quests:
+            category = quest.get('category', 'general')
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(quest)
+            
+            points = quest['reward_points']
+            if quest.get("completed", False):
+                total_points += points
+                completed_count += 1
+            potential_points += points
+        
+        # Category emojis
+        category_emojis = {
+            "posting": "📸",
+            "rating": "⭐",
+            "community": "👥",
+            "special": "✨",
+            "general": "📋"
+        }
+        
+        # Difficulty emojis
+        difficulty_emojis = {
+            "easy": "⭐",
+            "medium": "⭐⭐",
+            "hard": "⭐⭐⭐",
+            "very_hard": "⭐⭐⭐⭐"
+        }
+        
+        # Difficulty colors (for progress bar)
+        difficulty_colors = {
+            "easy": "🟢",
+            "medium": "🟡",
+            "hard": "🟠",
+            "very_hard": "🔴"
+        }
+        
+        # Create embed with gradient color based on completion
+        completion_ratio = completed_count / len(quests)
+        if completion_ratio == 1.0:
+            color = 0x2ecc71  # Green for complete
+        elif completion_ratio >= 0.5:
+            color = 0x3498db  # Blue for in-progress
+        else:
+            color = 0x9b59b6  # Purple for starting
+        
         embed = discord.Embed(
-            title="📋 Daily Quests",
-            description=f"**{user_name}'s** daily quests",
-            color=discord.Color.blue(),
+            title="📋 Daily Quest Board",
+            color=color,
             timestamp=datetime.utcnow()
         )
         
-        if not quests:
+        # Header with user info and stats
+        completion_percentage = int(completion_ratio * 100)
+        progress_bar = EmbedViews._create_progress_bar(completion_ratio, 10)
+        
+        header = f"**{user_name}'s Quest Progress**\n"
+        header += f"{progress_bar} **{completion_percentage}%**\n\n"
+        header += f"📊 **{completed_count}/{len(quests)}** Quests Completed\n"
+        header += f"💎 **{total_points:,}/{potential_points:,}** Points Earned"
+        
+        if patreon_multiplier > 1.0:
+            header += f"\n💖 **Patreon Bonus:** {patreon_multiplier}x points!"
+        
+        embed.description = header
+        
+        # Add quests grouped by category
+        for category, category_quests in sorted(categories.items()):
+            category_emoji = category_emojis.get(category, "📋")
+            category_name = category.replace('_', ' ').title()
+            
+            quest_lines = []
+            for quest in category_quests:
+                is_completed = quest.get("completed", False)
+                current = quest.get('current_count', 0)
+                target = quest['target_count']
+                points = quest['reward_points']
+                difficulty = quest.get('difficulty', 'medium')
+                difficulty_emoji = difficulty_colors.get(difficulty, "🟡")
+                
+                # Status icon
+                if is_completed:
+                    status_icon = "✅"
+                elif current > 0:
+                    status_icon = "🔄"
+                else:
+                    status_icon = "⚪"
+                
+                # Progress percentage for this quest
+                quest_progress = current / target if target > 0 else 0
+                quest_bar = EmbedViews._create_progress_bar(quest_progress, 8)
+                
+                # Format quest line
+                quest_line = f"{status_icon} **{quest['name']}**\n"
+                quest_line += f"　{quest['description']}\n"
+                quest_line += f"　{difficulty_emoji} {difficulty.replace('_', ' ').title()} • "
+                quest_line += f"**{points}** pts • {quest_bar} `{current}/{target}`"
+                
+                quest_lines.append(quest_line)
+            
+            # Add category field
             embed.add_field(
-                name="No Quests Available",
-                value="Use `/quests` to generate your daily quests!",
+                name=f"{category_emoji} {category_name}",
+                value="\n\n".join(quest_lines),
                 inline=False
             )
-        else:
-            total_points = 0
-            completed_count = 0
-            
-            for quest in quests:
-                status = "✅" if quest.get("completed", False) else "📝"
-                progress = f"{quest.get('current_count', 0)}/{quest['target_count']}"
-                points = quest['reward_points']
-                total_points += points
-                
-                if quest.get("completed", False):
-                    completed_count += 1
-                
-                embed.add_field(
-                    name=f"{status} {quest['name']} ({points} pts)",
-                    value=f"{quest['description']}\nProgress: **{progress}**",
-                    inline=True
-                )
-            
-            embed.set_footer(text=f"Completed: {completed_count}/{len(quests)} • Total Points: {total_points}")
+        
+        # Footer with helpful tips
+        footer_tips = [
+            "Complete quests to earn points and climb the leaderboard!",
+            "Quests reset daily at midnight UTC",
+            "Use /pointsleaderboard to see your ranking",
+            "Check /achievements to see what you've earned"
+        ]
+        
+        footer_text = f"💡 Tip: {footer_tips[int(datetime.utcnow().timestamp()) % len(footer_tips)]}"
+        embed.set_footer(text=footer_text, icon_url="https://i.imgur.com/vJGfLzH.png")
         
         return embed
+    
+    @staticmethod
+    def _create_progress_bar(progress: float, length: int = 10) -> str:
+        """Create a visual progress bar"""
+        filled = int(progress * length)
+        empty = length - filled
+        
+        # Use different styles based on progress
+        if progress >= 1.0:
+            return "🟩" * length
+        elif progress >= 0.7:
+            return "🟦" * filled + "⬜" * empty
+        elif progress >= 0.4:
+            return "🟨" * filled + "⬜" * empty
+        else:
+            return "🟥" * filled + "⬜" * empty
     
     @staticmethod
     def achievements_embed(achievements: list, user_name: str) -> discord.Embed:
