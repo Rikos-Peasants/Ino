@@ -1183,9 +1183,12 @@ class CommandsController:
                 if not quests:
                     quests = await quest_manager.generate_daily_quests(user_id, member=ctx.author)
                 
-                # Create and send embed
+                # Create embed and interactive view
                 embed = EmbedViews.daily_quests_embed(quests, ctx.author.display_name)
-                await ctx.send(embed=embed)
+                view = EmbedViews.QuestView(user_id=user_id, quest_manager=quest_manager, member=ctx.author)
+                
+                # Send with buttons
+                await ctx.send(embed=embed, view=view)
                 
             except Exception as e:
                 logger.error(f"Error in quests command: {e}")

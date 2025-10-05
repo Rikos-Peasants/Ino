@@ -374,12 +374,12 @@ class EmbedViews:
     
     @staticmethod
     def daily_quests_embed(quests: list, user_name: str) -> discord.Embed:
-        """Create an enhanced embed for daily quests"""
+        """Create a clean, uncluttered embed for daily quests"""
         
         if not quests:
             embed = discord.Embed(
                 title="📋 Daily Quests",
-                description=f"**{user_name}**, you don't have any quests yet!\n\nUse `/quests` to generate your daily quests.",
+                description=f"**{user_name}**, you don't have any quests yet!\n\nClick the button below to generate your daily quests.",
                 color=discord.Color.blue(),
                 timestamp=datetime.utcnow()
             )
@@ -392,47 +392,15 @@ class EmbedViews:
         completed_count = 0
         patreon_multiplier = quests[0].get('patreon_multiplier', 1.0) if quests else 1.0
         
-        # Group quests by category
-        categories = {}
         for quest in quests:
-            category = quest.get('category', 'general')
-            if category not in categories:
-                categories[category] = []
-            categories[category].append(quest)
-            
             points = quest['reward_points']
             if quest.get("completed", False):
                 total_points += points
                 completed_count += 1
             potential_points += points
         
-        # Category emojis
-        category_emojis = {
-            "posting": "📸",
-            "rating": "⭐",
-            "community": "👥",
-            "special": "✨",
-            "general": "📋"
-        }
-        
-        # Difficulty emojis
-        difficulty_emojis = {
-            "easy": "⭐",
-            "medium": "⭐⭐",
-            "hard": "⭐⭐⭐",
-            "very_hard": "⭐⭐⭐⭐"
-        }
-        
-        # Difficulty colors (for progress bar)
-        difficulty_colors = {
-            "easy": "🟢",
-            "medium": "🟡",
-            "hard": "🟠",
-            "very_hard": "🔴"
-        }
-        
         # Create embed with gradient color based on completion
-        completion_ratio = completed_count / len(quests)
+        completion_ratio = completed_count / len(quests) if quests else 0
         if completion_ratio == 1.0:
             color = 0x2ecc71  # Green for complete
         elif completion_ratio >= 0.5:
@@ -441,76 +409,67 @@ class EmbedViews:
             color = 0x9b59b6  # Purple for starting
         
         embed = discord.Embed(
-            title="📋 Daily Quest Board",
+            title="📋 Daily Quests",
             color=color,
             timestamp=datetime.utcnow()
         )
         
-        # Header with user info and stats
+        # Clean header with essential info only
         completion_percentage = int(completion_ratio * 100)
         progress_bar = EmbedViews._create_progress_bar(completion_ratio, 10)
         
-        header = f"**{user_name}'s Quest Progress**\n"
+        header = f"**{user_name}**'s Progress\n"
         header += f"{progress_bar} **{completion_percentage}%**\n\n"
-        header += f"📊 **{completed_count}/{len(quests)}** Quests Completed\n"
-        header += f"💎 **{total_points:,}/{potential_points:,}** Points Earned"
+        
+        # Compact stats in one line
+        stats_line = f"📊 {completed_count}/{len(quests)} Complete"
+        stats_line += f"　•　💎 {total_points:,}/{potential_points:,} Points"
         
         if patreon_multiplier > 1.0:
-            header += f"\n💖 **Patreon Bonus:** {patreon_multiplier}x points!"
+            stats_line += f"\n💖 **Patreon:** {patreon_multiplier}x points active!"
         
-        embed.description = header
+        embed.description = header + stats_line
         
-        # Add quests grouped by category
-        for category, category_quests in sorted(categories.items()):
-            category_emoji = category_emojis.get(category, "📋")
-            category_name = category.replace('_', ' ').title()
+        # Simplified quest display - no categories, just a clean list
+        quest_list = []
+        for i, quest in enumerate(quests, 1):
+            is_completed = quest.get("completed", False)
+            current = quest.get('current_count', 0)
+            target = quest['target_count']
+            points = quest['reward_points']
+            difficulty = quest.get('difficulty', 'medium')
             
-            quest_lines = []
-            for quest in category_quests:
-                is_completed = quest.get("completed", False)
-                current = quest.get('current_count', 0)
-                target = quest['target_count']
-                points = quest['reward_points']
-                difficulty = quest.get('difficulty', 'medium')
-                difficulty_emoji = difficulty_colors.get(difficulty, "🟡")
-                
-                # Status icon
-                if is_completed:
-                    status_icon = "✅"
-                elif current > 0:
-                    status_icon = "🔄"
-                else:
-                    status_icon = "⚪"
-                
-                # Progress percentage for this quest
-                quest_progress = current / target if target > 0 else 0
-                quest_bar = EmbedViews._create_progress_bar(quest_progress, 8)
-                
-                # Format quest line
-                quest_line = f"{status_icon} **{quest['name']}**\n"
-                quest_line += f"　{quest['description']}\n"
-                quest_line += f"　{difficulty_emoji} {difficulty.replace('_', ' ').title()} • "
-                quest_line += f"**{points}** pts • {quest_bar} `{current}/{target}`"
-                
-                quest_lines.append(quest_line)
+            # Status icon
+            if is_completed:
+                status = "✅"
+            elif current > 0:
+                status = "🔄"
+            else:
+                status = "⬜"
             
-            # Add category field
-            embed.add_field(
-                name=f"{category_emoji} {category_name}",
-                value="\n\n".join(quest_lines),
-                inline=False
-            )
+            # Difficulty badge (simplified)
+            diff_badges = {"easy": "🟢", "medium": "🟡", "hard": "🟠", "very_hard": "🔴"}
+            diff_badge = diff_badges.get(difficulty, "🟡")
+            
+            # Progress bar (compact 6 blocks)
+            quest_progress = current / target if target > 0 else 0
+            progress = EmbedViews._create_progress_bar(quest_progress, 6)
+            
+            # Clean single-line format
+            quest_line = f"{status} **{quest['name']}** {diff_badge}\n"
+            quest_line += f"└ {progress} `{current}/{target}` • **{points}** pts"
+            
+            quest_list.append(quest_line)
         
-        # Footer with helpful tips
-        footer_tips = [
-            "Complete quests to earn points and climb the leaderboard!",
-            "Quests reset daily at midnight UTC",
-            "Use /pointsleaderboard to see your ranking",
-            "Check /achievements to see what you've earned"
-        ]
+        # Add all quests in one clean field
+        embed.add_field(
+            name="📝 Your Quests",
+            value="\n\n".join(quest_list),
+            inline=False
+        )
         
-        footer_text = f"💡 Tip: {footer_tips[int(datetime.utcnow().timestamp()) % len(footer_tips)]}"
-        embed.set_footer(text=footer_text, icon_url="https://i.imgur.com/vJGfLzH.png")
+        # Minimal footer
+        embed.set_footer(text="💡 Quests reset daily at midnight UTC", icon_url="https://i.imgur.com/vJGfLzH.png")
         
         return embed
     
@@ -1294,6 +1253,139 @@ class EmbedViews:
         embed.set_footer(text="InoRep Leaderboard • Just for fun! • Showing top 10")
         
         return embed
+
+
+class QuestView(discord.ui.View):
+    """Interactive view for quest command with buttons"""
+    
+    def __init__(self, user_id: int, quest_manager, member):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.user_id = user_id
+        self.quest_manager = quest_manager
+        self.member = member
+    
+    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.primary, emoji="🔄")
+    async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Refresh quest display"""
+        try:
+            # Check if the user clicking is the quest owner
+            if interaction.user.id != self.user_id:
+                await interaction.response.send_message(
+                    "❌ These aren't your quests! Use `/quests` to view your own.",
+                    ephemeral=True
+                )
+                return
+            
+            await interaction.response.defer()
+            
+            # Get updated quests
+            quests = await self.quest_manager.get_user_daily_quests(self.user_id)
+            
+            # Create updated embed
+            embed = EmbedViews.daily_quests_embed(quests, interaction.user.display_name)
+            
+            # Update the message
+            await interaction.edit_original_response(embed=embed, view=self)
+            
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to refresh: {str(e)}", ephemeral=True)
+    
+    @discord.ui.button(label="Leaderboard", style=discord.ButtonStyle.success, emoji="🏆")
+    async def leaderboard_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show points leaderboard"""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Get leaderboard
+            leaderboard = await self.quest_manager.get_quest_points_leaderboard(limit=10, guild=interaction.guild)
+            
+            if not leaderboard:
+                await interaction.followup.send(
+                    "❌ No leaderboard data available yet!",
+                    ephemeral=True
+                )
+                return
+            
+            # Create leaderboard embed
+            embed = EmbedViews.quest_points_leaderboard_embed(leaderboard, interaction.user.id)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to load leaderboard: {str(e)}", ephemeral=True)
+    
+    @discord.ui.button(label="My Stats", style=discord.ButtonStyle.secondary, emoji="📊")
+    async def stats_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show detailed user stats"""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            
+            # Get user's total points
+            total_points = await self.quest_manager.get_user_total_quest_points(interaction.user.id)
+            
+            # Get completed quests count
+            completed_quests = list(self.quest_manager.user_quests_collection.find({
+                "user_id": str(interaction.user.id),
+                "completed": True
+            }))
+            
+            # Get achievements count
+            achievements = list(self.quest_manager.user_achievements_collection.find({
+                "user_id": str(interaction.user.id)
+            }))
+            
+            # Get current streak
+            streak_data = await self.quest_manager.get_user_streaks(interaction.user.id)
+            post_streak = streak_data.get('post_streak', 0) if streak_data else 0
+            quest_streak = streak_data.get('quest_streak', 0) if streak_data else 0
+            
+            # Create stats embed
+            embed = discord.Embed(
+                title="📊 Your Quest Statistics",
+                color=discord.Color.blue(),
+                timestamp=datetime.utcnow()
+            )
+            
+            embed.add_field(
+                name="💎 Total Points",
+                value=f"**{total_points:,}** points",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="✅ Quests Completed",
+                value=f"**{len(completed_quests)}** quests",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="🏆 Achievements",
+                value=f"**{len(achievements)}** earned",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="🔥 Post Streak",
+                value=f"**{post_streak}** days",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="⚡ Quest Streak",
+                value=f"**{quest_streak}** days",
+                inline=True
+            )
+            
+            embed.set_footer(text=f"Keep it up, {interaction.user.display_name}!")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to load stats: {str(e)}", ephemeral=True)
+    
+    async def on_timeout(self):
+        """Disable buttons when view times out"""
+        for item in self.children:
+            item.disabled = True
 
 
 class PurgeConfirmationView(discord.ui.View):
