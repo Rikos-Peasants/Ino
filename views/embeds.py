@@ -377,26 +377,26 @@ class EmbedViews:
         """Create a clean, uncluttered embed for daily quests"""
         
         if not quests:
-        embed = discord.Embed(
-            title="📋 Daily Quests",
+            embed = discord.Embed(
+                title="📋 Daily Quests",
                 description=f"**{user_name}**, you don't have any quests yet!\n\nClick the button below to generate your daily quests.",
-            color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
-        )
+                color=discord.Color.blue(),
+                timestamp=datetime.utcnow()
+            )
             embed.set_footer(text="Quest system by Riko Bot")
             return embed
         
         # Calculate stats
-            total_points = 0
+        total_points = 0
         potential_points = 0
-            completed_count = 0
+        completed_count = 0
         patreon_multiplier = quests[0].get('patreon_multiplier', 1.0) if quests else 1.0
-            
-            for quest in quests:
-                points = quest['reward_points']
-                if quest.get("completed", False):
+        
+        for quest in quests:
+            points = quest['reward_points']
+            if quest.get("completed", False):
                 total_points += points
-                    completed_count += 1
+                completed_count += 1
             potential_points += points
         
         # Create embed with gradient color based on completion
@@ -472,7 +472,7 @@ class EmbedViews:
             quest_list.append(quest_line)
         
         # Add all quests in one clean field
-                embed.add_field(
+        embed.add_field(
             name="📝 Your Quests",
             value="\n\n".join(quest_list),
             inline=False
