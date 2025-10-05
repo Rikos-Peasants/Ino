@@ -736,6 +736,265 @@ class QuestManager:
             logger.error(f"Error updating quest progress: {e}")
             return []
     
+    async def track_unique_user_like(self, user_id: int, liked_user_id: int) -> List[Dict]:
+        """Track likes from unique users for the 'support_new_users' quest"""
+        try:
+            if user_id == liked_user_id:  # Don't count self-likes
+                return []
+            
+            today = datetime.now().date()
+            tracking_key = f"liked_users_{today.isoformat()}"
+            
+            # Get or create tracking document for today
+            track_doc = self.user_stats_collection.find_one({
+                "user_id": str(user_id),
+                "tracking_key": tracking_key
+            })
+            
+            if not track_doc:
+                # Create new tracking document
+                track_doc = {
+                    "user_id": str(user_id),
+                    "tracking_key": tracking_key,
+                    "liked_user_ids": [str(liked_user_id)],
+                    "unique_count": 1,
+                    "created_at": datetime.now()
+                }
+                self.user_stats_collection.insert_one(track_doc)
+                unique_count = 1
+            else:
+                # Check if this user was already liked today
+                liked_users = track_doc.get("liked_user_ids", [])
+                if str(liked_user_id) not in liked_users:
+                    liked_users.append(str(liked_user_id))
+                    unique_count = len(liked_users)
+                    
+                    self.user_stats_collection.update_one(
+                        {"_id": track_doc["_id"]},
+                        {
+                            "$set": {
+                                "liked_user_ids": liked_users,
+                                "unique_count": unique_count
+                            }
+                        }
+                    )
+                else:
+                    return []  # Already liked this user today
+            
+            # Update the support_new_users quest with the unique count
+            result = self.user_quests_collection.update_many(
+                {
+                    "user_id": str(user_id),
+                    "quest_type": "support_new_users",
+                    "date": today.isoformat(),
+                    "completed": False
+                },
+                {"$set": {"current_count": unique_count}}
+            )
+            
+            # Check for completed quests
+            completed_quests = []
+            quests_to_check = self.user_quests_collection.find({
+                "user_id": str(user_id),
+                "quest_type": "support_new_users",
+                "date": today.isoformat(),
+                "completed": False
+            })
+            
+            for quest in quests_to_check:
+                if quest["current_count"] >= quest["target_count"]:
+                    self.user_quests_collection.update_one(
+                        {"_id": quest["_id"]},
+                        {
+                            "$set": {
+                                "completed": True,
+                                "completed_at": datetime.now()
+                            }
+                        }
+                    )
+                    completed_quests.append(quest)
+                    logger.info(f"User {user_id} completed support_new_users quest! ({unique_count} unique users)")
+            
+            if completed_quests:
+                await self._update_quest_streak(user_id)
+            
+            return completed_quests
+            
+        except Exception as e:
+            logger.error(f"Error tracking unique user like: {e}")
+            return []
+    
+    async def track_channel_exploration(self, user_id: int, channel_id: int) -> List[Dict]:
+        """Track reactions in different channels for the 'explore_channels' quest"""
+        try:
+            today = datetime.now().date()
+            tracking_key = f"explored_channels_{today.isoformat()}"
+            
+            # Get or create tracking document for today
+            track_doc = self.user_stats_collection.find_one({
+                "user_id": str(user_id),
+                "tracking_key": tracking_key
+            })
+            
+            if not track_doc:
+                # Create new tracking document
+                track_doc = {
+                    "user_id": str(user_id),
+                    "tracking_key": tracking_key,
+                    "channel_ids": [str(channel_id)],
+                    "channel_count": 1,
+                    "created_at": datetime.now()
+                }
+                self.user_stats_collection.insert_one(track_doc)
+                channel_count = 1
+            else:
+                # Check if this channel was already explored today
+                channels = track_doc.get("channel_ids", [])
+                if str(channel_id) not in channels:
+                    channels.append(str(channel_id))
+                    channel_count = len(channels)
+                    
+                    self.user_stats_collection.update_one(
+                        {"_id": track_doc["_id"]},
+                        {
+                            "$set": {
+                                "channel_ids": channels,
+                                "channel_count": channel_count
+                            }
+                        }
+                    )
+                else:
+                    return []  # Already explored this channel today
+            
+            # Update the explore_channels quest with the channel count
+            result = self.user_quests_collection.update_many(
+                {
+                    "user_id": str(user_id),
+                    "quest_type": "explore_channels",
+                    "date": today.isoformat(),
+                    "completed": False
+                },
+                {"$set": {"current_count": channel_count}}
+            )
+            
+            # Check for completed quests
+            completed_quests = []
+            quests_to_check = self.user_quests_collection.find({
+                "user_id": str(user_id),
+                "quest_type": "explore_channels",
+                "date": today.isoformat(),
+                "completed": False
+            })
+            
+            for quest in quests_to_check:
+                if quest["current_count"] >= quest["target_count"]:
+                    self.user_quests_collection.update_one(
+                        {"_id": quest["_id"]},
+                        {
+                            "$set": {
+                                "completed": True,
+                                "completed_at": datetime.now()
+                            }
+                        }
+                    )
+                    completed_quests.append(quest)
+                    logger.info(f"User {user_id} completed explore_channels quest! ({channel_count} channels)")
+            
+            if completed_quests:
+                await self._update_quest_streak(user_id)
+            
+            return completed_quests
+            
+        except Exception as e:
+            logger.error(f"Error tracking channel exploration: {e}")
+            return []
+    
+    async def track_viral_image(self, user_id: int, message_id: str, like_count: int) -> List[Dict]:
+        """Track viral images (15+ likes) for the 'viral_image' quest"""
+        try:
+            today = datetime.now().date()
+            tracking_key = f"viral_images_{today.isoformat()}"
+            
+            # Get or create tracking document for today
+            track_doc = self.user_stats_collection.find_one({
+                "user_id": str(user_id),
+                "tracking_key": tracking_key
+            })
+            
+            viral_messages = []
+            if not track_doc:
+                # Create new tracking document
+                track_doc = {
+                    "user_id": str(user_id),
+                    "tracking_key": tracking_key,
+                    "viral_message_ids": [message_id],
+                    "viral_count": 1,
+                    "created_at": datetime.now()
+                }
+                self.user_stats_collection.insert_one(track_doc)
+                viral_count = 1
+            else:
+                # Check if this message was already tracked as viral today
+                viral_messages = track_doc.get("viral_message_ids", [])
+                if message_id not in viral_messages:
+                    viral_messages.append(message_id)
+                    viral_count = len(viral_messages)
+                    
+                    self.user_stats_collection.update_one(
+                        {"_id": track_doc["_id"]},
+                        {
+                            "$set": {
+                                "viral_message_ids": viral_messages,
+                                "viral_count": viral_count
+                            }
+                        }
+                    )
+                else:
+                    return []  # Already tracked this viral image today
+            
+            # Update the viral_image quest
+            result = self.user_quests_collection.update_many(
+                {
+                    "user_id": str(user_id),
+                    "quest_type": "viral_image",
+                    "date": today.isoformat(),
+                    "completed": False
+                },
+                {"$set": {"current_count": viral_count}}
+            )
+            
+            # Check for completed quests
+            completed_quests = []
+            quests_to_check = self.user_quests_collection.find({
+                "user_id": str(user_id),
+                "quest_type": "viral_image",
+                "date": today.isoformat(),
+                "completed": False
+            })
+            
+            for quest in quests_to_check:
+                if quest["current_count"] >= quest["target_count"]:
+                    self.user_quests_collection.update_one(
+                        {"_id": quest["_id"]},
+                        {
+                            "$set": {
+                                "completed": True,
+                                "completed_at": datetime.now()
+                            }
+                        }
+                    )
+                    completed_quests.append(quest)
+                    logger.info(f"User {user_id} completed viral_image quest! (Image got {like_count} likes)")
+            
+            if completed_quests:
+                await self._update_quest_streak(user_id)
+            
+            return completed_quests
+            
+        except Exception as e:
+            logger.error(f"Error tracking viral image: {e}")
+            return []
+    
     async def get_user_total_quest_points(self, user_id: int) -> int:
         """Calculate total quest points earned by a user (completed quests + achievements)"""
         try:

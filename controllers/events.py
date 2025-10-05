@@ -471,6 +471,9 @@ class EventsController:
         else:
             # This is a text message in an image channel, check if we need to send a reminder
             await self._check_for_chat_reminder(message)
+            
+            # Penalize InoRep for text spamming in image channels
+            await self._apply_text_spam_inorep_penalty(message)
     
     async def _check_for_chat_reminder(self, message: discord.Message):
         """Check if the last 10 messages are text messages and send a chat reminder"""
@@ -973,10 +976,10 @@ Here are some useful resources to help you:
             
             # Update quest progress for earning likes (for image author)
             if str(reaction.emoji) == '👍' and added:
-                await self._update_quest_progress_likes(message.author)
+                await self._update_quest_progress_likes(message.author, message, thumbs_up)
             
             # Update quest progress for rating images (for the person who reacted)
-            await self._update_quest_progress_rating(user)
+            await self._update_quest_progress_rating(user, message)
             
             action = "added" if added else "removed"
             logger.info(f"Reaction {action}: {reaction.emoji} on {message.author.display_name}'s image (score change: {score_change:+d}), thumbs_up: {thumbs_up}, thumbs_down: {thumbs_down}")
@@ -1117,7 +1120,7 @@ Here are some useful resources to help you:
         except Exception as e:
             logger.error(f"Error updating quest progress and achievements: {e}")
     
-    async def _update_quest_progress_likes(self, user: discord.User):
+    async def _update_quest_progress_likes(self, user: discord.User, message: discord.Message, thumbs_up_count: int):
         """Update quest progress for earning likes"""
         if not self.quest_manager:
             return
@@ -1128,6 +1131,14 @@ Here are some useful resources to help you:
                 quest_type="earn_likes",
                 count=1
             )
+            
+            # Check for "viral_image" quest (15+ likes on a single image)
+            if thumbs_up_count >= 15:
+                await self.quest_manager.track_viral_image(
+                    user_id=user.id,
+                    message_id=str(message.id),
+                    like_count=thumbs_up_count
+                )
             
             # Send notifications for completed quests
             for quest in completed_quests:
@@ -1140,20 +1151,37 @@ Here are some useful resources to help you:
         except Exception as e:
             logger.error(f"Error updating quest progress for likes: {e}")
     
-    async def _update_quest_progress_rating(self, user: discord.User):
+    async def _update_quest_progress_rating(self, user: discord.User, message: discord.Message):
         """Update quest progress for rating images"""
         if not self.quest_manager or user.bot:
             return
             
         try:
+            from config import Config
+            
             # Update the stat for tracking achievements
             await self.quest_manager.update_user_stat(user.id, "ratings_given", 1)
             
+            # Track regular rating quest
             completed_quests = await self.quest_manager.update_quest_progress(
                 user_id=user.id,
                 quest_type="rate_images",
                 count=1
             )
+            
+            # Track "support_new_users" quest - like images from different users
+            # We need to track which unique users they've liked today
+            await self.quest_manager.track_unique_user_like(
+                user_id=user.id,
+                liked_user_id=message.author.id
+            )
+            
+            # Track "explore_channels" quest - react in both image channels
+            if message.channel.id in Config.IMAGE_REACTION_CHANNELS:
+                await self.quest_manager.track_channel_exploration(
+                    user_id=user.id,
+                    channel_id=message.channel.id
+                )
             
             # Send notifications for completed quests
             for quest in completed_quests:
@@ -1560,6 +1588,48 @@ Here are some useful resources to help you:
                 )
                 
                 logger.info(f"{message.author.display_name} gained {reward} InoRep for posting image")
+            
+        except Exception as e:
+            logger.error(f"Error applying image post InoRep reward: {e}")
+    
+    async def _apply_text_spam_inorep_penalty(self, message: discord.Message):
+        """Penalize users for sending text messages in image-only channels"""
+        try:
+            # Check if InoRep manager is available
+            if not hasattr(self.bot.leaderboard_manager, 'inorep_manager') or not self.bot.leaderboard_manager.inorep_manager:
+                return
+            
+            from config import Config
+            
+            # Only penalize in image channels
+            if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
+                return
+            
+            # Don't penalize if the message has substantial content that might be context
+            # Only penalize short text spam or excessive chatting
+            if not message.content or len(message.content.strip()) < 3:
+                return  # Empty or very short messages don't get penalized
+            
+            # Don't penalize commands
+            if message.content.startswith(Config.COMMAND_PREFIX) or message.content.startswith('/'):
+                return
+            
+            inorep_manager = self.bot.leaderboard_manager.inorep_manager
+            
+            # Penalty for text spamming in image channel
+            penalty = -1
+            
+            await inorep_manager.add_rep(
+                user_id=str(message.author.id),
+                guild_id=str(message.guild.id),
+                user_name=message.author.display_name,
+                amount=penalty,
+                reason="Sent text message in image-only channel",
+                moderator_id="0",
+                moderator_name="Ino"
+            )
+            
+            logger.info(f"{message.author.display_name} lost {abs(penalty)} InoRep for text spam in image channel")
             
         except Exception as e:
             logger.error(f"Error applying image post InoRep reward: {e}") 
