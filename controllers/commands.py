@@ -1187,6 +1187,26 @@ class CommandsController:
                 embed = EmbedViews.daily_quests_embed(quests, ctx.author.display_name)
                 view = QuestView(user_id=user_id, quest_manager=quest_manager, member=ctx.author)
                 
+                # Populate quest select with today's quests (up to 25 due to Discord limits)
+                try:
+                    # Build select options
+                    options = []
+                    for q in quests[:25]:
+                        label = q.get('name', 'Quest')[:100]
+                        desc = q.get('description', '')[:100]
+                        value = q.get('quest_id') or q.get('name')[:50]
+                        # Create option
+                        option = discord.SelectOption(label=label, description=desc, value=value)
+                        options.append(option)
+                    
+                    # Attach to the select dynamically
+                    for child in view.children:
+                        if isinstance(child, discord.ui.Select):
+                            child.options = options
+                            break
+                except Exception as e:
+                    logger.warning(f"Failed to populate quest details select: {e}")
+                
                 # Send with buttons
                 await ctx.send(embed=embed, view=view)
                 

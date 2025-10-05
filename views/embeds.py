@@ -430,7 +430,7 @@ class EmbedViews:
         
         embed.description = header + stats_line
         
-        # Simplified quest display - no categories, just a clean list
+        # Simplified quest display - clean list with concise descriptions
         quest_list = []
         for i, quest in enumerate(quests, 1):
             is_completed = quest.get("completed", False)
@@ -438,6 +438,7 @@ class EmbedViews:
             target = quest['target_count']
             points = quest['reward_points']
             difficulty = quest.get('difficulty', 'medium')
+            category = quest.get('category', 'general')
             
             # Status icon
             if is_completed:
@@ -447,17 +448,26 @@ class EmbedViews:
             else:
                 status = "⬜"
             
-            # Difficulty badge (simplified)
+            # Difficulty and category badges
             diff_badges = {"easy": "🟢", "medium": "🟡", "hard": "🟠", "very_hard": "🔴"}
             diff_badge = diff_badges.get(difficulty, "🟡")
+            category_emojis = {"posting": "📸", "rating": "⭐", "community": "👥", "special": "✨", "general": "📋"}
+            cat_emoji = category_emojis.get(category, "📋")
             
             # Progress bar (compact 6 blocks)
             quest_progress = current / target if target > 0 else 0
             progress = EmbedViews._create_progress_bar(quest_progress, 6)
             
-            # Clean single-line format
-            quest_line = f"{status} **{quest['name']}** {diff_badge}\n"
-            quest_line += f"└ {progress} `{current}/{target}` • **{points}** pts"
+            # Add short description (trim to avoid clutter)
+            description = quest.get('description', '') or ''
+            if len(description) > 120:
+                description = description[:117] + '…'
+
+            # Clean multi-line format with description
+            quest_line = f"{status} {cat_emoji} **{quest['name']}** {diff_badge}\n"
+            if description:
+                quest_line += f"　📝 _{description}_\n"
+            quest_line += f"　{progress} `{current}/{target}` • **{points}** pts"
             
             quest_list.append(quest_line)
         
@@ -1382,6 +1392,60 @@ class QuestView(discord.ui.View):
         self.quest_manager = quest_manager
         self.member = member
     
+    # Dropdown to view quest details
+    @discord.ui.select(placeholder="📜 View quest details", min_values=1, max_values=1, options=[])
+    async def quest_details_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        try:
+            if interaction.user.id != self.user_id:
+                await interaction.response.send_message("❌ Use `/quests` to view your own.", ephemeral=True)
+                return
+
+            # Expect value format: quest_id
+            quest_id = select.values[0]
+            quest_doc = self.quest_manager.user_quests_collection.find_one({
+                "user_id": str(self.user_id),
+                "quest_id": quest_id
+            })
+            if not quest_doc:
+                await interaction.response.send_message("❌ Quest not found.", ephemeral=True)
+                return
+
+            # Build a rich quest detail embed
+            difficulty = quest_doc.get('difficulty', 'medium')
+            diff_badges = {"easy": "🟢", "medium": "🟡", "hard": "🟠", "very_hard": "🔴"}
+            diff_badge = diff_badges.get(difficulty, "🟡")
+            category = quest_doc.get('category', 'general')
+            category_emojis = {"posting": "📸", "rating": "⭐", "community": "👥", "special": "✨", "general": "📋"}
+            cat_emoji = category_emojis.get(category, "📋")
+
+            current = quest_doc.get('current_count', 0)
+            target = quest_doc.get('target_count', 0)
+            progress = EmbedViews._create_progress_bar((current/target) if target else 0, 12)
+
+            detail = discord.Embed(
+                title=f"{cat_emoji} {quest_doc['name']} {diff_badge}",
+                description=quest_doc.get('description', 'No description provided.'),
+                color=discord.Color.purple(),
+                timestamp=datetime.utcnow()
+            )
+            detail.add_field(name="🎯 Objective", value=f"`{current}/{target}`", inline=True)
+            detail.add_field(name="💎 Reward", value=f"**{quest_doc.get('reward_points', 0)}** pts", inline=True)
+            detail.add_field(name="🏷️ Type", value=f"`{quest_doc.get('quest_type', 'general')}`", inline=True)
+            detail.add_field(name="📅 Date", value=f"`{quest_doc.get('date', '')}`", inline=True)
+            detail.add_field(name="📈 Progress", value=progress, inline=False)
+            if quest_doc.get('completed'):
+                detail.add_field(name="✅ Status", value="Completed", inline=True)
+            else:
+                detail.add_field(name="📝 Status", value="In Progress", inline=True)
+
+            await interaction.response.send_message(embed=detail, ephemeral=True)
+
+        except Exception as e:
+            try:
+                await interaction.response.send_message(f"❌ Failed to show details: {str(e)}", ephemeral=True)
+            except:
+                await interaction.followup.send(f"❌ Failed to show details: {str(e)}", ephemeral=True)
+
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.primary, emoji="🔄")
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Refresh quest display"""
@@ -1503,7 +1567,10 @@ class QuestView(discord.ui.View):
     async def on_timeout(self):
         """Disable buttons when view times out"""
         for item in self.children:
-            item.disabled = True
+            try:
+                item.disabled = True
+            except:
+                pass
 
 
 class PurgeConfirmationView(discord.ui.View):
