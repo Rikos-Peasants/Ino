@@ -862,6 +862,11 @@ Here are some useful resources to help you:
         if isinstance(error, commands.CommandNotFound):
             logger.debug(f"Unknown command: {ctx.invoked_with}")
             return
+        elif isinstance(error, commands.CheckFailure):
+            # This is triggered by our global check that blocks DMs and other guilds
+            # The check already sends a message, so just log it
+            logger.info(f"Check failed for command {ctx.command.name} by {ctx.author.display_name}")
+            return
         elif isinstance(error, commands.MissingPermissions):
             logger.warning(f"Missing permissions for command {ctx.command.name}: {error}")
             await ctx.send("❌ You don't have permission to use this command.", ephemeral=True)
