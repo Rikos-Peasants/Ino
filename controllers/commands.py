@@ -6,7 +6,7 @@ import json
 import asyncio
 from typing import Optional, Union
 from models.role_manager import RoleManager
-from views.embeds import EmbedViews, PurgeConfirmationView
+from views.embeds import EmbedViews, PurgeConfirmationView, QuestView
 from config import Config
 from controllers.security import CommandSecurity, SecurityLevel, public_command, moderator_command, admin_command, owner_command
 
@@ -1185,7 +1185,7 @@ class CommandsController:
                 
                 # Create embed and interactive view
                 embed = EmbedViews.daily_quests_embed(quests, ctx.author.display_name)
-                view = EmbedViews.QuestView(user_id=user_id, quest_manager=quest_manager, member=ctx.author)
+                view = QuestView(user_id=user_id, quest_manager=quest_manager, member=ctx.author)
                 
                 # Send with buttons
                 await ctx.send(embed=embed, view=view)
