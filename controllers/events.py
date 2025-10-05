@@ -1770,7 +1770,7 @@ Here are some useful resources to help you:
                 return  # Empty messages don't get penalized
             
             # Don't penalize bot commands
-            if message.content.startswith(Config.COMMAND_PREFIX) or message.content.startswith('/'):
+            if message.content.startswith(getattr(Config, 'COMMAND_PREFIX', 'R!')) or message.content.startswith('/'):
                 return
             
             inorep_manager = self.bot.leaderboard_manager.inorep_manager

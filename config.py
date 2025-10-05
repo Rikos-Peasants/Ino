@@ -18,6 +18,8 @@ def get_int_env(key: str, default: Optional[int] = None) -> int:
         raise ValueError(f"Environment variable {key} must be a valid integer, got: {value}")
 
 class Config:
+    # Command prefix for text commands
+    COMMAND_PREFIX = os.getenv('COMMAND_PREFIX', 'R!')
     TOKEN = os.getenv('DISCORD_TOKEN')
     GUILD_ID = get_int_env('GUILD_ID')
     BANNED_ROLE_ID = get_int_env('BANNED_ROLE_ID')

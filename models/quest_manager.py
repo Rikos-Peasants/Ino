@@ -745,6 +745,18 @@ class QuestManager:
             today = datetime.now().date()
             tracking_key = f"liked_users_{today.isoformat()}"
             
+            # Ensure a compound index on (user_id, tracking_key) to allow multiple keys per user
+            try:
+                self.user_stats_collection.create_index([("user_id", 1), ("tracking_key", 1)], unique=True)
+            except Exception:
+                pass
+
+            # Ensure a compound index on (user_id, tracking_key) to allow multiple keys per user
+            try:
+                self.user_stats_collection.create_index([("user_id", 1), ("tracking_key", 1)], unique=True)
+            except Exception:
+                pass
+
             # Get or create tracking document for today
             track_doc = self.user_stats_collection.find_one({
                 "user_id": str(user_id),
@@ -760,7 +772,14 @@ class QuestManager:
                     "unique_count": 1,
                     "created_at": datetime.now()
                 }
-                self.user_stats_collection.insert_one(track_doc)
+                try:
+                    self.user_stats_collection.insert_one(track_doc)
+                except Exception:
+                    # If a race condition caused duplicate, fetch again
+                    track_doc = self.user_stats_collection.find_one({
+                        "user_id": str(user_id),
+                        "tracking_key": tracking_key
+                    })
                 unique_count = 1
             else:
                 # Check if this user was already liked today
@@ -845,7 +864,13 @@ class QuestManager:
                     "channel_count": 1,
                     "created_at": datetime.now()
                 }
-                self.user_stats_collection.insert_one(track_doc)
+                try:
+                    self.user_stats_collection.insert_one(track_doc)
+                except Exception:
+                    track_doc = self.user_stats_collection.find_one({
+                        "user_id": str(user_id),
+                        "tracking_key": tracking_key
+                    })
                 channel_count = 1
             else:
                 # Check if this channel was already explored today

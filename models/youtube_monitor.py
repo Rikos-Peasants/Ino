@@ -244,7 +244,7 @@ class YouTubeMonitor:
                     logger.info(f"❌ No videos found for channel {youtube_channel_id}")
                     continue
                 
-                logger.info(f"Found {len(recent_videos)} recent videos for channel {youtube_channel_id}")
+                logger.debug(f"Found {len(recent_videos)} recent videos for channel {youtube_channel_id}")
                 
                 # Process videos (already sorted by publish date)
                 videos_to_process = []
@@ -257,10 +257,10 @@ class YouTubeMonitor:
                     twelve_hours_ago = datetime.utcnow() - timedelta(hours=12)
                     
                     if published < twelve_hours_ago:
-                        logger.info(f"Skipping old video {video_id} ({video_data['title']}) - published {published}, older than 12 hours")
+                        logger.debug(f"Skipping old video {video_id} ({video_data['title']}) - published {published}, older than 12 hours")
                         continue
                     else:
-                        logger.info(f"Video {video_id} ({video_data['title']}) is recent - published {published}")
+                        logger.debug(f"Video {video_id} ({video_data['title']}) is recent - published {published}")
                     
                     # Check if we've already processed this video
                     is_processed = await self.is_video_processed(video_id)
@@ -268,14 +268,14 @@ class YouTubeMonitor:
                         logger.debug(f"Video {video_id} ({video_data['title']}) already processed, skipping")
                         continue
                     else:
-                        logger.info(f"Video {video_id} ({video_data['title']}) not processed yet, adding to queue")
+                        logger.debug(f"Video {video_id} ({video_data['title']}) not processed yet, adding to queue")
                     
                     # Filter out YouTube Shorts - URL and keyword detection only
                     video_link = video_data.get('link', '')
                     
                     # Check 1: URL contains /shorts/
                     if '/shorts/' in video_link:
-                        logger.info(f"Skipping YouTube Short (URL): {video_data['title']} - {video_link}")
+                        logger.debug(f"Skipping YouTube Short (URL): {video_data['title']} - {video_link}")
                         continue
                     
                     # Check 2: Title/description suggests it's a short
