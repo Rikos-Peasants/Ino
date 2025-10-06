@@ -320,29 +320,30 @@ class RikoBot(commands.Bot):
                         user_id = int(user_doc["user_id"])
                         total_users += 1
                         
-                        try:
-                            # Check achievements for this user
-                            new_achievements = await quest_manager.check_achievements(
-                                user_id=user_id,
-                                leaderboard_manager=self.leaderboard_manager
-                            )
+                    try:
+                        # Check achievements for this user
+                        new_achievements = await quest_manager.check_achievements(
+                            user_id=user_id,
+                            leaderboard_manager=self.leaderboard_manager
+                        )
+                        
+                        # Only log if achievements were actually awarded
+                        if new_achievements and len(new_achievements) > 0:
+                            total_achievements += len(new_achievements)
+                            user_name = user_doc.get("user_name", f"User {user_id}")
+                            logger.info(f"   ✅ Awarded {len(new_achievements)} achievement(s) to {user_name}")
                             
-                            if new_achievements:
-                                total_achievements += len(new_achievements)
-                                user_name = user_doc.get("user_name", f"User {user_id}")
-                                logger.info(f"   ✅ Awarded {len(new_achievements)} achievement(s) to {user_name}")
-                                
-                                # Log each achievement (limit to 3 to reduce spam)
-                                for idx, achievement in enumerate(new_achievements):
-                                    if idx < 3:
-                                        logger.info(f"      {achievement.get('icon', '🏆')} {achievement['name']} (+{achievement['reward_points']} pts)")
-                                    elif idx == 3:
-                                        logger.info(f"      ... and {len(new_achievements) - 3} more")
-                                        break
-                            
-                        except Exception as e:
-                            logger.error(f"   ❌ Error checking achievements for user {user_id}: {e}")
-                            continue
+                            # Log each achievement (limit to 3 to reduce spam)
+                            for idx, achievement in enumerate(new_achievements):
+                                if idx < 3:
+                                    logger.info(f"      {achievement.get('icon', '🏆')} {achievement['name']} (+{achievement['reward_points']} pts)")
+                                elif idx == 3:
+                                    logger.info(f"      ... and {len(new_achievements) - 3} more")
+                                    break
+                        
+                    except Exception as e:
+                        logger.error(f"   ❌ Error checking achievements for user {user_id}: {e}")
+                        continue
                     
                     # Yield control back to the event loop after each chunk
                     await asyncio.sleep(0.1)

@@ -2191,7 +2191,10 @@ class QuestManager:
                     self.user_achievements_collection.insert_one(achievement_record)
                     new_achievements.append(achievement_record)
             
-            logger.info(f"Awarded {len(new_achievements)} new achievements to user {user_id}")
+            # Only log if achievements were actually awarded
+            if len(new_achievements) > 0:
+                logger.info(f"Awarded {len(new_achievements)} new achievements to user {user_id}")
+            
             return new_achievements
             
         except Exception as e:
