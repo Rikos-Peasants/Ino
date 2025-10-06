@@ -1843,12 +1843,33 @@ class QuestManager:
                 }
                 try:
                     self.user_stats_collection.insert_one(track_doc)
-                except Exception:
+                    channel_count = 1
+                except Exception as e:
+                    # Race condition: document was created by another process
+                    logger.debug(f"Race condition in channel tracking, refetching document: {e}")
                     track_doc = self.user_stats_collection.find_one({
                         "user_id": str(user_id),
                         "tracking_key": tracking_key
                     })
-                channel_count = 1
+                    if track_doc:
+                        channels = track_doc.get("channel_ids", [])
+                        if str(channel_id) not in channels:
+                            channels.append(str(channel_id))
+                            channel_count = len(channels)
+                            self.user_stats_collection.update_one(
+                                {"_id": track_doc["_id"]},
+                                {
+                                    "$set": {
+                                        "channel_ids": channels,
+                                        "channel_count": channel_count
+                                    }
+                                }
+                            )
+                        else:
+                            return []  # Already explored this channel
+                    else:
+                        # Shouldn't happen, but handle gracefully
+                        channel_count = 1
             else:
                 # Check if this channel was already explored today
                 channels = track_doc.get("channel_ids", [])
@@ -1865,7 +1886,9 @@ class QuestManager:
                             }
                         }
                     )
+                    logger.debug(f"Channel exploration: User {user_id} now explored {channel_count} channels (added channel {channel_id})")
                 else:
+                    logger.debug(f"Channel exploration: User {user_id} already explored channel {channel_id} today")
                     return []  # Already explored this channel today
             
             # Update the explore_channels quest with the channel count

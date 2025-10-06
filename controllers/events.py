@@ -1020,7 +1020,9 @@ Here are some useful resources to help you:
                 await self._update_quest_progress_likes(message.author, message, thumbs_up)
             
             # Update quest progress for rating images (for the person who reacted)
-            await self._update_quest_progress_rating(user, message)
+            # Only track when reaction is ADDED, not removed
+            if added:
+                await self._update_quest_progress_rating(user, message)
             
             action = "added" if added else "removed"
             logger.info(f"Reaction {action}: {reaction.emoji} on {message.author.display_name}'s image (score change: {score_change:+d}), thumbs_up: {thumbs_up}, thumbs_down: {thumbs_down}")
