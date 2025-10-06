@@ -1227,11 +1227,14 @@ Here are some useful resources to help you:
             # Track "explore_channels" quest - react in both image channels
             if message.channel.id in Config.IMAGE_REACTION_CHANNELS:
                 try:
-                    await self.quest_manager.track_channel_exploration(
+                    completed = await self.quest_manager.track_channel_exploration(
                         user_id=user.id,
                         channel_id=message.channel.id
                     )
-                    logger.debug(f"Tracked channel exploration: {user.display_name} reacted in channel {message.channel.id}")
+                    if completed:
+                        logger.info(f"✅ Channel exploration quest completed for {user.display_name}!")
+                    else:
+                        logger.info(f"📍 Tracked channel exploration: {user.display_name} reacted in channel {message.channel.id}")
                 except Exception as e:
                     logger.error(f"Failed to track channel exploration: {e}")
             

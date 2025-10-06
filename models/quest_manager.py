@@ -1846,7 +1846,7 @@ class QuestManager:
                     channel_count = 1
                 except Exception as e:
                     # Race condition: document was created by another process
-                    logger.debug(f"Race condition in channel tracking, refetching document: {e}")
+                    logger.info(f"⚠️ Race condition in channel tracking, refetching document: {e}")
                     track_doc = self.user_stats_collection.find_one({
                         "user_id": str(user_id),
                         "tracking_key": tracking_key
@@ -1886,9 +1886,9 @@ class QuestManager:
                             }
                         }
                     )
-                    logger.debug(f"Channel exploration: User {user_id} now explored {channel_count} channels (added channel {channel_id})")
+                    logger.info(f"📍 Channel exploration: User {user_id} now explored {channel_count} channels (added channel {channel_id})")
                 else:
-                    logger.debug(f"Channel exploration: User {user_id} already explored channel {channel_id} today")
+                    logger.info(f"⏭️ Channel exploration: User {user_id} already explored channel {channel_id} today")
                     return []  # Already explored this channel today
             
             # Update the explore_channels quest with the channel count
