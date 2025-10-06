@@ -55,7 +55,8 @@ class QuestManager:
             self.events_collection.create_index([("start_date", -1), ("end_date", -1)])
             self.user_quests_collection.create_index([("user_id", 1), ("date", -1)])
             self.user_achievements_collection.create_index([("user_id", 1), ("achievement_id", 1)], unique=True)
-            self.user_stats_collection.create_index([("user_id", 1)], unique=True)
+            # Compound unique index on user_id AND tracking_key (allows multiple tracking stats per user)
+            self.user_stats_collection.create_index([("user_id", 1), ("tracking_key", 1)], unique=True)
             self.user_streaks_collection.create_index([("user_id", 1)], unique=True)
             
             logger.info(f"Connected to MongoDB for Quest Manager")
