@@ -1751,7 +1751,7 @@ Here are some useful resources to help you:
                 inorep_manager = self.bot.leaderboard_manager.inorep_manager
                 
                 # Reward for posting image
-                reward = +10
+                reward = +6
                 
                 await inorep_manager.add_rep(
                     user_id=str(message.author.id),
