@@ -98,22 +98,37 @@ class LeaderboardManager:
         self._save_data()
         logger.debug(f"Updated score for {user_name}: {score_change:+d} (total: {self.data['users'][user_id_str]['total_score']})")
     
-    def get_leaderboard(self, limit: int = 10) -> List[Tuple[str, int, int, int]]:
-        """Get leaderboard data sorted by total score"""
+    def get_leaderboard(self, limit: int = 10, sort_by: str = "total_score") -> List[Tuple[str, int, int, int]]:
+        """Get leaderboard data sorted by specified criteria
+        
+        Args:
+            limit: Maximum number of entries to return
+            sort_by: Sort criteria - 'total_score', 'avg_score', or 'image_count'
+        """
         leaderboard = []
         
         for user_id, data in self.data["users"].items():
+            # Calculate average score
+            avg_score = data["total_score"] / data["image_count"] if data["image_count"] > 0 else 0
+            
             leaderboard.append((
                 data["name"],
                 int(user_id),
                 data["total_score"],
-                data["image_count"]
+                data["image_count"],
+                avg_score  # Add avg_score for sorting
             ))
         
-        # Sort by total score (descending)
-        leaderboard.sort(key=lambda x: x[2], reverse=True)
+        # Sort based on specified criteria
+        if sort_by == "avg_score":
+            leaderboard.sort(key=lambda x: x[4], reverse=True)  # Sort by avg_score
+        elif sort_by == "image_count":
+            leaderboard.sort(key=lambda x: x[3], reverse=True)  # Sort by image_count
+        else:  # total_score (default)
+            leaderboard.sort(key=lambda x: x[2], reverse=True)  # Sort by total_score
         
-        return leaderboard[:limit]
+        # Return without avg_score in tuple (keep original format)
+        return [(name, uid, score, count) for name, uid, score, count, _ in leaderboard[:limit]]
     
     def get_user_stats(self, user_id: int) -> Optional[Dict]:
         """Get stats for a specific user"""
