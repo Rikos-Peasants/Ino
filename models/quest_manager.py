@@ -321,13 +321,13 @@ class QuestManager:
             {
                 "quest_id": "daily_quality_over_quantity",
                 "name": "Quality Over Quantity",
-                "description": "Post 1 image that gets at least 10 likes",
+                "description": "Post 1 image that gets at least 6 likes",
                 "quest_type": "quality_post",
                 "category": "special",
                 "difficulty": "hard",
                 "target_count": 1,
-                "reward_points": 60,
-                "rarity_chance": 0.35,  # 35% chance
+                "reward_points": 50,
+                "rarity_chance": 0.45,  # 45% chance
                 "is_daily": True
             },
             {
@@ -357,13 +357,13 @@ class QuestManager:
             {
                 "quest_id": "daily_popularity_contest",
                 "name": "Popularity Contest",
-                "description": "Get a total of 20 likes across all your images today",
+                "description": "Get a total of 12 likes across all your images today",
                 "quest_type": "earn_likes",
                 "category": "engagement",
                 "difficulty": "very_hard",
-                "target_count": 20,
-                "reward_points": 90,
-                "rarity_chance": 0.2,  # 20% chance
+                "target_count": 12,
+                "reward_points": 70,
+                "rarity_chance": 0.3,  # 30% chance
                 "is_daily": True
             },
             {
@@ -393,13 +393,13 @@ class QuestManager:
             {
                 "quest_id": "daily_engagement_king",
                 "name": "Engagement King/Queen",
-                "description": "Get 15 likes on a single image",
+                "description": "Get 10 likes on a single image",
                 "quest_type": "viral_image",
                 "category": "special",
                 "difficulty": "very_hard",
                 "target_count": 1,
-                "reward_points": 100,
-                "rarity_chance": 0.15,  # 15% chance (rare!)
+                "reward_points": 85,
+                "rarity_chance": 0.25,  # 25% chance
                 "is_daily": True
             },
             {
@@ -412,6 +412,561 @@ class QuestManager:
                 "target_count": 5,
                 "reward_points": 35,
                 "rarity_chance": 0.6,  # 60% chance
+                "is_daily": True
+            },
+            
+            # ========== NEW QUESTS - SMALL COMMUNITY FRIENDLY ==========
+            # Easy Posting Quests
+            {
+                "quest_id": "daily_morning_glory",
+                "name": "Morning Glory",
+                "description": "Post your first image before noon",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "easy",
+                "target_count": 1,
+                "reward_points": 10,
+                "rarity_chance": 0.9,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_afternoon_delight",
+                "name": "Afternoon Delight",
+                "description": "Post 2 images between 12 PM and 6 PM",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "easy",
+                "target_count": 2,
+                "reward_points": 18,
+                "rarity_chance": 0.85,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_steady_pace",
+                "name": "Steady Pace",
+                "description": "Post 4 images throughout the day",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "medium",
+                "target_count": 4,
+                "reward_points": 35,
+                "rarity_chance": 0.7,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_prolific",
+                "name": "Prolific Creator",
+                "description": "Post 6 images today",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "hard",
+                "target_count": 6,
+                "reward_points": 55,
+                "rarity_chance": 0.5,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_dedicated",
+                "name": "Dedicated Poster",
+                "description": "Post 8 images in one day",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "very_hard",
+                "target_count": 8,
+                "reward_points": 85,
+                "rarity_chance": 0.3,
+                "is_daily": True
+            },
+            
+            # Small Community Engagement Quests
+            {
+                "quest_id": "daily_first_like",
+                "name": "First Impression",
+                "description": "Get your first like of the day",
+                "quest_type": "earn_likes",
+                "category": "engagement",
+                "difficulty": "easy",
+                "target_count": 1,
+                "reward_points": 8,
+                "rarity_chance": 0.95,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_popular_pick",
+                "name": "Popular Pick",
+                "description": "Get 3 likes on any single image",
+                "quest_type": "viral_image",
+                "category": "engagement",
+                "difficulty": "easy",
+                "target_count": 1,
+                "reward_points": 22,
+                "rarity_chance": 0.8,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_crowd_pleaser",
+                "name": "Crowd Pleaser",
+                "description": "Get 5 likes on a single image",
+                "quest_type": "viral_image",
+                "category": "engagement",
+                "difficulty": "medium",
+                "target_count": 1,
+                "reward_points": 38,
+                "rarity_chance": 0.6,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_fan_favorite",
+                "name": "Fan Favorite",
+                "description": "Get 8 likes on one image",
+                "quest_type": "viral_image",
+                "category": "engagement",
+                "difficulty": "hard",
+                "target_count": 1,
+                "reward_points": 60,
+                "rarity_chance": 0.4,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_community_star",
+                "name": "Community Star",
+                "description": "Get 12 likes on a single image",
+                "quest_type": "viral_image",
+                "category": "engagement",
+                "difficulty": "very_hard",
+                "target_count": 1,
+                "reward_points": 95,
+                "rarity_chance": 0.2,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_total_likes_3",
+                "name": "Rising Star",
+                "description": "Get 3 total likes across all your images",
+                "quest_type": "earn_likes",
+                "category": "engagement",
+                "difficulty": "easy",
+                "target_count": 3,
+                "reward_points": 15,
+                "rarity_chance": 0.9,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_total_likes_8",
+                "name": "Popular Creator",
+                "description": "Get 8 total likes today",
+                "quest_type": "earn_likes",
+                "category": "engagement",
+                "difficulty": "medium",
+                "target_count": 8,
+                "reward_points": 42,
+                "rarity_chance": 0.65,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_total_likes_15",
+                "name": "Community Darling",
+                "description": "Get 15 total likes today",
+                "quest_type": "earn_likes",
+                "category": "engagement",
+                "difficulty": "hard",
+                "target_count": 15,
+                "reward_points": 75,
+                "rarity_chance": 0.35,
+                "is_daily": True
+            },
+            
+            # Rating & Community Interaction
+            {
+                "quest_id": "daily_rate_3",
+                "name": "Quick Judge",
+                "description": "Rate 3 images",
+                "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "easy",
+                "target_count": 3,
+                "reward_points": 8,
+                "rarity_chance": 1.0,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_rate_15",
+                "name": "Thoughtful Critic",
+                "description": "Rate 15 images",
+                "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "medium",
+                "target_count": 15,
+                "reward_points": 32,
+                "rarity_chance": 0.75,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_rate_25",
+                "name": "Dedicated Reviewer",
+                "description": "Rate 25 images",
+                "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "hard",
+                "target_count": 25,
+                "reward_points": 48,
+                "rarity_chance": 0.55,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_rate_40",
+                "name": "Master Reviewer",
+                "description": "Rate 40 images",
+                "quest_type": "rate_images",
+                "category": "rating",
+                "difficulty": "very_hard",
+                "target_count": 40,
+                "reward_points": 72,
+                "rarity_chance": 0.35,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_positive_vibes",
+                "name": "Positive Vibes Only",
+                "description": "Give out 8 thumbs up",
+                "quest_type": "give_likes",
+                "category": "community",
+                "difficulty": "easy",
+                "target_count": 8,
+                "reward_points": 16,
+                "rarity_chance": 0.85,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_support_squad",
+                "name": "Support Squad",
+                "description": "Give out 15 thumbs up",
+                "quest_type": "give_likes",
+                "category": "community",
+                "difficulty": "medium",
+                "target_count": 15,
+                "reward_points": 28,
+                "rarity_chance": 0.7,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_hype_master",
+                "name": "Hype Master",
+                "description": "Give out 25 thumbs up",
+                "quest_type": "give_likes",
+                "category": "community",
+                "difficulty": "hard",
+                "target_count": 25,
+                "reward_points": 50,
+                "rarity_chance": 0.5,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_cheerleader",
+                "name": "Ultimate Cheerleader",
+                "description": "Give out 35 thumbs up",
+                "quest_type": "give_likes",
+                "category": "community",
+                "difficulty": "very_hard",
+                "target_count": 35,
+                "reward_points": 68,
+                "rarity_chance": 0.3,
+                "is_daily": True
+            },
+            
+            # Diversity & Exploration
+            {
+                "quest_id": "daily_meet_new_people",
+                "name": "Meet New People",
+                "description": "React to images from 3 different users",
+                "quest_type": "diverse_reactions",
+                "category": "community",
+                "difficulty": "easy",
+                "target_count": 3,
+                "reward_points": 12,
+                "rarity_chance": 0.9,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_social_mixer",
+                "name": "Social Mixer",
+                "description": "React to images from 6 different users",
+                "quest_type": "diverse_reactions",
+                "category": "community",
+                "difficulty": "medium",
+                "target_count": 6,
+                "reward_points": 26,
+                "rarity_chance": 0.75,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_community_connector",
+                "name": "Community Connector",
+                "description": "React to images from 12 different users",
+                "quest_type": "diverse_reactions",
+                "category": "community",
+                "difficulty": "hard",
+                "target_count": 12,
+                "reward_points": 52,
+                "rarity_chance": 0.5,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_everybody_friend",
+                "name": "Everybody's Friend",
+                "description": "React to images from 15 different users",
+                "quest_type": "diverse_reactions",
+                "category": "community",
+                "difficulty": "very_hard",
+                "target_count": 15,
+                "reward_points": 78,
+                "rarity_chance": 0.25,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_channel_hopper",
+                "name": "Channel Hopper",
+                "description": "Post in both image channels",
+                "quest_type": "explore_channels",
+                "category": "community",
+                "difficulty": "easy",
+                "target_count": 2,
+                "reward_points": 18,
+                "rarity_chance": 0.8,
+                "is_daily": True
+            },
+            
+            # Time-Based Variety
+            {
+                "quest_id": "daily_sunrise_special",
+                "name": "Sunrise Special",
+                "description": "Post before 8 AM",
+                "quest_type": "early_post",
+                "category": "time_based",
+                "difficulty": "medium",
+                "target_count": 1,
+                "reward_points": 28,
+                "rarity_chance": 0.45,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_midnight_post",
+                "name": "Midnight Oil",
+                "description": "Post after midnight",
+                "quest_type": "late_post",
+                "category": "time_based",
+                "difficulty": "medium",
+                "target_count": 1,
+                "reward_points": 32,
+                "rarity_chance": 0.4,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_lunch_break",
+                "name": "Lunch Break Post",
+                "description": "Post between 11 AM and 2 PM",
+                "quest_type": "post_images",
+                "category": "time_based",
+                "difficulty": "easy",
+                "target_count": 1,
+                "reward_points": 14,
+                "rarity_chance": 0.75,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_evening_artist",
+                "name": "Evening Artist",
+                "description": "Post 2 images between 6 PM and 10 PM",
+                "quest_type": "post_images",
+                "category": "time_based",
+                "difficulty": "easy",
+                "target_count": 2,
+                "reward_points": 20,
+                "rarity_chance": 0.7,
+                "is_daily": True
+            },
+            
+            # Combo Quests
+            {
+                "quest_id": "daily_starter_pack",
+                "name": "Starter Pack",
+                "description": "Post 1 image AND rate 5 images",
+                "quest_type": "combo",
+                "category": "combo",
+                "difficulty": "easy",
+                "target_count": 1,
+                "reward_points": 20,
+                "rarity_chance": 0.9,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_active_member",
+                "name": "Active Member",
+                "description": "Post 2 images AND give 10 likes",
+                "quest_type": "combo",
+                "category": "combo",
+                "difficulty": "medium",
+                "target_count": 1,
+                "reward_points": 38,
+                "rarity_chance": 0.65,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_power_user",
+                "name": "Power User",
+                "description": "Post 3 images AND rate 20 images",
+                "quest_type": "combo",
+                "category": "combo",
+                "difficulty": "hard",
+                "target_count": 1,
+                "reward_points": 68,
+                "rarity_chance": 0.4,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_super_contributor",
+                "name": "Super Contributor",
+                "description": "Post 5 images AND rate 30 images",
+                "quest_type": "combo",
+                "category": "combo",
+                "difficulty": "very_hard",
+                "target_count": 1,
+                "reward_points": 95,
+                "rarity_chance": 0.2,
+                "is_daily": True
+            },
+            
+            # Special Achievement-Style Quests
+            {
+                "quest_id": "daily_comeback",
+                "name": "The Comeback",
+                "description": "Post after being inactive for a day",
+                "quest_type": "comeback",
+                "category": "special",
+                "difficulty": "easy",
+                "target_count": 1,
+                "reward_points": 25,
+                "rarity_chance": 0.3,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_quality_control",
+                "name": "Quality Control",
+                "description": "Post 1 image with at least 4 likes",
+                "quest_type": "quality_post",
+                "category": "special",
+                "difficulty": "medium",
+                "target_count": 1,
+                "reward_points": 35,
+                "rarity_chance": 0.55,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_trending",
+                "name": "Trending Creator",
+                "description": "Post 1 image with at least 7 likes",
+                "quest_type": "quality_post",
+                "category": "special",
+                "difficulty": "hard",
+                "target_count": 1,
+                "reward_points": 55,
+                "rarity_chance": 0.4,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_helping_hand",
+                "name": "Helping Hand",
+                "description": "Like images from 3 users with less than 5 posts",
+                "quest_type": "support_new_users",
+                "category": "community",
+                "difficulty": "easy",
+                "target_count": 3,
+                "reward_points": 22,
+                "rarity_chance": 0.7,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_welcoming_committee",
+                "name": "Welcoming Committee",
+                "description": "Like images from 7 different users",
+                "quest_type": "support_new_users",
+                "category": "community",
+                "difficulty": "medium",
+                "target_count": 7,
+                "reward_points": 42,
+                "rarity_chance": 0.6,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_consistent_poster",
+                "name": "Consistent Poster",
+                "description": "Post at least 2 images (keep that streak!)",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "easy",
+                "target_count": 2,
+                "reward_points": 16,
+                "rarity_chance": 0.9,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_channel_variety",
+                "name": "Channel Variety",
+                "description": "React in both channels with at least 3 reactions each",
+                "quest_type": "explore_channels",
+                "category": "community",
+                "difficulty": "medium",
+                "target_count": 2,
+                "reward_points": 34,
+                "rarity_chance": 0.6,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_engagement_boost",
+                "name": "Engagement Boost",
+                "description": "Get 2 likes on at least 2 different images",
+                "quest_type": "multi_liked",
+                "category": "engagement",
+                "difficulty": "medium",
+                "target_count": 2,
+                "reward_points": 30,
+                "rarity_chance": 0.65,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_conversation_starter",
+                "name": "Conversation Starter",
+                "description": "Get reactions from 4 different users on your posts",
+                "quest_type": "diverse_reactions_received",
+                "category": "engagement",
+                "difficulty": "medium",
+                "target_count": 4,
+                "reward_points": 36,
+                "rarity_chance": 0.6,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_perfect_ten",
+                "name": "Perfect Ten",
+                "description": "Post exactly 10 images",
+                "quest_type": "post_images",
+                "category": "posting",
+                "difficulty": "very_hard",
+                "target_count": 10,
+                "reward_points": 110,
+                "rarity_chance": 0.15,
+                "is_daily": True
+            },
+            {
+                "quest_id": "daily_speed_poster",
+                "name": "Speed Poster",
+                "description": "Post 3 images within 30 minutes",
+                "quest_type": "rapid_post",
+                "category": "special",
+                "difficulty": "medium",
+                "target_count": 3,
+                "reward_points": 40,
+                "rarity_chance": 0.5,
                 "is_daily": True
             }
         ]
@@ -562,6 +1117,428 @@ class QuestManager:
                 "target_count": 30,
                 "reward_points": 250,
                 "icon": "🎬"
+            },
+            
+            # ========== NEW ACHIEVEMENTS - EXPANDED ==========
+            # Quest Completion Milestones
+            {
+                "achievement_id": "quest_10",
+                "name": "Quest Beginner",
+                "description": "Complete 10 quests",
+                "achievement_type": "quests_completed",
+                "target_count": 10,
+                "reward_points": 50,
+                "icon": "📝"
+            },
+            {
+                "achievement_id": "quest_50",
+                "name": "Quest Hunter",
+                "description": "Complete 50 quests",
+                "achievement_type": "quests_completed",
+                "target_count": 50,
+                "reward_points": 150,
+                "icon": "🎯"
+            },
+            {
+                "achievement_id": "quest_100",
+                "name": "Quest Master",
+                "description": "Complete 100 quests",
+                "achievement_type": "quests_completed",
+                "target_count": 100,
+                "reward_points": 350,
+                "icon": "🏅"
+            },
+            {
+                "achievement_id": "quest_250",
+                "name": "Quest Legend",
+                "description": "Complete 250 quests",
+                "achievement_type": "quests_completed",
+                "target_count": 250,
+                "reward_points": 750,
+                "icon": "🔱"
+            },
+            {
+                "achievement_id": "quest_500",
+                "name": "Quest Immortal",
+                "description": "Complete 500 quests",
+                "achievement_type": "quests_completed",
+                "target_count": 500,
+                "reward_points": 1500,
+                "icon": "👼"
+            },
+            
+            # More Posting Milestones
+            {
+                "achievement_id": "post_10",
+                "name": "Getting Started",
+                "description": "Post 10 images",
+                "achievement_type": "post_images",
+                "target_count": 10,
+                "reward_points": 25,
+                "icon": "🌱"
+            },
+            {
+                "achievement_id": "post_25",
+                "name": "Active Contributor",
+                "description": "Post 25 images",
+                "achievement_type": "post_images",
+                "target_count": 25,
+                "reward_points": 40,
+                "icon": "🌿"
+            },
+            {
+                "achievement_id": "post_100",
+                "name": "Frequent Poster",
+                "description": "Post 100 images",
+                "achievement_type": "post_images",
+                "target_count": 100,
+                "reward_points": 125,
+                "icon": "🌳"
+            },
+            {
+                "achievement_id": "post_250",
+                "name": "Image Veteran",
+                "description": "Post 250 images",
+                "achievement_type": "post_images",
+                "target_count": 250,
+                "reward_points": 300,
+                "icon": "🎨"
+            },
+            {
+                "achievement_id": "post_1000",
+                "name": "Legendary Creator",
+                "description": "Post 1000 images",
+                "achievement_type": "post_images",
+                "target_count": 1000,
+                "reward_points": 1000,
+                "icon": "💎"
+            },
+            
+            # Rating Milestones
+            {
+                "achievement_id": "rate_50",
+                "name": "Casual Critic",
+                "description": "Rate 50 images",
+                "achievement_type": "rate_images",
+                "target_count": 50,
+                "reward_points": 40,
+                "icon": "👓"
+            },
+            {
+                "achievement_id": "rate_100",
+                "name": "Active Reviewer",
+                "description": "Rate 100 images",
+                "achievement_type": "rate_images",
+                "target_count": 100,
+                "reward_points": 75,
+                "icon": "🔍"
+            },
+            {
+                "achievement_id": "rate_250",
+                "name": "Expert Curator",
+                "description": "Rate 250 images",
+                "achievement_type": "rate_images",
+                "target_count": 250,
+                "reward_points": 175,
+                "icon": "🎓"
+            },
+            {
+                "achievement_id": "rate_1000",
+                "name": "Legendary Curator",
+                "description": "Rate 1000 images",
+                "achievement_type": "rate_images",
+                "target_count": 1000,
+                "reward_points": 600,
+                "icon": "🏛️"
+            },
+            
+            # Engagement/Likes Achievements
+            {
+                "achievement_id": "viral_5",
+                "name": "Going Viral",
+                "description": "Get 5 likes on a single image",
+                "achievement_type": "viral_image",
+                "target_count": 5,
+                "reward_points": 30,
+                "icon": "📈"
+            },
+            {
+                "achievement_id": "viral_10",
+                "name": "Viral Sensation",
+                "description": "Get 10 likes on a single image",
+                "achievement_type": "viral_image",
+                "target_count": 10,
+                "reward_points": 75,
+                "icon": "🚀"
+            },
+            {
+                "achievement_id": "viral_20",
+                "name": "Community Icon",
+                "description": "Get 20 likes on a single image",
+                "achievement_type": "viral_image",
+                "target_count": 20,
+                "reward_points": 150,
+                "icon": "💫"
+            },
+            {
+                "achievement_id": "likes_100",
+                "name": "Popular Creator",
+                "description": "Earn 100 total likes on your images",
+                "achievement_type": "total_likes",
+                "target_count": 100,
+                "reward_points": 80,
+                "icon": "👍"
+            },
+            {
+                "achievement_id": "likes_500",
+                "name": "Crowd Favorite",
+                "description": "Earn 500 total likes on your images",
+                "achievement_type": "total_likes",
+                "target_count": 500,
+                "reward_points": 250,
+                "icon": "💖"
+            },
+            {
+                "achievement_id": "likes_1000",
+                "name": "Beloved Creator",
+                "description": "Earn 1000 total likes on your images",
+                "achievement_type": "total_likes",
+                "target_count": 1000,
+                "reward_points": 500,
+                "icon": "💝"
+            },
+            
+            # More Score Milestones
+            {
+                "achievement_id": "score_50",
+                "name": "Gaining Momentum",
+                "description": "Reach 50 total score",
+                "achievement_type": "total_score",
+                "target_count": 50,
+                "reward_points": 30,
+                "icon": "✨"
+            },
+            {
+                "achievement_id": "score_250",
+                "name": "Popular Figure",
+                "description": "Reach 250 total score",
+                "achievement_type": "total_score",
+                "target_count": 250,
+                "reward_points": 100,
+                "icon": "🌟"
+            },
+            {
+                "achievement_id": "score_2000",
+                "name": "Legendary Status",
+                "description": "Reach 2000 total score",
+                "achievement_type": "total_score",
+                "target_count": 2000,
+                "reward_points": 600,
+                "icon": "🎆"
+            },
+            
+            # Streak Achievements (More)
+            {
+                "achievement_id": "streak_3",
+                "name": "Getting Consistent",
+                "description": "Complete quests for 3 days in a row",
+                "achievement_type": "quest_streak",
+                "target_count": 3,
+                "reward_points": 25,
+                "icon": "🔥"
+            },
+            {
+                "achievement_id": "streak_14",
+                "name": "Two Week Warrior",
+                "description": "Complete quests for 14 days in a row",
+                "achievement_type": "quest_streak",
+                "target_count": 14,
+                "reward_points": 175,
+                "icon": "🔥"
+            },
+            {
+                "achievement_id": "streak_50",
+                "name": "Streak Champion",
+                "description": "Complete quests for 50 days in a row",
+                "achievement_type": "quest_streak",
+                "target_count": 50,
+                "reward_points": 500,
+                "icon": "🔥"
+            },
+            {
+                "achievement_id": "post_streak_3",
+                "name": "Starting Streak",
+                "description": "Post at least 1 image for 3 days in a row",
+                "achievement_type": "post_streak",
+                "target_count": 3,
+                "reward_points": 20,
+                "icon": "📸"
+            },
+            {
+                "achievement_id": "post_streak_14",
+                "name": "Two Week Poster",
+                "description": "Post at least 1 image for 14 days in a row",
+                "achievement_type": "post_streak",
+                "target_count": 14,
+                "reward_points": 125,
+                "icon": "📷"
+            },
+            {
+                "achievement_id": "post_streak_60",
+                "name": "Two Month Machine",
+                "description": "Post at least 1 image for 60 days in a row",
+                "achievement_type": "post_streak",
+                "target_count": 60,
+                "reward_points": 500,
+                "icon": "🎥"
+            },
+            
+            # Community & Support Achievements
+            {
+                "achievement_id": "supporter_50",
+                "name": "Supportive Member",
+                "description": "Give 50 likes to others",
+                "achievement_type": "likes_given",
+                "target_count": 50,
+                "reward_points": 35,
+                "icon": "💚"
+            },
+            {
+                "achievement_id": "supporter_200",
+                "name": "Community Cheerleader",
+                "description": "Give 200 likes to others",
+                "achievement_type": "likes_given",
+                "target_count": 200,
+                "reward_points": 100,
+                "icon": "💙"
+            },
+            {
+                "achievement_id": "supporter_500",
+                "name": "Ultimate Hype Person",
+                "description": "Give 500 likes to others",
+                "achievement_type": "likes_given",
+                "target_count": 500,
+                "reward_points": 225,
+                "icon": "💜"
+            },
+            {
+                "achievement_id": "diverse_50",
+                "name": "Social Networker",
+                "description": "React to images from 50 different users",
+                "achievement_type": "diverse_users",
+                "target_count": 50,
+                "reward_points": 100,
+                "icon": "🤝"
+            },
+            {
+                "achievement_id": "diverse_100",
+                "name": "Community Connector",
+                "description": "React to images from 100 different users",
+                "achievement_type": "diverse_users",
+                "target_count": 100,
+                "reward_points": 250,
+                "icon": "🌐"
+            },
+            
+            # Special/Fun Achievements
+            {
+                "achievement_id": "early_bird",
+                "name": "Early Bird",
+                "description": "Post before 6 AM 10 times",
+                "achievement_type": "early_posts",
+                "target_count": 10,
+                "reward_points": 60,
+                "icon": "🌅"
+            },
+            {
+                "achievement_id": "night_owl",
+                "name": "Night Owl",
+                "description": "Post after midnight 10 times",
+                "achievement_type": "late_posts",
+                "target_count": 10,
+                "reward_points": 60,
+                "icon": "🦉"
+            },
+            {
+                "achievement_id": "speed_demon",
+                "name": "Speed Demon",
+                "description": "Post 5 images in under 10 minutes",
+                "achievement_type": "rapid_posts",
+                "target_count": 5,
+                "reward_points": 50,
+                "icon": "⚡"
+            },
+            {
+                "achievement_id": "comeback_kid",
+                "name": "Comeback Kid",
+                "description": "Return after 7+ days of inactivity 3 times",
+                "achievement_type": "comebacks",
+                "target_count": 3,
+                "reward_points": 75,
+                "icon": "🔄"
+            },
+            {
+                "achievement_id": "perfect_day",
+                "name": "Perfect Day",
+                "description": "Complete all daily quests in one day",
+                "achievement_type": "perfect_day",
+                "target_count": 1,
+                "reward_points": 200,
+                "icon": "💯"
+            },
+            {
+                "achievement_id": "quest_points_1000",
+                "name": "Point Collector",
+                "description": "Earn 1000 quest points",
+                "achievement_type": "quest_points",
+                "target_count": 1000,
+                "reward_points": 150,
+                "icon": "💎"
+            },
+            {
+                "achievement_id": "quest_points_5000",
+                "name": "Point Master",
+                "description": "Earn 5000 quest points",
+                "achievement_type": "quest_points",
+                "target_count": 5000,
+                "reward_points": 500,
+                "icon": "💠"
+            },
+            {
+                "achievement_id": "first_post",
+                "name": "First Steps",
+                "description": "Post your very first image",
+                "achievement_type": "post_images",
+                "target_count": 1,
+                "reward_points": 10,
+                "icon": "👶"
+            },
+            {
+                "achievement_id": "first_quest",
+                "name": "Quest Starter",
+                "description": "Complete your first quest",
+                "achievement_type": "quests_completed",
+                "target_count": 1,
+                "reward_points": 15,
+                "icon": "🎬"
+            },
+            {
+                "achievement_id": "bookworm",
+                "name": "Bookworm",
+                "description": "Bookmark 25 images",
+                "achievement_type": "bookmarks",
+                "target_count": 25,
+                "reward_points": 40,
+                "icon": "📚"
+            },
+            {
+                "achievement_id": "collector",
+                "name": "Collection Master",
+                "description": "Bookmark 100 images",
+                "achievement_type": "bookmarks",
+                "target_count": 100,
+                "reward_points": 125,
+                "icon": "📖"
             }
         ]
         
@@ -1125,20 +2102,79 @@ class QuestManager:
                     continue
                 
                 earned = False
+                achievement_type = achievement["achievement_type"]
+                target = achievement["target_count"]
                 
-                if achievement["achievement_type"] == "post_images":
-                    earned = user_stats["image_count"] >= achievement["target_count"]
-                elif achievement["achievement_type"] == "total_score":
-                    earned = user_stats["total_score"] >= achievement["target_count"]
-                elif achievement["achievement_type"] == "rate_images":
+                # Check basic stats achievements
+                if achievement_type == "post_images":
+                    earned = user_stats["image_count"] >= target
+                elif achievement_type == "total_score":
+                    earned = user_stats["total_score"] >= target
+                
+                # Rating achievements
+                elif achievement_type == "rate_images":
                     rating_count = await self.get_user_stat(user_id, "ratings_given")
-                    earned = rating_count >= achievement["target_count"]
-                elif achievement["achievement_type"] == "quest_streak":
+                    earned = rating_count >= target
+                
+                # Streak achievements
+                elif achievement_type == "quest_streak":
                     current_streak = await self.get_user_streak(user_id, "quest_streak")
-                    earned = current_streak >= achievement["target_count"]
-                elif achievement["achievement_type"] == "post_streak":
+                    earned = current_streak >= target
+                elif achievement_type == "post_streak":
                     current_streak = await self.get_user_streak(user_id, "post_streak")
-                    earned = current_streak >= achievement["target_count"]
+                    earned = current_streak >= target
+                
+                # Quest completion achievements
+                elif achievement_type == "quests_completed":
+                    completed_count = self.user_quests_collection.count_documents({
+                        "user_id": str(user_id),
+                        "completed": True
+                    })
+                    earned = completed_count >= target
+                
+                # Viral/Likes achievements
+                elif achievement_type == "viral_image":
+                    # Check if user has any image with at least target likes
+                    max_likes = await self.get_user_stat(user_id, "max_likes_on_image")
+                    earned = max_likes >= target
+                elif achievement_type == "total_likes":
+                    total_likes = await self.get_user_stat(user_id, "total_likes_received")
+                    earned = total_likes >= target
+                
+                # Community achievements
+                elif achievement_type == "likes_given":
+                    likes_given = await self.get_user_stat(user_id, "likes_given")
+                    earned = likes_given >= target
+                elif achievement_type == "diverse_users":
+                    unique_users = await self.get_user_stat(user_id, "unique_users_reacted_to")
+                    earned = unique_users >= target
+                
+                # Special achievements
+                elif achievement_type == "early_posts":
+                    early_posts = await self.get_user_stat(user_id, "early_morning_posts")
+                    earned = early_posts >= target
+                elif achievement_type == "late_posts":
+                    late_posts = await self.get_user_stat(user_id, "late_night_posts")
+                    earned = late_posts >= target
+                elif achievement_type == "rapid_posts":
+                    rapid_posts = await self.get_user_stat(user_id, "rapid_post_sessions")
+                    earned = rapid_posts >= target
+                elif achievement_type == "comebacks":
+                    comebacks = await self.get_user_stat(user_id, "comeback_count")
+                    earned = comebacks >= target
+                elif achievement_type == "perfect_day":
+                    perfect_days = await self.get_user_stat(user_id, "perfect_days")
+                    earned = perfect_days >= target
+                elif achievement_type == "quest_points":
+                    total_points = await self.get_user_total_quest_points(user_id)
+                    earned = total_points >= target
+                elif achievement_type == "bookmarks":
+                    bookmark_count = await self.get_user_stat(user_id, "bookmarks_created")
+                    earned = bookmark_count >= target
+                elif achievement_type == "competition_win":
+                    # Weekly/Monthly/Yearly winner achievements
+                    # These will be awarded manually by the competition system
+                    earned = False
                 
                 if earned:
                     # Award achievement

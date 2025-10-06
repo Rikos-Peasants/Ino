@@ -189,7 +189,8 @@ class RikoBot(commands.Bot):
             logger.info("Started scheduled tasks for best image posting")
             logger.info("Best images will be posted back to their original channels")
         
-
+        # Check and award achievements for all users on startup
+        await self.check_all_achievements_on_startup()
         
         # Start status cycling
         self.cycle_status.start()
@@ -278,6 +279,63 @@ class RikoBot(commands.Bot):
     async def before_cycle_status(self):
         """Wait for bot to be ready before starting status cycling"""
         await self.wait_until_ready()
+    
+    async def check_all_achievements_on_startup(self):
+        """Check and award achievements for all users on bot startup"""
+        try:
+            logger.info("🏆 Starting achievement check for all users...")
+            
+            # Check if quest manager is available
+            if not self.events_controller or not self.events_controller.quest_manager:
+                logger.warning("Quest manager not available, skipping achievement check")
+                return
+            
+            # Check if leaderboard manager is available
+            if not self.leaderboard_manager:
+                logger.warning("Leaderboard manager not available, skipping achievement check")
+                return
+            
+            quest_manager = self.events_controller.quest_manager
+            
+            # Get all users who have posted images (they're in the leaderboard)
+            from models.mongo_leaderboard_manager import MongoLeaderboardManager
+            if isinstance(self.leaderboard_manager, MongoLeaderboardManager):
+                # Get all users from the leaderboard
+                all_users = self.leaderboard_manager.collection.find({})
+                
+                total_users = 0
+                total_achievements = 0
+                
+                for user_doc in all_users:
+                    user_id = int(user_doc["user_id"])
+                    total_users += 1
+                    
+                    try:
+                        # Check achievements for this user
+                        new_achievements = await quest_manager.check_achievements(
+                            user_id=user_id,
+                            leaderboard_manager=self.leaderboard_manager
+                        )
+                        
+                        if new_achievements:
+                            total_achievements += len(new_achievements)
+                            user_name = user_doc.get("user_name", f"User {user_id}")
+                            logger.info(f"   ✅ Awarded {len(new_achievements)} achievement(s) to {user_name}")
+                            
+                            # Log each achievement
+                            for achievement in new_achievements:
+                                logger.info(f"      {achievement.get('icon', '🏆')} {achievement['name']} (+{achievement['reward_points']} pts)")
+                        
+                    except Exception as e:
+                        logger.error(f"   ❌ Error checking achievements for user {user_id}: {e}")
+                        continue
+                
+                logger.info(f"🏆 Achievement check complete: Checked {total_users} users, awarded {total_achievements} achievements")
+            else:
+                logger.warning("MongoDB leaderboard manager not in use, skipping achievement check")
+        
+        except Exception as e:
+            logger.error(f"Error during achievement check on startup: {e}")
 
     async def close(self):
         """Clean shutdown"""
