@@ -4210,11 +4210,10 @@ class CommandsController:
                 # Get InoRep if available
                 inorep_score = 0
                 if hasattr(leaderboard_manager, 'inorep_manager') and leaderboard_manager.inorep_manager:
-                    inorep_data = await leaderboard_manager.inorep_manager.get_rep(
+                    inorep_score = await leaderboard_manager.inorep_manager.get_user_rep(
                         str(target_user.id),
                         str(interaction.guild.id)
                     )
-                    inorep_score = inorep_data.get('total_rep', 0) if inorep_data else 0
                 
                 # Create profile embed
                 embed = EmbedViews.profile_overview_embed(
