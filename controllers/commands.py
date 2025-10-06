@@ -433,10 +433,14 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
         
-        @self.bot.hybrid_command(name="leaderboard", description="Show the image upvote leaderboard")
+        @self.bot.hybrid_command(name="leaderboard", description="Show all leaderboards (Images, Quest Points, InoRep)")
         @public_command
-        async def leaderboard_command(ctx):
-            """Show leaderboard of users by image upvotes"""
+        async def leaderboard_command(ctx, type: Optional[str] = None):
+            """Show combined leaderboard with interactive buttons
+            
+            Args:
+                type: Optional leaderboard type - 'images', 'points', or 'inorep' (default: images)
+            """
             try:
                 # Check if this is a slash command (has defer) or text command
                 if hasattr(ctx, 'defer'):
@@ -451,7 +455,7 @@ class CommandsController:
                         await ctx.send(error_msg)
                     return
                 
-                # Get leaderboard data from JSON file (fast!)
+                # Get leaderboard manager
                 leaderboard_manager = self.get_leaderboard_manager()
                 if not leaderboard_manager:
                     error_msg = "Leaderboard manager is not available."
@@ -461,28 +465,65 @@ class CommandsController:
                         await ctx.send(error_msg)
                     return
                 
-                leaderboard_data = leaderboard_manager.get_leaderboard(limit=10)
+                # Get quest manager
+                events_controller = self.get_events_controller()
+                quest_manager = events_controller.quest_manager if events_controller else None
                 
-                # Create and send embed
-                embed = EmbedViews.leaderboard_embed(leaderboard_data, "all time")
+                # Normalize type parameter
+                if type:
+                    type = type.lower()
+                    if type not in ['images', 'points', 'inorep']:
+                        error_msg = "Invalid type. Use 'images', 'points', or 'inorep'."
+                        await ctx.send(error_msg, ephemeral=True)
+                        return
+                else:
+                    type = 'images'  # Default
                 
-                # Add stats summary
-                stats = leaderboard_manager.get_stats_summary()
-                embed.add_field(
-                    name="📊 Server Stats",
-                    value=f"**Total Users:** {stats['total_users']}\n"
-                          f"**Total Images:** {stats['total_images']}\n"
-                          f"**Average Score:** {stats['average_score']}",
-                    inline=False
-                )
+                # Generate appropriate leaderboard based on type
+                if type == 'points':
+                    if not quest_manager:
+                        error_msg = "Quest system is not available."
+                        await ctx.send(error_msg, ephemeral=True)
+                        return
+                    leaderboard = await quest_manager.get_quest_points_leaderboard(limit=10, guild=guild)
+                    embed = EmbedViews.quest_points_leaderboard_embed(leaderboard, ctx.author.id)
+                    
+                elif type == 'inorep':
+                    if not leaderboard_manager.inorep_manager:
+                        error_msg = "InoRep system is not available."
+                        await ctx.send(error_msg, ephemeral=True)
+                        return
+                    leaderboard_data = await leaderboard_manager.inorep_manager.get_leaderboard(
+                        str(guild.id), limit=10, reverse=False
+                    )
+                    embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=False)
+                    
+                else:  # images (default)
+                    leaderboard_data = leaderboard_manager.get_leaderboard(limit=10)
+                    embed = EmbedViews.leaderboard_embed(leaderboard_data, "all time")
+                    
+                    # Add stats summary for images
+                    stats = leaderboard_manager.get_stats_summary()
+                    embed.add_field(
+                        name="📊 Server Stats",
+                        value=f"**Total Users:** {stats['total_users']}\n"
+                              f"**Total Images:** {stats['total_images']}\n"
+                              f"**Average Score:** {stats['average_score']}",
+                        inline=False
+                    )
+                
+                # Create interactive view with buttons
+                from views.combined_leaderboard_view import CombinedLeaderboardView
+                view = CombinedLeaderboardView(ctx, leaderboard_manager, quest_manager, initial_type=type)
                 
                 # Send response based on command type
                 if hasattr(ctx, 'followup'):
-                    await ctx.followup.send(embed=embed)
+                    await ctx.followup.send(embed=embed, view=view)
                 else:
-                    await ctx.send(embed=embed)
+                    await ctx.send(embed=embed, view=view)
                 
             except Exception as e:
+                logger.error(f"Error in leaderboard command: {e}")
                 error_embed = EmbedViews.error_embed(f"Failed to generate leaderboard: {str(e)}")
                 if hasattr(ctx, 'followup'):
                     await ctx.followup.send(embed=error_embed, ephemeral=True)
@@ -1241,47 +1282,6 @@ class CommandsController:
                 logger.error(f"Error in achievements command: {e}")
                 error_embed = EmbedViews.error_embed(f"Failed to get achievements: {str(e)}")
                 await ctx.send(embed=error_embed, ephemeral=True)
-        
-        @self.bot.hybrid_command(name="pointsleaderboard", description="View the quest points leaderboard")
-        @public_command
-        async def points_leaderboard_command(ctx):
-            """View the quest points leaderboard"""
-            try:
-                # Defer immediately to prevent timeout
-                if hasattr(ctx, 'interaction') and ctx.interaction:
-                    await ctx.defer()
-                
-                # Check if quest manager is available
-                events_controller = self.get_events_controller()
-                if not events_controller or not events_controller.quest_manager:
-                    error_embed = EmbedViews.error_embed("Quest system is not available at the moment.")
-                    if hasattr(ctx, 'interaction') and ctx.interaction:
-                        await ctx.send(embed=error_embed, ephemeral=True)
-                    else:
-                        await ctx.send(embed=error_embed)
-                    return
-                
-                quest_manager = events_controller.quest_manager
-                
-                # Get quest points leaderboard (pass guild for username resolution)
-                leaderboard = await quest_manager.get_quest_points_leaderboard(limit=10, guild=ctx.guild)
-                
-                if not leaderboard:
-                    error_embed = EmbedViews.error_embed("No quest data available yet. Complete quests to appear on the leaderboard!")
-                    await ctx.send(embed=error_embed)
-                    return
-                
-                # Create and send embed
-                embed = EmbedViews.quest_points_leaderboard_embed(leaderboard, ctx.author.id)
-                await ctx.send(embed=embed)
-                
-            except Exception as e:
-                logger.error(f"Error in points leaderboard command: {e}")
-                error_embed = EmbedViews.error_embed(f"Failed to get points leaderboard: {str(e)}")
-                try:
-                    await ctx.send(embed=error_embed, ephemeral=True)
-                except:
-                    await ctx.send(embed=error_embed)
         
         @self.bot.hybrid_command(name="streaks", description="View your streaks and consistency stats")
         @public_command
@@ -3962,7 +3962,6 @@ class CommandsController:
             self.inorep_warn_cmd = inorep_cmds['inorep_warn_cmd']
             self.inorep_add_cmd = inorep_cmds['inorep_add_cmd']
             self.inorep_remove_cmd = inorep_cmds['inorep_remove_cmd']
-            self.inorep_leaderboard_cmd = inorep_cmds['inorep_leaderboard_cmd']
     
     async def _execute_purge(self, ctx, filter_func, amount: int, filter_type: str):
         """Execute purge with the given filter"""
@@ -4203,38 +4202,12 @@ class CommandsController:
                 logger.error(f"Error removing rep: {e}")
                 await ctx.send(f"❌ Failed to remove rep: {str(e)}", ephemeral=True)
         
-        @inorep_group.command(name='leaderboard', description='View the InoRep leaderboard')
-        @public_command
-        async def inorep_leaderboard_cmd(ctx, worst: bool = False):
-            """View the InoRep leaderboard (best or worst)"""
-            try:
-                leaderboard_manager = self.get_leaderboard_manager()
-                if not leaderboard_manager or not leaderboard_manager.inorep_manager:
-                    await ctx.send("❌ InoRep system is not available.", ephemeral=True)
-                    return
-                
-                # Get leaderboard data
-                leaderboard_data = await leaderboard_manager.inorep_manager.get_leaderboard(
-                    str(ctx.guild.id),
-                    limit=10,
-                    reverse=worst
-                )
-                
-                # Create embed
-                embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=worst)
-                await ctx.send(embed=embed)
-                
-            except Exception as e:
-                logger.error(f"Error getting InoRep leaderboard: {e}")
-                await ctx.send(f"❌ Failed to get leaderboard: {str(e)}", ephemeral=True)
-        
         # Return command references for storage
         return {
             'inorep_group': inorep_group,
             'inorep_check_cmd': inorep_check_cmd,
             'inorep_warn_cmd': inorep_warn_cmd,
             'inorep_add_cmd': inorep_add_cmd,
-            'inorep_remove_cmd': inorep_remove_cmd,
-            'inorep_leaderboard_cmd': inorep_leaderboard_cmd
+            'inorep_remove_cmd': inorep_remove_cmd
         }
                 

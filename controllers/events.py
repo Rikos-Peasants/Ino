@@ -1092,6 +1092,7 @@ Here are some useful resources to help you:
             
             # Update posting streak
             post_streak = await self.quest_manager.update_post_streak(user.id)
+            logger.info(f"{user.display_name}'s post streak updated: {post_streak} days")
             
             # Send notifications for completed quests
             for quest in completed_quests:
@@ -1178,17 +1179,25 @@ Here are some useful resources to help you:
             
             # Track "support_new_users" quest - like images from different users
             # We need to track which unique users they've liked today
-            await self.quest_manager.track_unique_user_like(
-                user_id=user.id,
-                liked_user_id=message.author.id
-            )
+            try:
+                await self.quest_manager.track_unique_user_like(
+                    user_id=user.id,
+                    liked_user_id=message.author.id
+                )
+                logger.debug(f"Tracked unique user like: {user.display_name} liked image from user {message.author.id}")
+            except Exception as e:
+                logger.error(f"Failed to track unique user like: {e}")
             
             # Track "explore_channels" quest - react in both image channels
             if message.channel.id in Config.IMAGE_REACTION_CHANNELS:
-                await self.quest_manager.track_channel_exploration(
-                    user_id=user.id,
-                    channel_id=message.channel.id
-            )
+                try:
+                    await self.quest_manager.track_channel_exploration(
+                        user_id=user.id,
+                        channel_id=message.channel.id
+                    )
+                    logger.debug(f"Tracked channel exploration: {user.display_name} reacted in channel {message.channel.id}")
+                except Exception as e:
+                    logger.error(f"Failed to track channel exploration: {e}")
             
             # Send notifications for completed quests
             for quest in completed_quests:
@@ -1742,7 +1751,7 @@ Here are some useful resources to help you:
                 inorep_manager = self.bot.leaderboard_manager.inorep_manager
                 
                 # Reward for posting image
-                reward = +1
+                reward = +10
                 
                 await inorep_manager.add_rep(
                     user_id=str(message.author.id),
@@ -1760,7 +1769,7 @@ Here are some useful resources to help you:
             logger.error(f"Error applying image post InoRep reward: {e}") 
     
     async def _apply_text_spam_inorep_penalty(self, message: discord.Message):
-        """Penalize users for sending text messages in image-only channels (-10 per message)"""
+        """Penalize users for sending text messages in image-only channels (-5 per message)"""
         try:
             # Check if InoRep manager is available
             if not hasattr(self.bot.leaderboard_manager, 'inorep_manager') or not self.bot.leaderboard_manager.inorep_manager:
@@ -1780,10 +1789,35 @@ Here are some useful resources to help you:
             if message.content.startswith(getattr(Config, 'COMMAND_PREFIX', 'R!')) or message.content.startswith('/'):
                 return
             
+            # Don't penalize replies to messages with images (unless they insult Ino)
+            if message.reference and message.reference.message_id:
+                try:
+                    # Fetch the referenced message
+                    referenced_msg = await message.channel.fetch_message(message.reference.message_id)
+                    
+                    # Check if the referenced message has images
+                    has_image = False
+                    for attachment in referenced_msg.attachments:
+                        if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                            has_image = True
+                            break
+                    
+                    if not has_image:
+                        for embed in referenced_msg.embeds:
+                            if embed.image or embed.thumbnail:
+                                has_image = True
+                                break
+                    
+                    # If replying to an image, don't penalize (unless insulting Ino, which is handled separately)
+                    if has_image:
+                        return
+                except:
+                    pass  # If we can't fetch the message, continue with penalty
+            
             inorep_manager = self.bot.leaderboard_manager.inorep_manager
             
-            # HEAVY penalty for text spamming in image channel
-            penalty = -10
+            # Penalty for text spamming in image channel
+            penalty = -5
             
             await inorep_manager.add_rep(
                 user_id=str(message.author.id),
