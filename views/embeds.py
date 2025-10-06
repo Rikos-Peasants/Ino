@@ -1672,4 +1672,208 @@ class PurgeConfirmationView(discord.ui.View):
             for item in self.children:
                 item.disabled = True
         except:
-            pass 
+            pass
+
+
+# Add profile embed methods to EmbedViews class
+def add_profile_embeds():
+    """Add profile-related embed methods to EmbedViews class"""
+    
+    @staticmethod
+    def profile_overview_embed(user, user_stats, quest_points, completed_quests, achievements_count, quest_streak, post_streak, inorep_score):
+        """Create a comprehensive profile overview embed"""
+        embed = discord.Embed(
+            title=f"👤 {user.display_name}'s Profile",
+            color=0x3498db,
+            timestamp=datetime.utcnow()
+        )
+        
+        embed.set_thumbnail(url=user.display_avatar.url)
+        
+        # Image Stats
+        if user_stats:
+            avg_score = user_stats['total_score'] / user_stats['image_count'] if user_stats.get('image_count', 0) > 0 else 0
+            embed.add_field(
+                name="📸 Image Stats",
+                value=(
+                    f"**Images Posted:** {user_stats.get('image_count', 0)}\n"
+                    f"**Total Score:** {user_stats.get('total_score', 0)}\n"
+                    f"**Average Score:** {avg_score:.1f}"
+                ),
+                inline=True
+            )
+        else:
+            embed.add_field(
+                name="📸 Image Stats",
+                value="No images posted yet",
+                inline=True
+            )
+        
+        # Quest & Achievement Stats
+        embed.add_field(
+            name="🎯 Quest Progress",
+            value=(
+                f"**Quest Points:** {quest_points}\n"
+                f"**Quests Completed:** {completed_quests}\n"
+                f"**Achievements:** {achievements_count} 🏆"
+            ),
+            inline=True
+        )
+        
+        # Streaks
+        embed.add_field(
+            name="🔥 Streaks",
+            value=(
+                f"**Quest Streak:** {quest_streak} days\n"
+                f"**Post Streak:** {post_streak} days"
+            ),
+            inline=True
+        )
+        
+        # InoRep
+        status_emoji = "💖" if inorep_score > 50 else "😊" if inorep_score > 0 else "😐" if inorep_score == 0 else "😰"
+        embed.add_field(
+            name=f"{status_emoji} InoRep Score",
+            value=f"**{inorep_score}** reputation points",
+            inline=False
+        )
+        
+        embed.set_footer(text=f"User ID: {user.id}")
+        
+        return embed
+    
+    @staticmethod
+    def bookmarks_embed(bookmarks, user_name):
+        """Create an embed for user bookmarks"""
+        embed = discord.Embed(
+            title=f"📚 {user_name}'s Bookmarks",
+            description=f"You have **{len(bookmarks)}** bookmarked images",
+            color=0xf39c12,
+            timestamp=datetime.utcnow()
+        )
+        
+        for idx, bookmark in enumerate(bookmarks[:10], 1):
+            message_url = f"https://discord.com/channels/{bookmark.get('guild_id', '@me')}/{bookmark.get('channel_id', '0')}/{bookmark.get('message_id', '0')}"
+            bookmarked_at = bookmark.get('bookmarked_at', datetime.utcnow())
+            time_str = bookmarked_at.strftime("%Y-%m-%d") if isinstance(bookmarked_at, datetime) else "Unknown"
+            
+            embed.add_field(
+                name=f"{idx}. Bookmarked on {time_str}",
+                value=f"[Jump to Image]({message_url})",
+                inline=False
+            )
+        
+        if len(bookmarks) > 10:
+            embed.set_footer(text=f"Showing 10 of {len(bookmarks)} bookmarks")
+        else:
+            embed.set_footer(text="🔖 Use the bookmark button on images to save them!")
+        
+        return embed
+    
+    @staticmethod
+    def collection_embed(user, user_stats, recent_images):
+        """Create an embed for user's image collection"""
+        embed = discord.Embed(
+            title=f"🎨 {user.display_name}'s Collection",
+            color=0x9b59b6,
+            timestamp=datetime.utcnow()
+        )
+        
+        embed.set_thumbnail(url=user.display_avatar.url)
+        
+        # Collection stats
+        if user_stats:
+            avg_score = user_stats['total_score'] / user_stats['image_count'] if user_stats.get('image_count', 0) > 0 else 0
+            embed.add_field(
+                name="📊 Collection Stats",
+                value=(
+                    f"**Total Images:** {user_stats.get('image_count', 0)}\n"
+                    f"**Total Score:** {user_stats.get('total_score', 0)} ⭐\n"
+                    f"**Average Score:** {avg_score:.1f} ⭐\n"
+                    f"**Best Score:** {user_stats.get('best_score', 0)} 🏆"
+                ),
+                inline=False
+            )
+        
+        # Recent images
+        if recent_images:
+            embed.add_field(
+                name="📷 Recent Images",
+                value=f"Your last {len(recent_images)} posted images",
+                inline=False
+            )
+            
+            for idx, img in enumerate(recent_images[:5], 1):
+                message_url = f"https://discord.com/channels/{img.get('guild_id', '@me')}/{img.get('channel_id', '0')}/{img.get('message_id', '0')}"
+                score = img.get('score', 0)
+                embed.add_field(
+                    name=f"{idx}. Score: {score} ⭐",
+                    value=f"[View Image]({message_url})",
+                    inline=True
+                )
+        
+        embed.set_footer(text="Keep posting great images! 📸")
+        
+        return embed
+    
+    @staticmethod
+    def detailed_stats_embed(user, user_stats, quest_data):
+        """Create a detailed statistics embed"""
+        embed = discord.Embed(
+            title=f"📊 {user.display_name}'s Detailed Stats",
+            color=0x2ecc71,
+            timestamp=datetime.utcnow()
+        )
+        
+        embed.set_thumbnail(url=user.display_avatar.url)
+        
+        # Image Statistics
+        if user_stats:
+            avg_score = user_stats['total_score'] / user_stats['image_count'] if user_stats.get('image_count', 0) > 0 else 0
+            embed.add_field(
+                name="📸 Image Statistics",
+                value=(
+                    f"**Total Images:** {user_stats.get('image_count', 0)}\n"
+                    f"**Total Score:** {user_stats.get('total_score', 0)}\n"
+                    f"**Average Score:** {avg_score:.1f}\n"
+                    f"**Best Score:** {user_stats.get('best_score', 0)}"
+                ),
+                inline=True
+            )
+        
+        # Quest Statistics
+        if quest_data:
+            embed.add_field(
+                name="🎯 Quest Statistics",
+                value=(
+                    f"**Total Points:** {quest_data.get('total_points', 0)}\n"
+                    f"**Quests Completed:** {quest_data.get('total_quests', 0)}\n"
+                    f"**Achievements:** {quest_data.get('achievements', 0)}\n"
+                    f"**Ratings Given:** {quest_data.get('ratings_given', 0)}"
+                ),
+                inline=True
+            )
+            
+            # Streaks
+            embed.add_field(
+                name="🔥 Consistency",
+                value=(
+                    f"**Quest Streak:** {quest_data.get('quest_streak', 0)} days\n"
+                    f"**Post Streak:** {quest_data.get('post_streak', 0)} days"
+                ),
+                inline=True
+            )
+        
+        embed.set_footer(text=f"Keep up the great work! • User ID: {user.id}")
+        
+        return embed
+    
+    # Add methods to EmbedViews class
+    EmbedViews.profile_overview_embed = profile_overview_embed
+    EmbedViews.bookmarks_embed = bookmarks_embed
+    EmbedViews.collection_embed = collection_embed
+    EmbedViews.detailed_stats_embed = detailed_stats_embed
+
+
+# Call the function to add profile embeds
+add_profile_embeds() 

@@ -2365,7 +2365,11 @@ class QuestManager:
     async def get_user_stat(self, user_id: int, stat_type: str) -> int:
         """Get a specific user statistic"""
         try:
-            doc = self.user_stats_collection.find_one({"user_id": str(user_id)})
+            # Project only the field we need for efficiency
+            doc = self.user_stats_collection.find_one(
+                {"user_id": str(user_id)},
+                {stat_type: 1, "_id": 0}
+            )
             if doc:
                 return doc.get(stat_type, 0)
             return 0

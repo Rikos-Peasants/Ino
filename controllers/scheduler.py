@@ -36,13 +36,24 @@ class SchedulerController:
         """Start all scheduled tasks"""
         logger.info("Starting scheduled tasks...")
         
-        # Start all tasks
-        self.weekly_best_image.start()
-        self.monthly_best_image.start() 
-        self.yearly_best_image.start()
-        self.check_expired_events.start()
-        self.check_streaks.start()
-        self.check_youtube_videos.start()  # Use self.check_youtube_videos
+        # Start all tasks (only if not already running)
+        if not self.weekly_best_image.is_running():
+            self.weekly_best_image.start()
+        
+        if not self.monthly_best_image.is_running():
+            self.monthly_best_image.start()
+        
+        if not self.yearly_best_image.is_running():
+            self.yearly_best_image.start()
+        
+        if not self.check_expired_events.is_running():
+            self.check_expired_events.start()
+        
+        if not self.check_streaks.is_running():
+            self.check_streaks.start()
+        
+        if not self.check_youtube_videos.is_running():
+            self.check_youtube_videos.start()
     
     def stop_tasks(self):
         """Stop all scheduled tasks"""

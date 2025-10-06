@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 from datetime import datetime, timedelta
 import logging
 import json
@@ -1309,6 +1310,240 @@ class CommandsController:
                 logger.error(f"Error in streaks command: {e}")
                 error_embed = EmbedViews.error_embed(f"Failed to get streaks: {str(e)}")
                 await ctx.send(embed=error_embed, ephemeral=True)
+        
+        # Profile command group
+        profile_group = app_commands.Group(name="profile", description="View your profile and stats")
+        self.bot.tree.add_command(profile_group)
+        
+        @profile_group.command(name="overview", description="View your complete profile overview")
+        async def profile_overview(interaction: discord.Interaction, user: Optional[discord.Member] = None):
+            """View complete profile overview"""
+            try:
+                await interaction.response.defer()
+                
+                target_user = user or interaction.user
+                
+                # Get leaderboard manager
+                leaderboard_manager = self.get_leaderboard_manager()
+                events_controller = self.get_events_controller()
+                quest_manager = events_controller.quest_manager if events_controller else None
+                
+                if not leaderboard_manager:
+                    await interaction.followup.send("Profile system is not available.", ephemeral=True)
+                    return
+                
+                # Get user stats
+                user_stats = leaderboard_manager.get_user_stats(target_user.id)
+                
+                # Get quest data if available
+                quest_points = 0
+                completed_quests = 0
+                achievements_count = 0
+                quest_streak = 0
+                post_streak = 0
+                
+                if quest_manager:
+                    quest_points = await quest_manager.get_user_total_quest_points(target_user.id)
+                    completed_quests = quest_manager.user_quests_collection.count_documents({
+                        "user_id": str(target_user.id),
+                        "completed": True
+                    })
+                    achievements_count = quest_manager.user_achievements_collection.count_documents({
+                        "user_id": str(target_user.id)
+                    })
+                    quest_streak = await quest_manager.get_user_streak(target_user.id, "quest_streak")
+                    post_streak = await quest_manager.get_user_streak(target_user.id, "post_streak")
+                
+                # Get InoRep if available
+                inorep_score = 0
+                if hasattr(leaderboard_manager, 'inorep_manager') and leaderboard_manager.inorep_manager:
+                    inorep_data = await leaderboard_manager.inorep_manager.get_rep(
+                        str(target_user.id),
+                        str(interaction.guild.id)
+                    )
+                    inorep_score = inorep_data.get('total_rep', 0) if inorep_data else 0
+                
+                # Create profile embed
+                embed = EmbedViews.profile_overview_embed(
+                    user=target_user,
+                    user_stats=user_stats,
+                    quest_points=quest_points,
+                    completed_quests=completed_quests,
+                    achievements_count=achievements_count,
+                    quest_streak=quest_streak,
+                    post_streak=post_streak,
+                    inorep_score=inorep_score
+                )
+                
+                await interaction.followup.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in profile overview command: {e}")
+                await interaction.followup.send(f"Failed to get profile: {str(e)}", ephemeral=True)
+        
+        @profile_group.command(name="bookmarks", description="View your bookmarked images")
+        async def profile_bookmarks(interaction: discord.Interaction):
+            """View your bookmarked images (private)"""
+            try:
+                await interaction.response.defer(ephemeral=True)
+                
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager:
+                    await interaction.followup.send("Bookmark system is not available.", ephemeral=True)
+                    return
+                
+                # Get user's bookmarks
+                bookmarks = leaderboard_manager.get_user_bookmarks(interaction.user.id, limit=25)
+                
+                if not bookmarks:
+                    await interaction.followup.send("📚 You don't have any bookmarks yet!\n\nUse the bookmark button (🔖) on images to save them.", ephemeral=True)
+                    return
+                
+                # Create bookmark embed
+                embed = EmbedViews.bookmarks_embed(bookmarks, interaction.user.display_name)
+                
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                
+            except Exception as e:
+                logger.error(f"Error in profile bookmarks command: {e}")
+                await interaction.followup.send(f"Failed to get bookmarks: {str(e)}", ephemeral=True)
+        
+        @profile_group.command(name="collection", description="View your image collection stats")
+        async def profile_collection(interaction: discord.Interaction):
+            """View your image collection (private)"""
+            try:
+                await interaction.response.defer(ephemeral=True)
+                
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager:
+                    await interaction.followup.send("Collection system is not available.", ephemeral=True)
+                    return
+                
+                # Get user's image stats
+                user_stats = leaderboard_manager.get_user_stats(interaction.user.id)
+                
+                if not user_stats or user_stats.get('image_count', 0) == 0:
+                    await interaction.followup.send("📸 You haven't posted any images yet!", ephemeral=True)
+                    return
+                
+                # Get recent images
+                recent_images = leaderboard_manager.get_user_recent_images(interaction.user.id, limit=10)
+                
+                # Create collection embed
+                embed = EmbedViews.collection_embed(
+                    user=interaction.user,
+                    user_stats=user_stats,
+                    recent_images=recent_images
+                )
+                
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                
+            except Exception as e:
+                logger.error(f"Error in profile collection command: {e}")
+                await interaction.followup.send(f"Failed to get collection: {str(e)}", ephemeral=True)
+        
+        @profile_group.command(name="stats", description="View your detailed statistics")
+        async def profile_stats(interaction: discord.Interaction, user: Optional[discord.Member] = None):
+            """View detailed statistics"""
+            try:
+                await interaction.response.defer()
+                
+                target_user = user or interaction.user
+                
+                leaderboard_manager = self.get_leaderboard_manager()
+                events_controller = self.get_events_controller()
+                quest_manager = events_controller.quest_manager if events_controller else None
+                
+                if not leaderboard_manager:
+                    await interaction.followup.send("Stats system is not available.", ephemeral=True)
+                    return
+                
+                # Get comprehensive stats
+                user_stats = leaderboard_manager.get_user_stats(target_user.id)
+                
+                # Get quest stats
+                quest_data = {}
+                if quest_manager:
+                    quest_data = {
+                        'total_quests': quest_manager.user_quests_collection.count_documents({
+                            "user_id": str(target_user.id),
+                            "completed": True
+                        }),
+                        'total_points': await quest_manager.get_user_total_quest_points(target_user.id),
+                        'achievements': quest_manager.user_achievements_collection.count_documents({
+                            "user_id": str(target_user.id)
+                        }),
+                        'quest_streak': await quest_manager.get_user_streak(target_user.id, "quest_streak"),
+                        'post_streak': await quest_manager.get_user_streak(target_user.id, "post_streak"),
+                        'ratings_given': await quest_manager.get_user_stat(target_user.id, "ratings_given"),
+                    }
+                
+                # Create stats embed
+                embed = EmbedViews.detailed_stats_embed(
+                    user=target_user,
+                    user_stats=user_stats,
+                    quest_data=quest_data
+                )
+                
+                await interaction.followup.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in profile stats command: {e}")
+                await interaction.followup.send(f"Failed to get stats: {str(e)}", ephemeral=True)
+        
+        @profile_group.command(name="achievements", description="View your achievements")
+        async def profile_achievements(interaction: discord.Interaction, user: Optional[discord.Member] = None):
+            """View achievements"""
+            try:
+                await interaction.response.defer()
+                
+                target_user = user or interaction.user
+                
+                events_controller = self.get_events_controller()
+                if not events_controller or not events_controller.quest_manager:
+                    await interaction.followup.send("Achievement system is not available.", ephemeral=True)
+                    return
+                
+                quest_manager = events_controller.quest_manager
+                
+                # Get user achievements
+                achievements = await quest_manager.get_user_achievements(target_user.id)
+                
+                # Create embed
+                embed = EmbedViews.achievements_embed(achievements, target_user.display_name)
+                
+                await interaction.followup.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in profile achievements command: {e}")
+                await interaction.followup.send(f"Failed to get achievements: {str(e)}", ephemeral=True)
+        
+        @profile_group.command(name="streaks", description="View your streaks")
+        async def profile_streaks(interaction: discord.Interaction, user: Optional[discord.Member] = None):
+            """View streaks"""
+            try:
+                await interaction.response.defer()
+                
+                target_user = user or interaction.user
+                
+                events_controller = self.get_events_controller()
+                if not events_controller or not events_controller.quest_manager:
+                    await interaction.followup.send("Streak system is not available.", ephemeral=True)
+                    return
+                
+                quest_manager = events_controller.quest_manager
+                
+                # Get user streaks
+                streaks = await quest_manager.get_user_streaks(target_user.id)
+                
+                # Create embed
+                embed = EmbedViews.streaks_embed(streaks, target_user.display_name)
+                
+                await interaction.followup.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in profile streaks command: {e}")
+                await interaction.followup.send(f"Failed to get streaks: {str(e)}", ephemeral=True)
         
         @self.bot.hybrid_command(name="events", description="View active image contest events")
         @public_command

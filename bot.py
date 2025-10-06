@@ -192,9 +192,10 @@ class RikoBot(commands.Bot):
         # Check and award achievements for all users on startup
         await self.check_all_achievements_on_startup()
         
-        # Start status cycling
-        self.cycle_status.start()
-        logger.info("Status cycling started")
+        # Start status cycling (only if not already running)
+        if not self.cycle_status.is_running():
+            self.cycle_status.start()
+            logger.info("Status cycling started")
         
         logger.info("🚀 Bot is fully ready and operational!")
     
@@ -281,7 +282,7 @@ class RikoBot(commands.Bot):
         await self.wait_until_ready()
     
     async def check_all_achievements_on_startup(self):
-        """Check and award achievements for all users on bot startup"""
+        """Check and award achievements for all users on bot startup (in chunks to avoid blocking)"""
         try:
             logger.info("🏆 Starting achievement check for all users...")
             
@@ -300,35 +301,55 @@ class RikoBot(commands.Bot):
             # Get all users who have posted images (they're in the leaderboard)
             from models.mongo_leaderboard_manager import MongoLeaderboardManager
             if isinstance(self.leaderboard_manager, MongoLeaderboardManager):
-                # Get all users from the leaderboard
-                all_users = self.leaderboard_manager.collection.find({})
+                # Get all user IDs first (lightweight query)
+                all_users = list(self.leaderboard_manager.collection.find({}, {"user_id": 1, "user_name": 1}))
+                total_user_count = len(all_users)
+                
+                logger.info(f"   Found {total_user_count} users to check")
                 
                 total_users = 0
                 total_achievements = 0
                 
-                for user_doc in all_users:
-                    user_id = int(user_doc["user_id"])
-                    total_users += 1
+                # Process users in chunks of 10 to avoid blocking
+                CHUNK_SIZE = 10
+                
+                for i in range(0, len(all_users), CHUNK_SIZE):
+                    chunk = all_users[i:i + CHUNK_SIZE]
                     
-                    try:
-                        # Check achievements for this user
-                        new_achievements = await quest_manager.check_achievements(
-                            user_id=user_id,
-                            leaderboard_manager=self.leaderboard_manager
-                        )
+                    for user_doc in chunk:
+                        user_id = int(user_doc["user_id"])
+                        total_users += 1
                         
-                        if new_achievements:
-                            total_achievements += len(new_achievements)
-                            user_name = user_doc.get("user_name", f"User {user_id}")
-                            logger.info(f"   ✅ Awarded {len(new_achievements)} achievement(s) to {user_name}")
+                        try:
+                            # Check achievements for this user
+                            new_achievements = await quest_manager.check_achievements(
+                                user_id=user_id,
+                                leaderboard_manager=self.leaderboard_manager
+                            )
                             
-                            # Log each achievement
-                            for achievement in new_achievements:
-                                logger.info(f"      {achievement.get('icon', '🏆')} {achievement['name']} (+{achievement['reward_points']} pts)")
-                        
-                    except Exception as e:
-                        logger.error(f"   ❌ Error checking achievements for user {user_id}: {e}")
-                        continue
+                            if new_achievements:
+                                total_achievements += len(new_achievements)
+                                user_name = user_doc.get("user_name", f"User {user_id}")
+                                logger.info(f"   ✅ Awarded {len(new_achievements)} achievement(s) to {user_name}")
+                                
+                                # Log each achievement (limit to 3 to reduce spam)
+                                for idx, achievement in enumerate(new_achievements):
+                                    if idx < 3:
+                                        logger.info(f"      {achievement.get('icon', '🏆')} {achievement['name']} (+{achievement['reward_points']} pts)")
+                                    elif idx == 3:
+                                        logger.info(f"      ... and {len(new_achievements) - 3} more")
+                                        break
+                            
+                        except Exception as e:
+                            logger.error(f"   ❌ Error checking achievements for user {user_id}: {e}")
+                            continue
+                    
+                    # Yield control back to the event loop after each chunk
+                    await asyncio.sleep(0.1)
+                    
+                    # Log progress every 50 users
+                    if total_users % 50 == 0:
+                        logger.info(f"   Progress: {total_users}/{total_user_count} users checked...")
                 
                 logger.info(f"🏆 Achievement check complete: Checked {total_users} users, awarded {total_achievements} achievements")
             else:
