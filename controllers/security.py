@@ -215,6 +215,10 @@ class CommandSecurity:
         moderator_rank = await CommandSecurity.get_user_rank(moderator, bot)
         target_rank = await CommandSecurity.get_user_rank(target, bot)
         
+        # Bot owners can modify anyone (including other owners)
+        if moderator_rank == SecurityLevel.OWNER:
+            return True, ""
+        
         # Define rank hierarchy (higher number = higher rank)
         rank_values = {
             SecurityLevel.PUBLIC: 0,
