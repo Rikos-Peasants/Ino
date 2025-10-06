@@ -389,19 +389,55 @@ class MongoLeaderboardManager:
         except Exception as e:
             logger.error(f"Error updating score for {user_name}: {e}")
     
-    def get_leaderboard(self, limit: int = 10) -> List[Tuple[str, int, int, int]]:
-        """Get leaderboard data sorted by total score"""
+    def get_leaderboard(self, limit: int = 10, sort_by: str = "total_score") -> List[Tuple[str, int, int, int]]:
+        """Get leaderboard data sorted by specified criteria
+        
+        Args:
+            limit: Maximum number of entries to return
+            sort_by: Sort criteria - 'total_score', 'avg_score', or 'image_count'
+        """
         try:
-            cursor = self.collection.find({}).sort("total_score", DESCENDING).limit(limit)
-            
-            leaderboard = []
-            for doc in cursor:
-                leaderboard.append((
-                    doc.get("user_name", "Unknown"),
-                    int(doc["user_id"]),
-                    doc.get("total_score", 0),
-                    doc.get("image_count", 0)
-                ))
+            # For avg_score, we need to calculate it and sort in memory
+            if sort_by == "avg_score":
+                # Get all users and calculate average scores
+                cursor = self.collection.find({})
+                users_with_avg = []
+                
+                for doc in cursor:
+                    total_score = doc.get("total_score", 0)
+                    image_count = doc.get("image_count", 0)
+                    avg_score = total_score / image_count if image_count > 0 else 0
+                    
+                    users_with_avg.append({
+                        "user_name": doc.get("user_name", "Unknown"),
+                        "user_id": int(doc["user_id"]),
+                        "total_score": total_score,
+                        "image_count": image_count,
+                        "avg_score": avg_score
+                    })
+                
+                # Sort by average score
+                users_with_avg.sort(key=lambda x: x["avg_score"], reverse=True)
+                
+                # Convert to leaderboard format
+                leaderboard = [
+                    (u["user_name"], u["user_id"], u["total_score"], u["image_count"])
+                    for u in users_with_avg[:limit]
+                ]
+                
+            else:
+                # Direct MongoDB sort for total_score or image_count
+                sort_field = "image_count" if sort_by == "image_count" else "total_score"
+                cursor = self.collection.find({}).sort(sort_field, DESCENDING).limit(limit)
+                
+                leaderboard = []
+                for doc in cursor:
+                    leaderboard.append((
+                        doc.get("user_name", "Unknown"),
+                        int(doc["user_id"]),
+                        doc.get("total_score", 0),
+                        doc.get("image_count", 0)
+                    ))
             
             return leaderboard
             
