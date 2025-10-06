@@ -415,36 +415,64 @@ class EventsController:
         if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
             return
         
-        # Check if message has images
+        # Check if message has images or videos
         has_image = False
         image_url = None
+        is_tenor_gif = False
+        is_video = False
         
-        # Check for attachments (uploaded images)
+        # Check for attachments (uploaded images or videos)
         for attachment in message.attachments:
-            if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+            # Check for video files
+            if any(attachment.filename.lower().endswith(ext) for ext in ['.mp4', '.mov', '.webm', '.avi', '.mkv']):
+                has_image = True
+                is_video = True
+                image_url = attachment.url
+                break
+            # Check for image files (but not GIFs from tenor)
+            elif any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
                 has_image = True
                 image_url = attachment.url
                 break
         
-        # Check for embedded images (links)
+        # Check for embedded images/videos (links)
         if not has_image:
             for embed in message.embeds:
-                if embed.image:
+                # Check if it's a Tenor GIF by looking at the URL
+                embed_url = embed.url or ""
+                if "tenor.com" in embed_url.lower():
+                    is_tenor_gif = True
+                
+                # Check for video embeds
+                if embed.video:
+                    has_image = True
+                    is_video = True
+                    image_url = embed.video.url if hasattr(embed.video, 'url') else str(embed.url)
+                    break
+                elif embed.image:
                     has_image = True
                     image_url = embed.image.url
+                    # Check if the image URL is from Tenor
+                    if "tenor.com" in image_url.lower():
+                        is_tenor_gif = True
                     break
                 elif embed.thumbnail:
                     has_image = True
                     image_url = embed.thumbnail.url
+                    # Check if the thumbnail URL is from Tenor
+                    if "tenor.com" in image_url.lower():
+                        is_tenor_gif = True
                     break
         
-        # React with thumbs up and thumbs down if image found
-        if has_image and image_url:
+        # React with thumbs up and thumbs down if image/video found
+        # BUT: Skip reactions for Tenor GIFs (unless it's a video)
+        if has_image and image_url and (not is_tenor_gif or is_video):
             try:
                 await message.add_reaction('👍')
                 await message.add_reaction('👎')
                 await message.add_reaction('🔖')  # Bookmark emoji
-                logger.info(f"Added reactions to image in {message.channel.name} by {message.author.display_name}")
+                content_type = "video" if is_video else "image"
+                logger.info(f"Added reactions to {content_type} in {message.channel.name} by {message.author.display_name}")
                 
                 # Store the image message in MongoDB
                 await self.bot.leaderboard_manager.store_image_message(
@@ -470,6 +498,12 @@ class EventsController:
                 logger.error(f"Missing permission to add reactions in {message.channel.name}")
             except Exception as e:
                 logger.error(f"Error adding reactions to message: {e}")
+        elif has_image and is_tenor_gif and not is_video:
+            # Log that we're skipping Tenor GIF
+            logger.debug(f"Skipped reactions for Tenor GIF in {message.channel.name} by {message.author.display_name}")
+            # Still treat as text message for reminder/penalty purposes
+            await self._check_for_chat_reminder(message)
+            await self._apply_text_spam_inorep_penalty(message)
         else:
             # This is a text message in an image channel, check if we need to send a reminder
             await self._check_for_chat_reminder(message)

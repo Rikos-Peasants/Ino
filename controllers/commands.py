@@ -4027,6 +4027,13 @@ class CommandsController:
                     await ctx.send("❌ You can't warn bots!", ephemeral=True)
                     return
                 
+                # Check rank protection - can't warn higher-ranked staff
+                from controllers.security import CommandSecurity
+                can_modify, error_msg = await CommandSecurity.can_modify_user(ctx.author, user, self.bot)
+                if not can_modify:
+                    await ctx.send(error_msg, ephemeral=True)
+                    return
+                
                 # Add -1 rep
                 success = await leaderboard_manager.inorep_manager.add_rep(
                     user_id=str(user.id),
@@ -4069,6 +4076,13 @@ class CommandsController:
                 # Can't modify bots
                 if user.bot:
                     await ctx.send("❌ You can't modify rep for bots!", ephemeral=True)
+                    return
+                
+                # Check rank protection - moderators can't modify higher-ranked staff
+                from controllers.security import CommandSecurity
+                can_modify, error_msg = await CommandSecurity.can_modify_user(ctx.author, user, self.bot)
+                if not can_modify:
+                    await ctx.send(error_msg, ephemeral=True)
                     return
                 
                 # Amount must be positive
@@ -4118,6 +4132,13 @@ class CommandsController:
                 # Can't modify bots
                 if user.bot:
                     await ctx.send("❌ You can't modify rep for bots!", ephemeral=True)
+                    return
+                
+                # Check rank protection - moderators can't modify higher-ranked staff
+                from controllers.security import CommandSecurity
+                can_modify, error_msg = await CommandSecurity.can_modify_user(ctx.author, user, self.bot)
+                if not can_modify:
+                    await ctx.send(error_msg, ephemeral=True)
                     return
                 
                 # Amount must be positive (we'll negate it)

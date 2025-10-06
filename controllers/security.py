@@ -177,6 +177,65 @@ class CommandSecurity:
             info['required_permissions'] = ["Bot owner status"]
         
         return info
+    
+    @staticmethod
+    async def get_user_rank(user: discord.Member, bot) -> SecurityLevel:
+        """
+        Get the effective rank/security level of a user
+        Returns the highest rank the user has
+        """
+        # Bot owners are highest rank
+        if await bot.is_owner(user):
+            return SecurityLevel.OWNER
+        
+        # Check for administrator permission
+        if user.guild_permissions.administrator:
+            return SecurityLevel.ADMIN
+        
+        # Check for moderator permissions
+        if user.guild_permissions.manage_guild:
+            return SecurityLevel.MODERATOR
+        
+        # Check for specific moderator roles
+        if hasattr(Config, 'NSFWBAN_MODERATOR_ROLE_ID'):
+            moderator_role = discord.utils.get(user.roles, id=Config.NSFWBAN_MODERATOR_ROLE_ID)
+            if moderator_role:
+                return SecurityLevel.MODERATOR
+        
+        # Default to public
+        return SecurityLevel.PUBLIC
+    
+    @staticmethod
+    async def can_modify_user(moderator: discord.Member, target: discord.Member, bot) -> tuple[bool, str]:
+        """
+        Check if a moderator can modify a target user (for InoRep, warnings, etc.)
+        Returns (can_modify, error_message)
+        """
+        # Get ranks
+        moderator_rank = await CommandSecurity.get_user_rank(moderator, bot)
+        target_rank = await CommandSecurity.get_user_rank(target, bot)
+        
+        # Define rank hierarchy (higher number = higher rank)
+        rank_values = {
+            SecurityLevel.PUBLIC: 0,
+            SecurityLevel.MODERATOR: 1,
+            SecurityLevel.ADMIN: 2,
+            SecurityLevel.OWNER: 3
+        }
+        
+        moderator_rank_value = rank_values.get(moderator_rank, 0)
+        target_rank_value = rank_values.get(target_rank, 0)
+        
+        # Can't modify someone of equal or higher rank
+        if target_rank_value >= moderator_rank_value:
+            if target_rank == SecurityLevel.OWNER:
+                return False, "❌ You cannot modify the reputation of a bot owner!"
+            elif target_rank == SecurityLevel.ADMIN:
+                return False, "❌ You cannot modify the reputation of an administrator!"
+            elif target_rank == SecurityLevel.MODERATOR:
+                return False, "❌ You cannot modify the reputation of another moderator!"
+        
+        return True, ""
 
 # Convenience decorators for common security levels
 def public_command(func):
