@@ -92,7 +92,9 @@ class CombinedLeaderboardView(discord.ui.View):
                     item.style = discord.ButtonStyle.primary if item.custom_id == "points_lb" else discord.ButtonStyle.secondary
             
             # Remove dropdown when not on images board
-            self.children = [item for item in self.children if not isinstance(item, ImageSortSelect)]
+            items_to_remove = [item for item in self.children if isinstance(item, ImageSortSelect)]
+            for item in items_to_remove:
+                self.remove_item(item)
             
             # Get quest points leaderboard
             leaderboard = await self.quest_manager.get_quest_points_leaderboard(limit=10, guild=self.ctx.guild)
@@ -126,7 +128,9 @@ class CombinedLeaderboardView(discord.ui.View):
                     item.style = discord.ButtonStyle.primary if item.custom_id == "inorep_lb" else discord.ButtonStyle.secondary
             
             # Remove dropdown when not on images board
-            self.children = [item for item in self.children if not isinstance(item, ImageSortSelect)]
+            items_to_remove = [item for item in self.children if isinstance(item, ImageSortSelect)]
+            for item in items_to_remove:
+                self.remove_item(item)
             
             # Get InoRep leaderboard (best)
             leaderboard_data = await self.leaderboard_manager.inorep_manager.get_leaderboard(
