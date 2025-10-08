@@ -192,6 +192,9 @@ class RikoBot(commands.Bot):
         # Check and award achievements for all users on startup
         await self.check_all_achievements_on_startup()
         
+        # Automatically scan and store all historical images
+        await self.scan_historical_images()
+        
         # Start status cycling (only if not already running)
         if not self.cycle_status.is_running():
             self.cycle_status.start()
@@ -358,6 +361,126 @@ class RikoBot(commands.Bot):
         
         except Exception as e:
             logger.error(f"Error during achievement check on startup: {e}")
+    
+    async def scan_historical_images(self):
+        """Scan and store all historical images from image channels on startup"""
+        try:
+            logger.info("🔍 Scanning historical images from image channels...")
+            
+            from config import Config
+            from datetime import datetime, timedelta
+            
+            guild = self.get_guild(Config.GUILD_ID)
+            if not guild:
+                logger.error(f"Could not find guild {Config.GUILD_ID}")
+                return
+            
+            total_processed = 0
+            total_skipped = 0
+            
+            # Scan images from the past 90 days (adjust as needed)
+            cutoff_date = datetime.now() - timedelta(days=90)
+            
+            for channel_id in Config.IMAGE_REACTION_CHANNELS:
+                channel = guild.get_channel(channel_id)
+                if not channel:
+                    logger.warning(f"Could not find channel {channel_id}")
+                    continue
+                
+                logger.info(f"  Scanning #{channel.name} (ID: {channel_id})...")
+                channel_processed = 0
+                channel_skipped = 0
+                
+                try:
+                    async for message in channel.history(limit=None, after=cutoff_date):
+                        # Check if message has images
+                        has_image = False
+                        image_url = None
+                        
+                        # Check attachments
+                        for attachment in message.attachments:
+                            if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.mov', '.webm']):
+                                has_image = True
+                                image_url = attachment.url
+                                break
+                        
+                        # Check embeds
+                        if not has_image:
+                            for embed in message.embeds:
+                                if embed.image or embed.thumbnail or embed.video:
+                                    has_image = True
+                                    if embed.image:
+                                        image_url = embed.image.url
+                                    elif embed.thumbnail:
+                                        image_url = embed.thumbnail.url
+                                    elif embed.video:
+                                        image_url = str(embed.video.url) if hasattr(embed.video, 'url') else str(embed.url)
+                                    break
+                        
+                        if has_image and image_url:
+                            # Check if already in database
+                            exists = await self.leaderboard_manager.image_message_exists(str(message.id))
+                            
+                            if not exists:
+                                # Count reactions
+                                thumbs_up = 0
+                                thumbs_down = 0
+                                
+                                for reaction in message.reactions:
+                                    if str(reaction.emoji) == '👍':
+                                        thumbs_up = reaction.count
+                                        # Subtract bot reactions
+                                        async for user in reaction.users():
+                                            if user.bot:
+                                                thumbs_up = max(0, thumbs_up - 1)
+                                                break
+                                    elif str(reaction.emoji) == '👎':
+                                        thumbs_down = reaction.count
+                                        # Subtract bot reactions
+                                        async for user in reaction.users():
+                                            if user.bot:
+                                                thumbs_down = max(0, thumbs_down - 1)
+                                                break
+                                
+                                net_score = thumbs_up - thumbs_down
+                                
+                                # Store the image
+                                await self.leaderboard_manager.store_image_message(
+                                    message=message,
+                                    image_url=image_url,
+                                    initial_score=net_score
+                                )
+                                
+                                # Update score
+                                await self.leaderboard_manager.update_image_message_score(
+                                    message_id=str(message.id),
+                                    thumbs_up=thumbs_up,
+                                    thumbs_down=thumbs_down
+                                )
+                                
+                                # Add to leaderboard
+                                self.leaderboard_manager.add_image_post(
+                                    user_id=message.author.id,
+                                    user_name=message.author.display_name,
+                                    initial_score=net_score
+                                )
+                                
+                                channel_processed += 1
+                            else:
+                                channel_skipped += 1
+                    
+                    logger.info(f"    ✅ #{channel.name}: {channel_processed} new, {channel_skipped} skipped")
+                    total_processed += channel_processed
+                    total_skipped += channel_skipped
+                    
+                except Exception as e:
+                    logger.error(f"    ❌ Error scanning #{channel.name}: {e}")
+                    continue
+            
+            logger.info(f"✅ Historical image scan complete: {total_processed} images added, {total_skipped} already in database")
+            
+        except Exception as e:
+            logger.error(f"Error in scan_historical_images: {e}")
 
     async def close(self):
         """Clean shutdown"""
