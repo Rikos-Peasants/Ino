@@ -934,6 +934,61 @@ class MongoLeaderboardManager:
             logger.error(f"Error getting user liked images count: {e}")
             return 0 
 
+    async def verify_reaction_exists(self, user_id: int, message_id: str, emoji: str) -> bool:
+        """Verify if a reaction exists in the database"""
+        try:
+            result = self.user_reactions_collection.find_one({
+                "user_id": str(user_id),
+                "message_id": str(message_id),
+                "emoji": emoji
+            })
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Error verifying reaction exists: {e}")
+            return False
+
+    async def get_message_reactions_count(self, message_id: str, emoji: str) -> int:
+        """Get the count of specific reactions for a message from database"""
+        try:
+            count = self.user_reactions_collection.count_documents({
+                "message_id": str(message_id),
+                "emoji": emoji
+            })
+            return count
+            
+        except Exception as e:
+            logger.error(f"Error getting message reactions count: {e}")
+            return 0
+
+    async def audit_reaction_discrepancies(self, message_id: str, discord_thumbs_up: int, discord_thumbs_down: int) -> Dict:
+        """Audit discrepancies between Discord reactions and database records"""
+        try:
+            db_thumbs_up = await self.get_message_reactions_count(message_id, "👍")
+            db_thumbs_down = await self.get_message_reactions_count(message_id, "👎")
+            
+            discrepancies = {
+                "message_id": message_id,
+                "discord_thumbs_up": discord_thumbs_up,
+                "db_thumbs_up": db_thumbs_up,
+                "discord_thumbs_down": discord_thumbs_down,
+                "db_thumbs_down": db_thumbs_down,
+                "thumbs_up_diff": discord_thumbs_up - db_thumbs_up,
+                "thumbs_down_diff": discord_thumbs_down - db_thumbs_down,
+                "has_discrepancy": (discord_thumbs_up != db_thumbs_up) or (discord_thumbs_down != db_thumbs_down)
+            }
+            
+            if discrepancies["has_discrepancy"]:
+                logger.warning(f"🔍 Reaction discrepancy detected for message {message_id}: "
+                             f"Discord(👍:{discord_thumbs_up}, 👎:{discord_thumbs_down}) vs "
+                             f"DB(👍:{db_thumbs_up}, 👎:{db_thumbs_down})")
+            
+            return discrepancies
+            
+        except Exception as e:
+            logger.error(f"Error auditing reaction discrepancies: {e}")
+            return {"error": str(e)}
+
     # WELCOME/LEAVE SYSTEM METHODS
     async def set_welcome_channel(self, guild_id: int, channel_id: int) -> bool:
         """Set the welcome channel for a guild"""

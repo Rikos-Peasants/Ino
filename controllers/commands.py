@@ -2090,6 +2090,143 @@ class CommandsController:
                 error_embed = EmbedViews.error_embed(f"Failed to debug reactions: {str(e)}")
                 await ctx.send(embed=error_embed)
 
+        @self.bot.hybrid_command(name="testreactions", description="Test enhanced reaction tracking system (Bot owners only)")
+        @owner_command
+        async def test_reactions_command(ctx, message_id: Optional[str] = None):
+            """Test the enhanced reaction tracking system with verification and audit"""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                embed = discord.Embed(
+                    title="🧪 Enhanced Reaction Tracking Test",
+                    color=discord.Color.green(),
+                    timestamp=datetime.utcnow()
+                )
+                
+                if message_id:
+                    # Test specific message
+                    try:
+                        message = await ctx.channel.fetch_message(int(message_id))
+                        
+                        # Check if message has images
+                        has_images = False
+                        for attachment in message.attachments:
+                            if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                                has_images = True
+                                break
+                        
+                        if not has_images:
+                            for embed_obj in message.embeds:
+                                if embed_obj.image or embed_obj.thumbnail:
+                                    has_images = True
+                                    break
+                        
+                        embed.add_field(
+                            name="📝 Message Info",
+                            value=f"ID: {message.id}\nAuthor: {message.author.display_name}\nHas Images: {'✅ Yes' if has_images else '❌ No'}",
+                            inline=False
+                        )
+                        
+                        # Count Discord reactions
+                        discord_thumbs_up = 0
+                        discord_thumbs_down = 0
+                        
+                        for reaction in message.reactions:
+                            if str(reaction.emoji) == '👍':
+                                discord_thumbs_up = reaction.count
+                                # Subtract bot reactions
+                                async for u in reaction.users():
+                                    if u.bot:
+                                        discord_thumbs_up = max(0, discord_thumbs_up - 1)
+                                        break
+                            elif str(reaction.emoji) == '👎':
+                                discord_thumbs_down = reaction.count
+                                # Subtract bot reactions
+                                async for u in reaction.users():
+                                    if u.bot:
+                                        discord_thumbs_down = max(0, discord_thumbs_down - 1)
+                                        break
+                        
+                        # Audit the message
+                        audit_result = await self.bot.leaderboard_manager.audit_reaction_discrepancies(
+                            str(message.id), discord_thumbs_up, discord_thumbs_down
+                        )
+                        
+                        embed.add_field(
+                            name="📊 Reaction Audit",
+                            value=f"Discord: 👍{discord_thumbs_up} 👎{discord_thumbs_down}\n"
+                                  f"Database: 👍{audit_result.get('db_thumbs_up', 0)} 👎{audit_result.get('db_thumbs_down', 0)}\n"
+                                  f"Discrepancy: {'❌ Yes' if audit_result.get('has_discrepancy', False) else '✅ No'}",
+                            inline=False
+                        )
+                        
+                        # Test the historical reaction processing
+                        scheduler = self.get_scheduler_controller()
+                        if scheduler:
+                            reactions_added = await scheduler._process_message_reactions(message)
+                            embed.add_field(
+                                name="🔄 Historical Processing",
+                                value=f"Missing reactions found and added: {reactions_added}",
+                                inline=False
+                            )
+                        
+                    except discord.NotFound:
+                        embed.add_field(
+                            name="❌ Error",
+                            value=f"Message with ID {message_id} not found in this channel",
+                            inline=False
+                        )
+                    except ValueError:
+                        embed.add_field(
+                            name="❌ Error",
+                            value=f"Invalid message ID: {message_id}",
+                            inline=False
+                        )
+                else:
+                    # General system status
+                    embed.add_field(
+                        name="🔧 System Status",
+                        value="✅ Enhanced reaction tracking active\n"
+                              "✅ Verification system enabled\n"
+                              "✅ Historical checking (30min intervals)\n"
+                              "✅ Audit capabilities available",
+                        inline=False
+                    )
+                    
+                    embed.add_field(
+                        name="🧪 How to Test",
+                        value="1. Use `/testreactions <message_id>` to audit a specific message\n"
+                              "2. Post an image and react to test real-time tracking\n"
+                              "3. Check logs for verification and audit messages",
+                        inline=False
+                    )
+                    
+                    # Show configured channels
+                    channel_list = []
+                    for channel_id in Config.IMAGE_REACTION_CHANNELS:
+                        channel = ctx.guild.get_channel(channel_id)
+                        if channel:
+                            channel_list.append(f"<#{channel_id}>")
+                    
+                    embed.add_field(
+                        name="📍 Monitored Channels",
+                        value=" ".join(channel_list) if channel_list else "None configured",
+                        inline=False
+                    )
+                
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=embed)
+                else:
+                    await ctx.send(embed=embed)
+                
+            except Exception as e:
+                error_embed = EmbedViews.error_embed(f"Failed to test reactions: {str(e)}")
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=error_embed)
+                else:
+                    await ctx.send(embed=error_embed)
+
         # YouTube monitoring command group
         @self.bot.hybrid_group(name="youtube", description="Manage YouTube video monitoring")
         @owner_command

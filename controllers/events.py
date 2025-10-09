@@ -913,124 +913,170 @@ Here are some useful resources to help you:
     
     async def _handle_reaction_change(self, reaction: discord.Reaction, user: discord.User, added: bool):
         """Handle reaction additions and removals for leaderboard tracking and moderation"""
-        # Ignore bot reactions
-        if user.bot:
-            return
-        
-        # Basic guild checks
-        if not hasattr(reaction.message, 'guild') or not reaction.message.guild:
-            return
-        
-        if reaction.message.guild.id != Config.GUILD_ID:
-            return
-        
-        # Note: Moderation is now handled via UI buttons, not reactions
-        
-        # Handle bookmark reactions FIRST (works in any channel with images)
-        emoji_str = str(reaction.emoji)
-        logger.info(f"Reaction detected: '{emoji_str}' (repr: {repr(emoji_str)}) by {user.display_name}")
-        
-        # Check for bookmark emoji (multiple possible variants)
-        bookmark_emojis = ['🔖', '📑', '📌', '🏷️']
-        if emoji_str in bookmark_emojis:
-            logger.info(f"Processing bookmark reaction '{emoji_str}' by {user.display_name}")
-            await self._handle_bookmark_reaction(reaction, user, added)
-            return
-        
-        # Only track scoring reactions in designated image channels
-        if reaction.message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
-            return
-        
-        # Only track thumbs up and thumbs down for scoring
-        if str(reaction.emoji) not in ['👍', '👎']:
-            return
-        
-        # Check if the message has images
-        message = reaction.message
-        has_image = False
-        
-        # Check for attachments (uploaded images)
-        for attachment in message.attachments:
-            if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
-                has_image = True
-                break
-        
-        # Check for embedded images (links)
-        if not has_image:
-            for embed in message.embeds:
-                if embed.image or embed.thumbnail:
+        try:
+            # Ignore bot reactions
+            if user.bot:
+                return
+            
+            # Basic guild checks
+            if not hasattr(reaction.message, 'guild') or not reaction.message.guild:
+                return
+            
+            if reaction.message.guild.id != Config.GUILD_ID:
+                return
+            
+            # Verify the reaction and message still exist (Discord API reliability check)
+            if not await self._verify_reaction_exists(reaction, user, added):
+                logger.warning(f"⚠️ Reaction verification failed for {user.display_name} {reaction.emoji} on message {reaction.message.id}")
+                return
+            
+            # Note: Moderation is now handled via UI buttons, not reactions
+            
+            # Handle bookmark reactions FIRST (works in any channel with images)
+            emoji_str = str(reaction.emoji)
+            logger.info(f"Reaction detected: '{emoji_str}' (repr: {repr(emoji_str)}) by {user.display_name}")
+            
+            # Check for bookmark emoji (multiple possible variants)
+            bookmark_emojis = ['🔖', '📑', '📌', '🏷️']
+            if emoji_str in bookmark_emojis:
+                logger.info(f"Processing bookmark reaction '{emoji_str}' by {user.display_name}")
+                await self._handle_bookmark_reaction(reaction, user, added)
+                return
+            
+            # Only track scoring reactions in designated image channels
+            if reaction.message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
+                return
+            
+            # Only track thumbs up and thumbs down for scoring
+            if str(reaction.emoji) not in ['👍', '👎']:
+                return
+            
+            # Check if the message has images
+            message = reaction.message
+            has_image = False
+            
+            # Check for attachments (uploaded images)
+            for attachment in message.attachments:
+                if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
                     has_image = True
                     break
-        
-        if not has_image:
-            return
-        
-        # Calculate score change
-        score_change = 0
-        if str(reaction.emoji) == '👍':
-            score_change = 1 if added else -1
-        elif str(reaction.emoji) == '👎':
-            score_change = -1 if added else 1
-        
-        # Track the user reaction
-        await self.bot.leaderboard_manager.track_user_reaction(
-            user_id=user.id,
-            message_id=str(message.id),
-            emoji=str(reaction.emoji),
-            added=added
-        )
-        
-        # Update the leaderboard for the image author
-        if score_change != 0:
-            self.bot.leaderboard_manager.update_image_score(
-                user_id=message.author.id,
-                user_name=message.author.display_name,
-                score_change=score_change
-            )
             
-            # Update the image message score in MongoDB
-            # Count actual human reactions, excluding bot reactions
-            thumbs_up = 0
-            thumbs_down = 0
+            # Check for embedded images (links)
+            if not has_image:
+                for embed in message.embeds:
+                    if embed.image or embed.thumbnail:
+                        has_image = True
+                        break
             
-            for r in message.reactions:
-                if str(r.emoji) == '👍':
-                    thumbs_up = r.count
-                    # Subtract 1 if bot reacted (bot reactions shouldn't count)
-                    async for u in r.users():
-                        if u.bot:
-                            thumbs_up = max(0, thumbs_up - 1)
-                            break
-                elif str(r.emoji) == '👎':
-                    thumbs_down = r.count
-                    # Subtract 1 if bot reacted (bot reactions shouldn't count)
-                    async for u in r.users():
-                        if u.bot:
-                            thumbs_down = max(0, thumbs_down - 1)
-                            break
+            if not has_image:
+                return
             
-            await self.bot.leaderboard_manager.update_image_message_score(
+            # Calculate score change
+            score_change = 0
+            if str(reaction.emoji) == '👍':
+                score_change = 1 if added else -1
+            elif str(reaction.emoji) == '👎':
+                score_change = -1 if added else 1
+            
+            # Track the user reaction
+            await self.bot.leaderboard_manager.track_user_reaction(
+                user_id=user.id,
                 message_id=str(message.id),
-                thumbs_up=thumbs_up,
-                thumbs_down=thumbs_down
+                emoji=str(reaction.emoji),
+                added=added
             )
             
-            # Update quest progress for earning likes (for image author)
-            if str(reaction.emoji) == '👍' and added:
-                await self._update_quest_progress_likes(message.author, message, thumbs_up)
-            
-            # Update quest progress for rating images (for the person who reacted)
-            # Only track when reaction is ADDED, not removed
-            if added:
-                await self._update_quest_progress_rating(user, message)
+            # Update the leaderboard for the image author
+            if score_change != 0:
+                self.bot.leaderboard_manager.update_image_score(
+                    user_id=message.author.id,
+                    user_name=message.author.display_name,
+                    score_change=score_change
+                )
                 
-                # Update quest progress for giving likes (for the person who reacted)
-                # Only track thumbs up reactions when ADDED
-                if str(reaction.emoji) == '👍':
-                    await self._update_quest_progress_giving_likes(user, message)
+                # Update the image message score in MongoDB
+                # Count actual human reactions, excluding bot reactions
+                thumbs_up = 0
+                thumbs_down = 0
+                
+                for r in message.reactions:
+                    if str(r.emoji) == '👍':
+                        thumbs_up = r.count
+                        # Subtract 1 if bot reacted (bot reactions shouldn't count)
+                        async for u in r.users():
+                            if u.bot:
+                                thumbs_up = max(0, thumbs_up - 1)
+                                break
+                    elif str(r.emoji) == '👎':
+                        thumbs_down = r.count
+                        # Subtract 1 if bot reacted (bot reactions shouldn't count)
+                        async for u in r.users():
+                            if u.bot:
+                                thumbs_down = max(0, thumbs_down - 1)
+                                break
+                
+                await self.bot.leaderboard_manager.update_image_message_score(
+                    message_id=str(message.id),
+                    thumbs_up=thumbs_up,
+                    thumbs_down=thumbs_down
+                )
+                
+                # Update quest progress for earning likes (for image author)
+                if str(reaction.emoji) == '👍' and added:
+                    await self._update_quest_progress_likes(message.author, message, thumbs_up)
+                
+                # Update quest progress for rating images (for the person who reacted)
+                # Only track when reaction is ADDED, not removed
+                if added:
+                    await self._update_quest_progress_rating(user, message)
+                    
+                    # Update quest progress for giving likes (for the person who reacted)
+                    # Only track thumbs up reactions when ADDED
+                    if str(reaction.emoji) == '👍':
+                        await self._update_quest_progress_giving_likes(user, message)
+                
+                action = "added" if added else "removed"
+                logger.info(f"Reaction {action}: {reaction.emoji} on {message.author.display_name}'s image (score change: {score_change:+d}), thumbs_up: {thumbs_up}, thumbs_down: {thumbs_down}")
+        
+        except discord.NotFound:
+            logger.warning(f"⚠️ Message or reaction not found during processing: {reaction.message.id}")
+        except discord.Forbidden:
+            logger.warning(f"⚠️ Insufficient permissions to process reaction on message: {reaction.message.id}")
+        except discord.HTTPException as e:
+            logger.error(f"❌ Discord API error during reaction processing: {e}")
+        except Exception as e:
+            logger.error(f"❌ Unexpected error in reaction handling: {e}")
+    
+    async def _verify_reaction_exists(self, reaction: discord.Reaction, user: discord.User, added: bool) -> bool:
+        """Verify that the reaction and message still exist to ensure API reliability"""
+        try:
+            # Try to fetch the message to ensure it still exists
+            message = await reaction.message.channel.fetch_message(reaction.message.id)
             
-            action = "added" if added else "removed"
-            logger.info(f"Reaction {action}: {reaction.emoji} on {message.author.display_name}'s image (score change: {score_change:+d}), thumbs_up: {thumbs_up}, thumbs_down: {thumbs_down}")
+            # If we're checking for an added reaction, verify the user actually has this reaction
+            if added:
+                for msg_reaction in message.reactions:
+                    if str(msg_reaction.emoji) == str(reaction.emoji):
+                        async for reaction_user in msg_reaction.users():
+                            if reaction_user.id == user.id:
+                                return True
+                # If we reach here, the reaction wasn't found
+                return False
+            else:
+                # For removed reactions, we can't verify the absence easily
+                # so we trust the event (Discord should be reliable for removals)
+                return True
+                
+        except discord.NotFound:
+            # Message or reaction no longer exists
+            return False
+        except discord.Forbidden:
+            # No permission to access the message
+            logger.warning(f"⚠️ No permission to verify reaction on message {reaction.message.id}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Error verifying reaction: {e}")
+            return False
     
     async def _handle_bookmark_reaction(self, reaction: discord.Reaction, user: discord.User, added: bool):
         """Handle bookmark emoji reactions"""

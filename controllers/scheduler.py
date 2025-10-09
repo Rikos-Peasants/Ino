@@ -54,6 +54,9 @@ class SchedulerController:
         
         if not self.check_youtube_videos.is_running():
             self.check_youtube_videos.start()
+        
+        if not self.check_historical_reactions.is_running():
+            self.check_historical_reactions.start()
     
     def stop_tasks(self):
         """Stop all scheduled tasks"""
@@ -77,6 +80,9 @@ class SchedulerController:
         
         if self.check_youtube_videos.is_running():
             self.check_youtube_videos.cancel()
+        
+        if self.check_historical_reactions.is_running():
+            self.check_historical_reactions.cancel()
     
     @tasks.loop(hours=24)  # Check daily
     async def weekly_best_image(self):
@@ -436,5 +442,211 @@ class SchedulerController:
     
     @check_youtube_videos.before_loop
     async def before_youtube_videos_task(self):
-        """Wait for bot to be ready before starting YouTube video checking"""
-        await self.bot.wait_until_ready() 
+        """Wait for bot to be ready before starting YouTube monitoring"""
+        await self.bot.wait_until_ready()
+    
+    @tasks.loop(minutes=30)  # Check every 30 minutes for historical reactions
+    async def check_historical_reactions(self):
+        """Check for new reactions on posts up to 4 hours old"""
+        try:
+            logger.debug("🔍 Starting historical reaction check...")
+            
+            # Get current time and 4 hours ago
+            now = datetime.now()
+            four_hours_ago = now - timedelta(hours=4)
+            
+            # Track statistics
+            total_messages_checked = 0
+            total_reactions_found = 0
+            total_reactions_added = 0
+            
+            # Check each configured image reaction channel
+            for channel_id in Config.IMAGE_REACTION_CHANNELS:
+                try:
+                    channel = self.bot.get_channel(channel_id)
+                    if not channel:
+                        logger.warning(f"⚠️ Could not find channel {channel_id}")
+                        continue
+                    
+                    logger.debug(f"🔍 Checking channel #{channel.name} for historical reactions...")
+                    
+                    # Get messages from the last 4 hours
+                    async for message in channel.history(limit=None, after=four_hours_ago):
+                        total_messages_checked += 1
+                        
+                        # Skip messages without images
+                        if not await self._message_has_images(message):
+                            continue
+                        
+                        # Check reactions on this message
+                        reactions_added = await self._process_message_reactions(message)
+                        total_reactions_found += len(message.reactions)
+                        total_reactions_added += reactions_added
+                        
+                        # Small delay to avoid rate limits
+                        await asyncio.sleep(0.1)
+                
+                except Exception as e:
+                    logger.error(f"❌ Error checking channel {channel_id}: {e}")
+                    continue
+            
+            if total_reactions_added > 0:
+                logger.info(f"✅ Historical reaction check complete: {total_messages_checked} messages checked, {total_reactions_found} reactions found, {total_reactions_added} new reactions added")
+            else:
+                logger.debug(f"✅ Historical reaction check complete: {total_messages_checked} messages checked, no new reactions found")
+                
+        except Exception as e:
+            logger.error(f"❌ Error in historical reaction check: {e}")
+    
+    async def _message_has_images(self, message: discord.Message) -> bool:
+        """Check if a message contains images"""
+        # Check for attachments (uploaded images)
+        for attachment in message.attachments:
+            if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                return True
+        
+        # Check for embedded images (links)
+        for embed in message.embeds:
+            if embed.image or embed.thumbnail:
+                return True
+        
+        return False
+    
+    async def _process_message_reactions(self, message: discord.Message) -> int:
+        """Process all reactions on a message and track any missing ones"""
+        reactions_added = 0
+        
+        try:
+            # First, audit the message for discrepancies
+            thumbs_up_count = 0
+            thumbs_down_count = 0
+            
+            for reaction in message.reactions:
+                emoji_str = str(reaction.emoji)
+                if emoji_str == '👍':
+                    thumbs_up_count = reaction.count
+                    # Subtract bot reactions
+                    async for u in reaction.users():
+                        if u.bot:
+                            thumbs_up_count = max(0, thumbs_up_count - 1)
+                            break
+                elif emoji_str == '👎':
+                    thumbs_down_count = reaction.count
+                    # Subtract bot reactions
+                    async for u in reaction.users():
+                        if u.bot:
+                            thumbs_down_count = max(0, thumbs_down_count - 1)
+                            break
+            
+            # Audit for discrepancies
+            if hasattr(self.bot.leaderboard_manager, 'audit_reaction_discrepancies'):
+                audit_result = await self.bot.leaderboard_manager.audit_reaction_discrepancies(
+                    str(message.id), thumbs_up_count, thumbs_down_count
+                )
+            
+            # Only process thumbs up and thumbs down reactions for scoring
+            for reaction in message.reactions:
+                if str(reaction.emoji) not in ['👍', '👎']:
+                    continue
+                
+                # Get all users who reacted (excluding bots)
+                async for user in reaction.users():
+                    if user.bot:
+                        continue
+                    
+                    # Check if this reaction is already tracked in our database
+                    existing_reaction = await self.bot.leaderboard_manager.user_reactions_collection.find_one({
+                        "user_id": str(user.id),
+                        "message_id": str(message.id),
+                        "emoji": str(reaction.emoji)
+                    })
+                    
+                    if not existing_reaction:
+                        # This reaction is not tracked, add it
+                        await self.bot.leaderboard_manager.track_user_reaction(
+                            user_id=user.id,
+                            message_id=str(message.id),
+                            emoji=str(reaction.emoji),
+                            added=True
+                        )
+                        
+                        # Update scores and quest progress
+                        await self._update_scores_and_quests(message, user, str(reaction.emoji))
+                        
+                        reactions_added += 1
+                        logger.info(f"📝 Added missing reaction: {user.display_name} {reaction.emoji} on message {message.id}")
+            
+            # Update the message score in database to match Discord
+            await self.bot.leaderboard_manager.update_image_message_score(
+                str(message.id), thumbs_up_count, thumbs_down_count
+            )
+        
+        except Exception as e:
+            logger.error(f"❌ Error processing reactions for message {message.id}: {e}")
+        
+        return reactions_added
+    
+    async def _update_scores_and_quests(self, message: discord.Message, user: discord.User, emoji: str):
+        """Update leaderboard scores and quest progress for a reaction"""
+        try:
+            # Calculate score change
+            score_change = 0
+            if emoji == '👍':
+                score_change = 1
+            elif emoji == '👎':
+                score_change = -1
+            
+            if score_change != 0:
+                # Update the leaderboard for the image author
+                self.bot.leaderboard_manager.update_image_score(
+                    user_id=message.author.id,
+                    user_name=message.author.display_name,
+                    score_change=score_change
+                )
+                
+                # Update the image message score in MongoDB
+                thumbs_up = 0
+                thumbs_down = 0
+                
+                for r in message.reactions:
+                    if str(r.emoji) == '👍':
+                        thumbs_up = r.count
+                        # Subtract 1 if bot reacted
+                        async for u in r.users():
+                            if u.bot:
+                                thumbs_up = max(0, thumbs_up - 1)
+                                break
+                    elif str(r.emoji) == '👎':
+                        thumbs_down = r.count
+                        # Subtract 1 if bot reacted
+                        async for u in r.users():
+                            if u.bot:
+                                thumbs_down = max(0, thumbs_down - 1)
+                                break
+                
+                await self.bot.leaderboard_manager.update_image_message_score(
+                    message_id=str(message.id),
+                    thumbs_up=thumbs_up,
+                    thumbs_down=thumbs_down
+                )
+                
+                # Update quest progress for earning likes (for image author)
+                if emoji == '👍':
+                    if hasattr(self.bot, 'events_controller') and self.bot.events_controller:
+                        await self.bot.events_controller._update_quest_progress_likes(message.author, message, thumbs_up)
+                
+                # Update quest progress for rating images (for the person who reacted)
+                if hasattr(self.bot, 'events_controller') and self.bot.events_controller:
+                    await self.bot.events_controller._update_quest_progress_rating(user, message)
+                    
+                    # Update quest progress for giving likes (for thumbs up reactions)
+                    if emoji == '👍':
+                        await self.bot.events_controller._update_quest_progress_giving_likes(user, message)
+        
+        except Exception as e:
+            logger.error(f"❌ Error updating scores and quests: {e}")
+    
+    @check_historical_reactions.before_loop
+    async def before_historical_reactions_task(self):
+        """Wait for bot to be ready before starting historical reaction checking"""
+        await self.bot.wait_until_ready()
