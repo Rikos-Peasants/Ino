@@ -7,7 +7,7 @@ import json
 import asyncio
 from typing import Optional, Union
 from models.role_manager import RoleManager
-from views.embeds import EmbedViews, PurgeConfirmationView, QuestView
+from views.embeds import EmbedViews, PurgeConfirmationView, QuestView, QuestSelectionView
 from config import Config
 from controllers.security import CommandSecurity, SecurityLevel, public_command, moderator_command, admin_command, owner_command
 
@@ -258,6 +258,36 @@ class CommandsController:
                                     user_name=message.author.display_name,
                                     initial_score=net_score
                                 )
+                                
+                                # Track quest progress for historical images
+                                # Get quest manager from events controller
+                                events_controller = getattr(self.bot, 'events_controller', None)
+                                if events_controller and hasattr(events_controller, 'quest_manager') and events_controller.quest_manager:
+                                    try:
+                                        # Update quest progress for posting images
+                                        await events_controller.quest_manager.update_quest_progress(
+                                            user_id=message.author.id,
+                                            quest_type="post_images",
+                                            count=1
+                                        )
+                                        
+                                        # Update quest progress for earning likes if the image has likes
+                                        if thumbs_up > 0:
+                                            await events_controller.quest_manager.update_quest_progress(
+                                                user_id=message.author.id,
+                                                quest_type="earn_likes",
+                                                count=thumbs_up
+                                            )
+                                        
+                                        # Check for viral image quest (15+ likes)
+                                        if thumbs_up >= 15:
+                                            await events_controller.quest_manager.track_viral_image(
+                                                user_id=message.author.id,
+                                                message_id=str(message.id),
+                                                like_count=thumbs_up
+                                            )
+                                    except Exception as quest_error:
+                                        print(f"   ⚠️ Error tracking quest progress for historical image: {quest_error}")
                                 
                                 channel_count += 1
                                 total_users.add(message.author.id)
@@ -1256,6 +1286,143 @@ class CommandsController:
                 logger.error(f"Error in quests command: {e}")
                 error_embed = EmbedViews.error_embed(f"Failed to get quests: {str(e)}")
                 await ctx.send(embed=error_embed, ephemeral=True)
+
+        @self.bot.hybrid_command(name="selectquests", description="Manually select your daily quests")
+        @public_command
+        async def selectquests_command(ctx):
+            """Allow users to manually select their daily quests"""
+            try:
+                # Check if quest manager is available
+                events_controller = self.get_events_controller()
+                if not events_controller or not events_controller.quest_manager:
+                    error_embed = EmbedViews.error_embed("Quest system is not available at the moment.")
+                    await ctx.send(embed=error_embed, ephemeral=True)
+                    return
+                
+                quest_manager = events_controller.quest_manager
+                user_id = ctx.author.id
+                
+                # Check if user already has quests for today
+                existing_quests = await quest_manager.get_user_daily_quests(user_id)
+                if existing_quests:
+                    # Create confirmation embed
+                    embed = discord.Embed(
+                        title="⚠️ Replace Existing Quests?",
+                        description=f"You already have **{len(existing_quests)}** quest(s) for today.\n\n"
+                                   "Selecting new quests will **replace** your current ones and reset all progress.\n\n"
+                                   "**Current Quests:**",
+                        color=0xff9900
+                    )
+                    
+                    quest_list = []
+                    for quest in existing_quests:
+                        status = "✅" if quest.get("completed", False) else "⏳"
+                        current = quest.get("current_count", 0)
+                        target = quest.get("target_count", 1)
+                        quest_list.append(f"{status} **{quest['name']}** - {current}/{target}")
+                    
+                    embed.add_field(
+                        name="Your Current Quests",
+                        value="\n".join(quest_list),
+                        inline=False
+                    )
+                    
+                    embed.set_footer(text="Click 'Continue' to proceed with quest selection or 'Cancel' to keep current quests")
+                    
+                    # Create confirmation view
+                    view = discord.ui.View(timeout=60)
+                    
+                    async def continue_callback(interaction):
+                        if interaction.user.id != user_id:
+                            await interaction.response.send_message("❌ You can only select your own quests!", ephemeral=True)
+                            return
+                        await show_quest_selection(interaction, quest_manager, user_id, ctx.author)
+                    
+                    async def cancel_callback(interaction):
+                        if interaction.user.id != user_id:
+                            await interaction.response.send_message("❌ This is not your quest selection!", ephemeral=True)
+                            return
+                        
+                        cancel_embed = discord.Embed(
+                            title="❌ Quest Selection Cancelled",
+                            description="Your existing quests remain unchanged.",
+                            color=0xe74c3c
+                        )
+                        await interaction.response.edit_message(embed=cancel_embed, view=None)
+                    
+                    continue_button = discord.ui.Button(label="Continue", style=discord.ButtonStyle.primary, emoji="➡️")
+                    cancel_button = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary, emoji="❌")
+                    
+                    continue_button.callback = continue_callback
+                    cancel_button.callback = cancel_callback
+                    
+                    view.add_item(continue_button)
+                    view.add_item(cancel_button)
+                    
+                    await ctx.send(embed=embed, view=view)
+                else:
+                    # No existing quests, proceed directly
+                    await show_quest_selection(ctx, quest_manager, user_id, ctx.author)
+                
+            except Exception as e:
+                logger.error(f"Error in selectquests command: {e}")
+                error_embed = EmbedViews.error_embed(f"Failed to load quest selection: {str(e)}")
+                await ctx.send(embed=error_embed, ephemeral=True)
+
+        async def show_quest_selection(ctx_or_interaction, quest_manager, user_id, member):
+            """Show the quest selection interface"""
+            try:
+                # Get available quests
+                available_quests = await quest_manager.get_available_daily_quests()
+                
+                if not available_quests:
+                    error_embed = EmbedViews.error_embed("No quests are available for selection at the moment.")
+                    if hasattr(ctx_or_interaction, 'response'):
+                        await ctx_or_interaction.response.edit_message(embed=error_embed, view=None)
+                    else:
+                        await ctx_or_interaction.send(embed=error_embed, ephemeral=True)
+                    return
+                
+                # Create initial embed
+                embed = discord.Embed(
+                    title="🎯 Manual Quest Selection",
+                    description="Choose 1-4 quests from the available options below.\n\n"
+                               "**Benefits of Manual Selection:**\n"
+                               "• Pick quests that match your playstyle\n"
+                               "• Focus on specific categories\n"
+                               "• Optimize for maximum points\n\n"
+                               "Select quests from the dropdown menu below:",
+                    color=0x3498db
+                )
+                
+                embed.add_field(
+                    name="📋 Quest Categories",
+                    value="📸 **Posting** - Share images and content\n"
+                          "⭐ **Rating** - Rate and interact with posts\n"
+                          "👥 **Community** - Social interactions\n"
+                          "⏰ **Time-based** - Timing-specific challenges\n"
+                          "✨ **Special** - Unique achievements",
+                    inline=False
+                )
+                
+                embed.set_footer(text="💡 You can select 1-4 quests • Quests reset daily at midnight UTC")
+                
+                # Create quest selection view
+                view = QuestSelectionView(user_id, quest_manager, member, available_quests)
+                
+                # Send or edit message
+                if hasattr(ctx_or_interaction, 'response'):
+                    await ctx_or_interaction.response.edit_message(embed=embed, view=view)
+                else:
+                    await ctx_or_interaction.send(embed=embed, view=view)
+                    
+            except Exception as e:
+                logger.error(f"Error showing quest selection: {e}")
+                error_embed = EmbedViews.error_embed(f"Failed to show quest selection: {str(e)}")
+                if hasattr(ctx_or_interaction, 'response'):
+                    await ctx_or_interaction.response.edit_message(embed=error_embed, view=None)
+                else:
+                    await ctx_or_interaction.send(embed=error_embed, ephemeral=True)
         
         # NOTE: /achievements and /streaks commands removed - now part of /profile command group
         

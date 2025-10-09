@@ -1796,6 +1796,226 @@ class PurgeConfirmationView(discord.ui.View):
 
 
 # Add profile embed methods to EmbedViews class
+class QuestSelectionView(discord.ui.View):
+    """Interactive view for manual quest selection"""
+    
+    def __init__(self, user_id: int, quest_manager, member, available_quests: list):
+        super().__init__(timeout=300)
+        self.user_id = user_id
+        self.quest_manager = quest_manager
+        self.member = member
+        self.available_quests = available_quests
+        self.selected_quests = []
+        
+        # Populate the select menu with available quests
+        self.populate_quest_select()
+    
+    def populate_quest_select(self):
+        """Populate the select menu with available quests"""
+        options = []
+        
+        # Group quests by category for better organization
+        categories = {}
+        for quest in self.available_quests:
+            category = quest.get("category", "general")
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(quest)
+        
+        # Add options for each quest, organized by category
+        category_emojis = {
+            "posting": "📸",
+            "rating": "⭐", 
+            "community": "👥",
+            "time_based": "⏰",
+            "special": "✨",
+            "general": "📋"
+        }
+        
+        difficulty_emojis = {
+            "easy": "🟢",
+            "medium": "🟡", 
+            "hard": "🟠",
+            "very_hard": "🔴"
+        }
+        
+        for category, quests in categories.items():
+            for quest in quests:
+                cat_emoji = category_emojis.get(category, "📋")
+                diff_emoji = difficulty_emojis.get(quest.get("difficulty", "medium"), "🟡")
+                
+                # Truncate description if too long
+                description = quest.get("description", "")
+                if len(description) > 80:
+                    description = description[:77] + "..."
+                
+                option = discord.SelectOption(
+                    label=f"{quest['name']} ({quest['reward_points']} pts)",
+                    description=description,
+                    value=quest["quest_id"],
+                    emoji=cat_emoji
+                )
+                options.append(option)
+        
+        # Limit to 25 options (Discord limit)
+        if len(options) > 25:
+            options = options[:25]
+        
+        # Create the select menu
+        if options:
+            self.quest_select.options = options
+    
+    @discord.ui.select(placeholder="🎯 Select quests (1-4 quests)", min_values=1, max_values=4, options=[])
+    async def quest_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        """Handle quest selection"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ You can only select your own quests!", ephemeral=True)
+            return
+        
+        self.selected_quests = select.values
+        
+        # Create preview embed
+        selected_quest_details = []
+        total_points = 0
+        
+        quest_map = {q["quest_id"]: q for q in self.available_quests}
+        
+        for quest_id in self.selected_quests:
+            if quest_id in quest_map:
+                quest = quest_map[quest_id]
+                selected_quest_details.append(f"• **{quest['name']}** - {quest['reward_points']} pts")
+                total_points += quest['reward_points']
+        
+        embed = discord.Embed(
+            title="🎯 Quest Selection Preview",
+            description=f"You've selected **{len(self.selected_quests)}** quest(s):",
+            color=0x00ff00
+        )
+        
+        embed.add_field(
+            name="Selected Quests",
+            value="\n".join(selected_quest_details),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Total Potential Points",
+            value=f"**{total_points}** points",
+            inline=True
+        )
+        
+        embed.set_footer(text="Click 'Confirm Selection' to set these as your daily quests")
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label="✅ Confirm Selection", style=discord.ButtonStyle.success, emoji="🎯")
+    async def confirm_selection(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Confirm the quest selection"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ You can only confirm your own quest selection!", ephemeral=True)
+            return
+        
+        if not self.selected_quests:
+            await interaction.response.send_message("❌ Please select at least one quest first!", ephemeral=True)
+            return
+        
+        # Process the selection
+        result = await self.quest_manager.manually_select_quests(
+            self.user_id, 
+            self.selected_quests, 
+            self.member
+        )
+        
+        if result["success"]:
+            # Create success embed
+            embed = discord.Embed(
+                title="✅ Quests Selected Successfully!",
+                description=result["message"],
+                color=0x00ff00
+            )
+            
+            # Show the selected quests
+            quest_list = []
+            for quest in result["quests"]:
+                quest_list.append(f"• **{quest['name']}** - {quest['reward_points']} pts")
+            
+            embed.add_field(
+                name="Your Daily Quests",
+                value="\n".join(quest_list),
+                inline=False
+            )
+            
+            embed.set_footer(text="Good luck with your quests! Use /quests to track your progress.")
+            
+            # Disable all components
+            for item in self.children:
+                item.disabled = True
+            
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            await interaction.response.send_message(f"❌ {result['error']}", ephemeral=True)
+    
+    @discord.ui.button(label="🔄 Refresh", style=discord.ButtonStyle.secondary)
+    async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Refresh the quest selection"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ You can only refresh your own quest selection!", ephemeral=True)
+            return
+        
+        # Reset selection
+        self.selected_quests = []
+        
+        # Create initial embed
+        embed = discord.Embed(
+            title="🎯 Manual Quest Selection",
+            description="Choose 1-4 quests from the available options below.\n\n"
+                       "**Benefits of Manual Selection:**\n"
+                       "• Pick quests that match your playstyle\n"
+                       "• Focus on specific categories\n"
+                       "• Optimize for maximum points\n\n"
+                       "Select quests from the dropdown menu below:",
+            color=0x3498db
+        )
+        
+        embed.add_field(
+            name="📋 Quest Categories",
+            value="📸 **Posting** - Share images and content\n"
+                  "⭐ **Rating** - Rate and interact with posts\n"
+                  "👥 **Community** - Social interactions\n"
+                  "⏰ **Time-based** - Timing-specific challenges\n"
+                  "✨ **Special** - Unique achievements",
+            inline=False
+        )
+        
+        embed.set_footer(text="💡 You can select 1-4 quests • Quests reset daily at midnight UTC")
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.danger)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancel quest selection"""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ You can only cancel your own quest selection!", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title="❌ Quest Selection Cancelled",
+            description="Quest selection has been cancelled. Your existing quests remain unchanged.",
+            color=0xe74c3c
+        )
+        
+        # Disable all components
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    async def on_timeout(self):
+        """Handle view timeout"""
+        # Disable all components
+        for item in self.children:
+            item.disabled = True
+
 def add_profile_embeds():
     """Add profile-related embed methods to EmbedViews class"""
     
@@ -1996,4 +2216,4 @@ def add_profile_embeds():
 
 
 # Call the function to add profile embeds
-add_profile_embeds() 
+add_profile_embeds()

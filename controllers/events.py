@@ -1023,6 +1023,11 @@ Here are some useful resources to help you:
             # Only track when reaction is ADDED, not removed
             if added:
                 await self._update_quest_progress_rating(user, message)
+                
+                # Update quest progress for giving likes (for the person who reacted)
+                # Only track thumbs up reactions when ADDED
+                if str(reaction.emoji) == '👍':
+                    await self._update_quest_progress_giving_likes(user, message)
             
             action = "added" if added else "removed"
             logger.info(f"Reaction {action}: {reaction.emoji} on {message.author.display_name}'s image (score change: {score_change:+d}), thumbs_up: {thumbs_up}, thumbs_down: {thumbs_down}")
@@ -1248,6 +1253,33 @@ Here are some useful resources to help you:
                     
         except Exception as e:
             logger.error(f"Error updating quest progress for rating: {e}")
+    
+    async def _update_quest_progress_giving_likes(self, user: discord.User, message: discord.Message):
+        """Update quest progress for giving likes (thumbs up reactions)"""
+        if not self.quest_manager or user.bot:
+            return
+            
+        try:
+            # Update the stat for tracking achievements
+            await self.quest_manager.update_user_stat(user.id, "likes_given", 1)
+            
+            # Track "give_likes" quest type (e.g., "Positive Vibes Only")
+            completed_quests = await self.quest_manager.update_quest_progress(
+                user_id=user.id,
+                quest_type="give_likes",
+                count=1
+            )
+            
+            # Send notifications for completed quests
+            for quest in completed_quests:
+                try:
+                    embed = EmbedViews.quest_completed_embed(quest)
+                    await user.send(embed=embed)
+                except discord.Forbidden:
+                    pass
+                    
+        except Exception as e:
+            logger.error(f"Error updating quest progress for giving likes: {e}")
     
     async def _handle_message_moderation(self, message: discord.Message):
         """Handle message moderation using AI scanning"""
@@ -1871,4 +1903,4 @@ Here are some useful resources to help you:
             logger.info(f"{message.author.display_name} lost {abs(penalty)} InoRep for chatting in image channel")
             
         except Exception as e:
-            logger.error(f"Error applying text spam InoRep penalty: {e}") 
+            logger.error(f"Error applying text spam InoRep penalty: {e}")

@@ -1592,28 +1592,36 @@ class QuestManager:
                 potential_quests.extend(easy_quests[:3])
                 potential_quests = list({q["quest_id"]: q for q in potential_quests}.values())  # Remove duplicates
             
-            # Select 3-5 quests, ensuring no duplicate categories
-            selected_count = random.randint(3, 5)
+            # Select exactly 4 quests with improved prioritization
+            selected_count = 4
             selected_quests = []
             used_categories = set()
             
-            # Shuffle for randomness
-            random.shuffle(potential_quests)
+            # Priority categories to ensure variety
+            priority_categories = ["posting", "rating", "community", "time_based", "special"]
             
-            for quest in potential_quests:
+            # First pass: Try to get one quest from each priority category
+            for category in priority_categories:
                 if len(selected_quests) >= selected_count:
                     break
-                
-                category = quest.get("category", "general")
-                
-                # Skip if we already have a quest from this category
-                if category in used_categories and len(potential_quests) > selected_count:
-                    continue
-                
-                selected_quests.append(quest)
-                used_categories.add(category)
+                    
+                category_quests = [q for q in potential_quests if q.get("category", "general") == category]
+                if category_quests and category not in used_categories:
+                    # Sort by rarity chance (higher chance = more likely to be selected)
+                    category_quests.sort(key=lambda x: x.get("rarity_chance", 1.0), reverse=True)
+                    selected_quests.append(category_quests[0])
+                    used_categories.add(category)
             
-            # If we still don't have enough, add more without category restriction
+            # Second pass: Fill remaining slots with best available quests
+            remaining_quests = [q for q in potential_quests if q not in selected_quests]
+            remaining_quests.sort(key=lambda x: (x.get("rarity_chance", 1.0), x.get("reward_points", 0)), reverse=True)
+            
+            for quest in remaining_quests:
+                if len(selected_quests) >= selected_count:
+                    break
+                selected_quests.append(quest)
+            
+            # Ensure we have at least 3 quests (fallback)
             if len(selected_quests) < 3:
                 for quest in potential_quests:
                     if quest not in selected_quests:
@@ -2237,6 +2245,97 @@ class QuestManager:
         except Exception as e:
             logger.error(f"Error getting user daily quests: {e}")
             return []
+
+    async def get_available_daily_quests(self) -> List[Dict]:
+        """Get all available daily quests for manual selection"""
+        if not self._ensure_connected():
+            return []
+        
+        try:
+            # Get all daily quests from the predefined list
+            available_quests = [q for q in self.daily_quests if q.get("is_daily", False)]
+            return available_quests
+        except Exception as e:
+            logger.error(f"Error getting available daily quests: {e}")
+            return []
+
+    async def manually_select_quests(self, user_id: int, quest_ids: List[str], member: 'discord.Member' = None) -> Dict:
+        """Allow user to manually select their daily quests"""
+        if not self._ensure_connected():
+            return {"success": False, "error": "Database connection failed"}
+        
+        try:
+            # Validate quest limit
+            if len(quest_ids) > 4:
+                return {"success": False, "error": "You can only select up to 4 quests per day"}
+            
+            if len(quest_ids) < 1:
+                return {"success": False, "error": "You must select at least 1 quest"}
+            
+            # Get quest definitions
+            quest_map = {q["quest_id"]: q for q in self.daily_quests}
+            selected_quests = []
+            
+            for quest_id in quest_ids:
+                if quest_id not in quest_map:
+                    return {"success": False, "error": f"Invalid quest ID: {quest_id}"}
+                selected_quests.append(quest_map[quest_id])
+            
+            # Check for Patreon multiplier
+            patreon_multiplier = 1.0
+            if member:
+                from config import Config
+                if Config.PATREON_ROLE_ID:
+                    patreon_role = discord.utils.get(member.roles, id=Config.PATREON_ROLE_ID)
+                    if patreon_role:
+                        patreon_multiplier = 1.5
+                        logger.info(f"User {user_id} has Patreon role - 1.5x points multiplier applied")
+            
+            # Clear existing quests for today
+            today = datetime.now().date().isoformat()
+            self.user_quests_collection.delete_many({
+                "user_id": str(user_id),
+                "date": today
+            })
+            
+            # Create user quest records
+            user_quests = []
+            for quest in selected_quests:
+                base_points = quest["reward_points"]
+                final_points = int(base_points * patreon_multiplier)
+                
+                user_quest = {
+                    "user_id": str(user_id),
+                    "quest_id": quest["quest_id"],
+                    "name": quest["name"],
+                    "description": quest["description"],
+                    "quest_type": quest["quest_type"],
+                    "category": quest.get("category", "general"),
+                    "difficulty": quest.get("difficulty", "medium"),
+                    "target_count": quest["target_count"],
+                    "current_count": 0,
+                    "reward_points": final_points,
+                    "completed": False,
+                    "date": today,
+                    "created_at": datetime.utcnow(),
+                    "patreon_multiplier": patreon_multiplier
+                }
+                user_quests.append(user_quest)
+            
+            # Insert new quests
+            if user_quests:
+                self.user_quests_collection.insert_many(user_quests)
+                logger.info(f"User {user_id} manually selected {len(user_quests)} quests for {today}")
+            
+            return {
+                "success": True, 
+                "quests": user_quests,
+                "message": f"Successfully selected {len(user_quests)} quests for today!"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in manually_select_quests: {e}")
+            return {"success": False, "error": f"Failed to select quests: {str(e)}"}
     
     async def get_user_achievements(self, user_id: int) -> List[Dict]:
         """Get all achievements for a user"""
@@ -2688,4 +2787,4 @@ class QuestManager:
                     )
                     
         except Exception as e:
-            logger.error(f"Error checking and breaking streaks: {e}") 
+            logger.error(f"Error checking and breaking streaks: {e}")
