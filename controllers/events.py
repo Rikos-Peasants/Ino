@@ -943,15 +943,7 @@ Here are some useful resources to help you:
                 await self._handle_bookmark_reaction(reaction, user, added)
                 return
             
-            # Only track scoring reactions in designated image channels
-            if reaction.message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
-                return
-            
-            # Only track thumbs up and thumbs down for scoring
-            if str(reaction.emoji) not in ['👍', '👎']:
-                return
-            
-            # Check if the message has images
+            # Check if the message has images FIRST (for all channels)
             message = reaction.message
             has_image = False
             
@@ -968,7 +960,19 @@ Here are some useful resources to help you:
                         has_image = True
                         break
             
+            # If no image, skip processing
             if not has_image:
+                return
+            
+            # IMMEDIATELY register ALL reactions on image messages in the database for quest tracking
+            await self._register_image_reaction_immediately(reaction, user, added, message)
+            
+            # Only apply scoring in designated image channels
+            if reaction.message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
+                return
+            
+            # Only track thumbs up and thumbs down for scoring
+            if str(reaction.emoji) not in ['👍', '👎']:
                 return
             
             # Calculate score change
@@ -978,7 +982,7 @@ Here are some useful resources to help you:
             elif str(reaction.emoji) == '👎':
                 score_change = -1 if added else 1
             
-            # Track the user reaction
+            # Track the user reaction (for scoring channels)
             await self.bot.leaderboard_manager.track_user_reaction(
                 user_id=user.id,
                 message_id=str(message.id),
@@ -1077,6 +1081,49 @@ Here are some useful resources to help you:
         except Exception as e:
             logger.error(f"❌ Error verifying reaction: {e}")
             return False
+    
+    async def _register_image_reaction_immediately(self, reaction: discord.Reaction, user: discord.User, added: bool, message: discord.Message):
+        """Immediately register ALL reactions on image messages for quest tracking"""
+        try:
+            emoji_str = str(reaction.emoji)
+            
+            # Track ALL reactions on image messages in the database
+            await self.bot.leaderboard_manager.track_user_reaction(
+                user_id=user.id,
+                message_id=str(message.id),
+                emoji=emoji_str,
+                added=added
+            )
+            
+            # Update quest progress for ALL reactions when ADDED
+            if added:
+                # Update quest progress for rating images (for the person who reacted)
+                await self._update_quest_progress_rating(user, message)
+                
+                # Update quest progress for giving likes (for thumbs up reactions)
+                if emoji_str == '👍':
+                    await self._update_quest_progress_giving_likes(user, message)
+                    
+                    # Update quest progress for earning likes (for image author)
+                    # Count current thumbs up reactions
+                    thumbs_up = 0
+                    for r in message.reactions:
+                        if str(r.emoji) == '👍':
+                            thumbs_up = r.count
+                            # Subtract bot reactions
+                            async for u in r.users():
+                                if u.bot:
+                                    thumbs_up = max(0, thumbs_up - 1)
+                                    break
+                            break
+                    
+                    await self._update_quest_progress_likes(message.author, message, thumbs_up)
+            
+            action = "added" if added else "removed"
+            logger.info(f"Image reaction {action}: {emoji_str} by {user.display_name} on {message.author.display_name}'s image (message: {message.id})")
+            
+        except Exception as e:
+            logger.error(f"❌ Error registering image reaction immediately: {e}")
     
     async def _handle_bookmark_reaction(self, reaction: discord.Reaction, user: discord.User, added: bool):
         """Handle bookmark emoji reactions"""
@@ -1950,3 +1997,137 @@ Here are some useful resources to help you:
             
         except Exception as e:
             logger.error(f"Error applying text spam InoRep penalty: {e}")
+    
+    async def scan_server_for_image_reactions(self, guild: discord.Guild, days_back: int = 7, max_messages_per_channel: int = 1000):
+        """
+        Scan the entire server for image messages with reactions and register them in the database
+        
+        Args:
+            guild: The Discord guild to scan
+            days_back: How many days back to scan (default: 7)
+            max_messages_per_channel: Maximum messages to scan per channel (default: 1000)
+        """
+        try:
+            logger.info(f"🔍 Starting server-wide image reaction scan for {guild.name}")
+            
+            total_messages_scanned = 0
+            total_reactions_found = 0
+            total_image_messages = 0
+            
+            # Calculate cutoff time
+            import datetime
+            cutoff_time = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days_back)
+            
+            # Scan all text channels in the guild
+            for channel in guild.text_channels:
+                try:
+                    # Skip if bot doesn't have permission to read message history
+                    if not channel.permissions_for(guild.me).read_message_history:
+                        logger.warning(f"⚠️ No permission to read message history in #{channel.name}")
+                        continue
+                    
+                    logger.info(f"🔍 Scanning #{channel.name} for image reactions...")
+                    
+                    channel_messages_scanned = 0
+                    channel_reactions_found = 0
+                    channel_image_messages = 0
+                    
+                    # Scan messages in the channel
+                    async for message in channel.history(limit=max_messages_per_channel, after=cutoff_time):
+                        try:
+                            channel_messages_scanned += 1
+                            total_messages_scanned += 1
+                            
+                            # Check if message has images
+                            has_image = False
+                            
+                            # Check for attachments (uploaded images)
+                            for attachment in message.attachments:
+                                if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                                    has_image = True
+                                    break
+                            
+                            # Check for embedded images (links)
+                            if not has_image:
+                                for embed in message.embeds:
+                                    if embed.image or embed.thumbnail:
+                                        has_image = True
+                                        break
+                            
+                            # If no image, skip this message
+                            if not has_image:
+                                continue
+                            
+                            channel_image_messages += 1
+                            total_image_messages += 1
+                            
+                            # Process all reactions on this image message
+                            for reaction in message.reactions:
+                                try:
+                                    # Get all users who reacted (excluding bots)
+                                    async for user in reaction.users():
+                                        if user.bot:
+                                            continue
+                                        
+                                        # Register this reaction in the database
+                                        await self.bot.leaderboard_manager.track_user_reaction(
+                                            user_id=user.id,
+                                            message_id=str(message.id),
+                                            emoji=str(reaction.emoji),
+                                            added=True  # We're registering existing reactions
+                                        )
+                                        
+                                        channel_reactions_found += 1
+                                        total_reactions_found += 1
+                                        
+                                        # Update quest progress for this reaction
+                                        await self._update_quest_progress_rating(user, message)
+                                        
+                                        # Update quest progress for giving likes (thumbs up only)
+                                        if str(reaction.emoji) == '👍':
+                                            await self._update_quest_progress_giving_likes(user, message)
+                                        
+                                        logger.debug(f"📝 Registered reaction {reaction.emoji} by {user.display_name} on message {message.id}")
+                                        
+                                except Exception as e:
+                                    logger.error(f"❌ Error processing reaction {reaction.emoji} on message {message.id}: {e}")
+                                    continue
+                            
+                            # Update quest progress for earning likes (for image authors)
+                            if message.reactions:
+                                thumbs_up = 0
+                                for r in message.reactions:
+                                    if str(r.emoji) == '👍':
+                                        thumbs_up = r.count
+                                        # Subtract bot reactions
+                                        async for u in r.users():
+                                            if u.bot:
+                                                thumbs_up = max(0, thumbs_up - 1)
+                                                break
+                                        break
+                                
+                                if thumbs_up > 0:
+                                    await self._update_quest_progress_likes(message.author, message, thumbs_up)
+                            
+                        except Exception as e:
+                            logger.error(f"❌ Error processing message {message.id} in #{channel.name}: {e}")
+                            continue
+                    
+                    if channel_image_messages > 0:
+                        logger.info(f"✅ #{channel.name}: {channel_messages_scanned} messages scanned, {channel_image_messages} image messages, {channel_reactions_found} reactions found")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Error scanning channel #{channel.name}: {e}")
+                    continue
+            
+            logger.info(f"🎉 Server scan complete! Total: {total_messages_scanned} messages scanned, {total_image_messages} image messages, {total_reactions_found} reactions registered")
+            
+            return {
+                "total_messages_scanned": total_messages_scanned,
+                "total_image_messages": total_image_messages,
+                "total_reactions_found": total_reactions_found
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error during server-wide image reaction scan: {e}")
+            return None

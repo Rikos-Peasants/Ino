@@ -989,6 +989,224 @@ class MongoLeaderboardManager:
             logger.error(f"Error auditing reaction discrepancies: {e}")
             return {"error": str(e)}
 
+    async def get_user_reaction_stats(self, user_id: int) -> Dict:
+        """Get comprehensive reaction statistics for a user"""
+        try:
+            pipeline = [
+                {"$match": {"user_id": str(user_id)}},
+                {"$group": {
+                    "_id": "$emoji",
+                    "count": {"$sum": 1},
+                    "latest_reaction": {"$max": "$created_at"}
+                }},
+                {"$sort": {"count": -1}}
+            ]
+            
+            results = list(self.user_reactions_collection.aggregate(pipeline))
+            
+            total_reactions = sum(result["count"] for result in results)
+            
+            stats = {
+                "user_id": user_id,
+                "total_reactions": total_reactions,
+                "emoji_breakdown": {result["_id"]: result["count"] for result in results},
+                "most_used_emoji": results[0]["_id"] if results else None,
+                "latest_reaction_date": max((result["latest_reaction"] for result in results), default=None)
+            }
+            
+            logger.info(f"Retrieved reaction stats for user {user_id}: {total_reactions} total reactions")
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Error getting user reaction stats: {e}")
+            return {"error": str(e)}
+
+    async def get_message_all_reactions(self, message_id: str) -> Dict:
+        """Get all reactions for a specific message with user details"""
+        try:
+            reactions = list(self.user_reactions_collection.find({
+                "message_id": str(message_id)
+            }).sort("created_at", 1))
+            
+            if not reactions:
+                return {"message_id": message_id, "reactions": [], "total_count": 0}
+            
+            # Group by emoji
+            emoji_groups = {}
+            for reaction in reactions:
+                emoji = reaction["emoji"]
+                if emoji not in emoji_groups:
+                    emoji_groups[emoji] = []
+                emoji_groups[emoji].append({
+                    "user_id": reaction["user_id"],
+                    "created_at": reaction["created_at"]
+                })
+            
+            result = {
+                "message_id": message_id,
+                "reactions": emoji_groups,
+                "total_count": len(reactions),
+                "emoji_counts": {emoji: len(users) for emoji, users in emoji_groups.items()}
+            }
+            
+            logger.info(f"Retrieved {len(reactions)} reactions for message {message_id}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error getting message reactions: {e}")
+            return {"error": str(e)}
+
+    async def get_top_reacted_messages(self, limit: int = 10, emoji: str = None) -> List[Dict]:
+        """Get the most reacted messages, optionally filtered by emoji"""
+        try:
+            match_stage = {}
+            if emoji:
+                match_stage["emoji"] = emoji
+            
+            pipeline = [
+                {"$match": match_stage},
+                {"$group": {
+                    "_id": "$message_id",
+                    "reaction_count": {"$sum": 1},
+                    "unique_emojis": {"$addToSet": "$emoji"},
+                    "latest_reaction": {"$max": "$created_at"}
+                }},
+                {"$sort": {"reaction_count": -1}},
+                {"$limit": limit}
+            ]
+            
+            results = list(self.user_reactions_collection.aggregate(pipeline))
+            
+            # Enrich with image message data if available
+            for result in results:
+                message_id = result["_id"]
+                image_data = self.images_collection.find_one({"message_id": message_id})
+                if image_data:
+                    result["image_data"] = {
+                        "author_id": image_data.get("author_id"),
+                        "author_name": image_data.get("author_name"),
+                        "channel_id": image_data.get("channel_id"),
+                        "created_at": image_data.get("created_at"),
+                        "image_url": image_data.get("image_url")
+                    }
+            
+            logger.info(f"Retrieved top {len(results)} reacted messages")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error getting top reacted messages: {e}")
+            return []
+
+    async def bulk_track_reactions(self, reactions_data: List[Dict]) -> Dict:
+        """Bulk insert/update multiple reactions for efficiency"""
+        try:
+            if not reactions_data:
+                return {"inserted": 0, "updated": 0, "errors": 0}
+            
+            operations = []
+            for reaction in reactions_data:
+                filter_doc = {
+                    "user_id": str(reaction["user_id"]),
+                    "message_id": str(reaction["message_id"]),
+                    "emoji": reaction["emoji"]
+                }
+                
+                update_doc = {
+                    "$set": {
+                        "user_id": str(reaction["user_id"]),
+                        "message_id": str(reaction["message_id"]),
+                        "emoji": reaction["emoji"],
+                        "created_at": reaction.get("created_at", datetime.now())
+                    }
+                }
+                
+                operations.append({
+                    "updateOne": {
+                        "filter": filter_doc,
+                        "update": update_doc,
+                        "upsert": True
+                    }
+                })
+            
+            # Execute bulk operations
+            result = self.user_reactions_collection.bulk_write(operations, ordered=False)
+            
+            stats = {
+                "inserted": result.upserted_count,
+                "updated": result.modified_count,
+                "errors": 0,
+                "total_processed": len(reactions_data)
+            }
+            
+            logger.info(f"Bulk reaction tracking complete: {stats}")
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Error in bulk reaction tracking: {e}")
+            return {"inserted": 0, "updated": 0, "errors": 1, "error": str(e)}
+
+    async def get_reaction_analytics(self, days_back: int = 7) -> Dict:
+        """Get comprehensive reaction analytics for the specified time period"""
+        try:
+            from datetime import timedelta
+            
+            start_date = datetime.now() - timedelta(days=days_back)
+            
+            pipeline = [
+                {"$match": {"created_at": {"$gte": start_date}}},
+                {"$group": {
+                    "_id": {
+                        "date": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}},
+                        "emoji": "$emoji"
+                    },
+                    "count": {"$sum": 1}
+                }},
+                {"$sort": {"_id.date": 1}}
+            ]
+            
+            results = list(self.user_reactions_collection.aggregate(pipeline))
+            
+            # Process results into analytics
+            daily_stats = {}
+            emoji_totals = {}
+            
+            for result in results:
+                date = result["_id"]["date"]
+                emoji = result["_id"]["emoji"]
+                count = result["count"]
+                
+                if date not in daily_stats:
+                    daily_stats[date] = {}
+                daily_stats[date][emoji] = count
+                
+                if emoji not in emoji_totals:
+                    emoji_totals[emoji] = 0
+                emoji_totals[emoji] += count
+            
+            # Get total unique users and messages
+            total_users = len(self.user_reactions_collection.distinct("user_id", {"created_at": {"$gte": start_date}}))
+            total_messages = len(self.user_reactions_collection.distinct("message_id", {"created_at": {"$gte": start_date}}))
+            total_reactions = sum(emoji_totals.values())
+            
+            analytics = {
+                "period": f"Last {days_back} days",
+                "start_date": start_date.isoformat(),
+                "end_date": datetime.now().isoformat(),
+                "total_reactions": total_reactions,
+                "total_unique_users": total_users,
+                "total_unique_messages": total_messages,
+                "daily_breakdown": daily_stats,
+                "emoji_totals": dict(sorted(emoji_totals.items(), key=lambda x: x[1], reverse=True)),
+                "average_reactions_per_day": total_reactions / days_back if days_back > 0 else 0
+            }
+            
+            logger.info(f"Generated reaction analytics for {days_back} days: {total_reactions} total reactions")
+            return analytics
+            
+        except Exception as e:
+            logger.error(f"Error generating reaction analytics: {e}")
+            return {"error": str(e)}
+
     # WELCOME/LEAVE SYSTEM METHODS
     async def set_welcome_channel(self, guild_id: int, channel_id: int) -> bool:
         """Set the welcome channel for a guild"""

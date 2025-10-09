@@ -2688,6 +2688,117 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
 
+        @self.bot.hybrid_command(name="scanreactions", description="Scan server for image reactions and register them in database (Admin permissions required)")
+        @admin_command
+        async def scan_reactions_command(ctx, days_back: int = 7, max_messages_per_channel: int = 1000):
+            """Scan the entire server for image reactions and register them in the database"""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                # Validate guild
+                if not ctx.guild or ctx.guild.id != Config.GUILD_ID:
+                    error_msg = "This command can only be used in the configured guild."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Validate parameters
+                if days_back < 1 or days_back > 30:
+                    error_msg = "Days back must be between 1 and 30."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                if max_messages_per_channel < 100 or max_messages_per_channel > 5000:
+                    error_msg = "Max messages per channel must be between 100 and 5000."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Get events controller
+                events_controller = self.get_events_controller()
+                if not events_controller:
+                    error_msg = "Events controller is not available."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Send initial response
+                initial_embed = discord.Embed(
+                    title="🔍 Starting Server Reaction Scan",
+                    description=f"Scanning {ctx.guild.name} for image reactions...\n"
+                               f"📅 Days back: {days_back}\n"
+                               f"📊 Max messages per channel: {max_messages_per_channel}\n\n"
+                               f"⏳ This may take a while depending on server size...",
+                    color=discord.Color.blue(),
+                    timestamp=datetime.utcnow()
+                )
+                
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=initial_embed)
+                else:
+                    await ctx.send(embed=initial_embed)
+                
+                # Start the scan
+                results = await events_controller.scan_server_for_image_reactions(
+                    guild=ctx.guild,
+                    days_back=days_back,
+                    max_messages_per_channel=max_messages_per_channel
+                )
+                
+                # Send results
+                if results:
+                    results_embed = discord.Embed(
+                        title="✅ Server Reaction Scan Complete",
+                        description=f"Successfully scanned {ctx.guild.name}",
+                        color=discord.Color.green(),
+                        timestamp=datetime.utcnow()
+                    )
+                    results_embed.add_field(
+                        name="📊 Scan Results",
+                        value=f"📝 Messages scanned: {results['total_messages_scanned']:,}\n"
+                              f"🖼️ Image messages found: {results['total_image_messages']:,}\n"
+                              f"👍 Reactions registered: {results['total_reactions_found']:,}",
+                        inline=False
+                    )
+                    results_embed.add_field(
+                        name="ℹ️ Note",
+                        value="All discovered reactions have been registered in the database for quest tracking.",
+                        inline=False
+                    )
+                else:
+                    results_embed = EmbedViews.error_embed("Scan failed or was interrupted.")
+                
+                # Send follow-up message with results
+                try:
+                    await ctx.channel.send(embed=results_embed)
+                except:
+                    # Fallback if channel send fails
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(embed=results_embed)
+                    else:
+                        await ctx.send(embed=results_embed)
+                
+            except Exception as e:
+                logger.error(f"Error in scan reactions command: {e}")
+                error_embed = EmbedViews.error_embed(f"Failed to scan server reactions: {str(e)}")
+                try:
+                    await ctx.channel.send(embed=error_embed)
+                except:
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(embed=error_embed, ephemeral=True)
+                    else:
+                        await ctx.send(embed=error_embed)
+
         @youtube_group.command(name="remove", description="Remove a YouTube channel from monitoring")
         async def youtube_remove(ctx, youtube_channel_id: str):
             """Remove a YouTube channel from monitoring"""
