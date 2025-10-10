@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 from config import Config
+from views.forum_thread_view import ForumThreadView
 
 if TYPE_CHECKING:
     from controllers.events import EventsController
@@ -182,6 +183,14 @@ class RikoBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Failed to sync commands: {e}")
             logger.error(f"   Make sure bot has 'applications.commands' scope!")
+        
+        # Register persistent views
+        try:
+            # Add ForumThreadView as a persistent view
+            self.add_view(ForumThreadView())
+            logger.info("✅ Registered persistent ForumThreadView")
+        except Exception as e:
+            logger.error(f"❌ Failed to register persistent views: {e}")
         
         # Start scheduler tasks for best image posting
         if self.scheduler_controller:
@@ -529,4 +538,4 @@ async def main():
         logger.error(f"Unexpected error: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

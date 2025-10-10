@@ -3,6 +3,7 @@ from discord.ext import commands
 from models.role_manager import RoleManager
 from models.quest_manager import QuestManager
 from views.embeds import EmbedViews
+from views.forum_thread_view import ForumThreadView
 from config import Config
 import logging
 import asyncio
@@ -638,10 +639,35 @@ class EventsController:
             if not hasattr(thread.parent, 'type') or thread.parent.type != discord.ChannelType.forum:
                 return
             
-            # Send ping message in the newly created thread
-            ping_message = f"<@&{Config.HELP_ROLE_ID}> 📋 New thread created: **{thread.name}**"
+            # Create embed for the help ping
+            embed = discord.Embed(
+                title="🆘 New Help Thread Created",
+                description=f"**{thread.name}**\n\nA new thread has been created and helpers have been notified!",
+                color=0x00ff00,  # Green color
+                timestamp=datetime.utcnow()
+            )
             
-            await thread.send(ping_message)
+            embed.add_field(
+                name="📝 Thread Info",
+                value=f"**Creator:** {thread.owner.mention if thread.owner else 'Unknown'}\n**Created:** <t:{int(thread.created_at.timestamp())}:R>",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="ℹ️ How to get help",
+                value="• Describe your problem clearly\n• Include relevant code/screenshots\n• Be patient while waiting for responses\n• Use the close button when resolved",
+                inline=False
+            )
+            
+            embed.set_footer(text="Click the button below to close this thread when resolved")
+            
+            # Create the view with close button
+            view = ForumThreadView(thread_id=thread.id)
+            
+            # Send ping message with embed and button
+            ping_message = f"<@&{Config.HELP_ROLE_ID}>"
+            
+            await thread.send(content=ping_message, embed=embed, view=view)
             
             logger.info(f"Pinged help role for new forum thread: {thread.name} (ID: {thread.id})")
             
