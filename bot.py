@@ -186,9 +186,10 @@ class RikoBot(commands.Bot):
         
         # Register persistent views
         try:
-            # Add ForumThreadView as a persistent view
+            # Register ForumThreadView for persistent view handling
+            # This allows Discord.py to recreate views after bot restart
             self.add_view(ForumThreadView())
-            logger.info("✅ Registered persistent ForumThreadView")
+            logger.info("✅ Persistent view registration completed")
         except Exception as e:
             logger.error(f"❌ Failed to register persistent views: {e}")
         

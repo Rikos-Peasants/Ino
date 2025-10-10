@@ -540,7 +540,7 @@ class SchedulerController:
             
             # Audit for discrepancies
             if hasattr(self.bot.leaderboard_manager, 'audit_reaction_discrepancies'):
-                audit_result = await self.bot.leaderboard_manager.audit_reaction_discrepancies(
+                audit_result = self.bot.leaderboard_manager.audit_reaction_discrepancies(
                     str(message.id), thumbs_up_count, thumbs_down_count
                 )
             

@@ -12,8 +12,11 @@ class ForumThreadView(discord.ui.View):
         self.thread_id = thread_id
         
         # Set custom ID for persistence across bot restarts
+        # Always set a custom_id to make this a valid persistent view
         if thread_id:
             self.close_button.custom_id = f"close_thread:{thread_id}"
+        else:
+            self.close_button.custom_id = "close_thread:generic"
     
     @discord.ui.button(
         label="🔒 Close Thread", 
@@ -102,8 +105,12 @@ class ForumThreadView(discord.ui.View):
         """Create view instance from custom_id for persistent views"""
         try:
             if custom_id.startswith("close_thread:"):
-                thread_id = int(custom_id.split(":", 1)[1])
-                return cls(thread_id=thread_id)
+                thread_part = custom_id.split(":", 1)[1]
+                if thread_part == "generic":
+                    return cls(thread_id=None)
+                else:
+                    thread_id = int(thread_part)
+                    return cls(thread_id=thread_id)
         except (ValueError, IndexError):
             logger.error(f"Invalid custom_id format: {custom_id}")
         return cls()
