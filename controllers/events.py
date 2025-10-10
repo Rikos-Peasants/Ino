@@ -630,13 +630,8 @@ class EventsController:
 
 
     async def _handle_thread_create(self, thread: discord.Thread):
-        """Handle thread creation to ping help role for forum threads"""
+        """Handle thread creation for different forum channels"""
         try:
-            # Only handle threads in the specific forum channel
-            if thread.parent_id != Config.FORUM_CHANNEL_ID:
-                logger.debug(f"Thread {thread.id} not in help forum (parent: {thread.parent_id})")
-                return
-            
             # Get the parent channel to verify it's a forum
             parent_channel = thread.parent or self.bot.get_channel(thread.parent_id)
             if not parent_channel:
@@ -647,8 +642,22 @@ class EventsController:
             if parent_channel.type != discord.ChannelType.forum:
                 logger.debug(f"Parent channel {parent_channel.id} is not a forum channel (type: {parent_channel.type})")
                 return
+            
+            # Handle different forum channels
+            if thread.parent_id == Config.FORUM_CHANNEL_ID:
+                await self._handle_help_forum_thread(thread, parent_channel)
+            elif thread.parent_id == Config.ASK_COMPLAIN_STAFF_CHANNEL_ID:
+                await self._handle_staff_forum_thread(thread, parent_channel)
+            else:
+                logger.debug(f"Thread {thread.id} not in monitored forums (parent: {thread.parent_id})")
                 
-            logger.info(f"Processing new forum thread: {thread.name} (ID: {thread.id}) in forum {parent_channel.name}")
+        except Exception as e:
+            logger.error(f"Error handling thread creation: {e}")
+
+    async def _handle_help_forum_thread(self, thread: discord.Thread, parent_channel: discord.ForumChannel):
+        """Handle thread creation in the help forum"""
+        try:
+            logger.info(f"Processing new help forum thread: {thread.name} (ID: {thread.id}) in forum {parent_channel.name}")
             
             # Create embed for the help ping
             embed = discord.Embed(
@@ -701,9 +710,139 @@ class EventsController:
             logger.info(f"Successfully sent help ping message (ID: {message.id}) to thread {thread.name}")
             
         except discord.Forbidden:
-            logger.error(f"Missing permission to send message in forum thread {thread.id}")
+            logger.error(f"Missing permission to send message in help forum thread {thread.id}")
         except Exception as e:
-            logger.error(f"Error handling thread creation: {e}")
+            logger.error(f"Error handling help forum thread creation: {e}")
+
+    async def _handle_staff_forum_thread(self, thread: discord.Thread, parent_channel: discord.ForumChannel):
+        """Handle thread creation in the ask and complain to staff forum"""
+        try:
+            logger.info(f"Processing new staff forum thread: {thread.name} (ID: {thread.id}) in forum {parent_channel.name}")
+            
+            # Get applied tags for this thread <mcreference link="https://stackoverflow.com/questions/78882777/how-do-i-detect-a-tag-on-a-post-in-forums-channel-in-discord-py" index="2">2</mcreference>
+            applied_tags = thread.applied_tags
+            tag_names = [tag.name for tag in applied_tags] if applied_tags else []
+            
+            logger.info(f"Thread tags: {tag_names}")
+            
+            # Determine ping targets based on tags
+            ping_targets = [f"<@&{Config.STAFF_ROLE_ID}>"]  # Always ping staff role
+            
+            # Check for specific staff member tags
+            for tag_name in tag_names:
+                if tag_name.startswith("Moderator: ") or tag_name.startswith("Admin: "):
+                    staff_name = tag_name.split(": ", 1)[1] if ": " in tag_name else tag_name
+                    if staff_name in Config.STAFF_MEMBERS:
+                        staff_id = Config.STAFF_MEMBERS[staff_name]
+                        ping_targets.append(f"<@{staff_id}>")
+                        logger.info(f"Adding specific ping for {staff_name} (ID: {staff_id})")
+            
+            # Check if this is a warning appeal
+            is_warning_appeal = "Warning Appeal" in tag_names
+            
+            # Create embed for the staff notification
+            embed_color = 0xff9900 if is_warning_appeal else 0x0099ff  # Orange for appeals, blue for others
+            embed_title = "⚖️ New Warning Appeal" if is_warning_appeal else "📢 New Staff Thread"
+            
+            embed = discord.Embed(
+                title=embed_title,
+                description=f"**{thread.name}**\n\nA new thread has been created in the staff forum.",
+                color=embed_color,
+                timestamp=datetime.utcnow()
+            )
+            
+            # Add thread info
+            creator_mention = thread.owner.mention if thread.owner else 'Unknown'
+            created_timestamp = int(thread.created_at.timestamp()) if thread.created_at else int(datetime.utcnow().timestamp())
+            
+            embed.add_field(
+                name="👤 Thread Creator",
+                value=f"**User:** {creator_mention}\n**Created:** <t:{created_timestamp}:R>",
+                inline=False
+            )
+            
+            # Add tags info if any
+            if tag_names:
+                embed.add_field(
+                    name="🏷️ Thread Tags",
+                    value=", ".join(f"`{tag}`" for tag in tag_names),
+                    inline=False
+                )
+            
+            # Add warning information if this is a warning appeal
+            if is_warning_appeal and thread.owner:
+                try:
+                    leaderboard_manager = getattr(self.bot, 'leaderboard_manager', None)
+                    if leaderboard_manager:
+                        warnings = await leaderboard_manager.get_user_warnings(thread.guild.id, thread.owner.id, limit=5)
+                        warning_count = await leaderboard_manager.get_warning_count(thread.guild.id, thread.owner.id)
+                        
+                        if warnings:
+                            warning_text = f"**Active Warnings:** {warning_count}\n\n"
+                            for i, warning in enumerate(warnings[:3], 1):  # Show last 3 warnings
+                                created_at = warning.get('created_at', datetime.now())
+                                if isinstance(created_at, str):
+                                    try:
+                                        created_at = datetime.fromisoformat(created_at)
+                                    except:
+                                        created_at = datetime.now()
+                                
+                                warning_text += f"**{i}.** {warning.get('reason', 'No reason')} "
+                                warning_text += f"*(by {warning.get('moderator_name', 'Unknown')} "
+                                warning_text += f"on {created_at.strftime('%m/%d/%Y')})*\n"
+                            
+                            if len(warnings) > 3:
+                                warning_text += f"*... and {len(warnings) - 3} more warnings*"
+                            
+                            embed.add_field(
+                                name="⚠️ User Warning History",
+                                value=warning_text,
+                                inline=False
+                            )
+                        else:
+                            embed.add_field(
+                                name="⚠️ User Warning History",
+                                value="No active warnings found for this user.",
+                                inline=False
+                            )
+                except Exception as e:
+                    logger.error(f"Error fetching warnings for appeal: {e}")
+                    embed.add_field(
+                        name="⚠️ User Warning History",
+                        value="Error retrieving warning information.",
+                        inline=False
+                    )
+            
+            # Add staff guidelines
+            guidelines_text = "• Respond promptly and professionally\n"
+            guidelines_text += "• Review all provided information carefully\n"
+            if is_warning_appeal:
+                guidelines_text += "• Consider the warning history and context\n"
+                guidelines_text += "• Document your decision in the thread"
+            else:
+                guidelines_text += "• Escalate to admins if needed\n"
+                guidelines_text += "• Follow server policies and guidelines"
+            
+            embed.add_field(
+                name="📋 Staff Guidelines",
+                value=guidelines_text,
+                inline=False
+            )
+            
+            embed.set_footer(text="Staff Forum Notification System")
+            
+            # Send ping message with embed
+            ping_message = " ".join(ping_targets)
+            
+            logger.info(f"Sending staff ping to thread {thread.name} (ID: {thread.id})")
+            logger.info(f"Ping targets: {ping_targets}")
+            message = await thread.send(content=ping_message, embed=embed)
+            logger.info(f"Successfully sent staff ping message (ID: {message.id}) to thread {thread.name}")
+            
+        except discord.Forbidden:
+            logger.error(f"Missing permission to send message in staff forum thread {thread.id}")
+        except Exception as e:
+            logger.error(f"Error handling staff forum thread creation: {e}")
 
 
     

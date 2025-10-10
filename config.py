@@ -77,6 +77,18 @@ class Config:
     HELP_ROLE_ID = 1347922925218435114  # Role to ping for help requests
     FORUM_CHANNEL_ID = 1426180987234287687  # Forum channel for automated pings on thread creation
     
+    # Ask and complain to staff channel
+    ASK_COMPLAIN_STAFF_CHANNEL_ID = 1426179557299453972  # Ask and complain to staff forum channel
+    STAFF_ROLE_ID = 1372477845997359244  # Staff role to ping for all threads
+    
+    # Staff member IDs for specific pings
+    STAFF_MEMBERS = {
+        "Angel": 226050139226112000,
+        "Mitch": 784822151529627708,
+        "Seika": 742066956194152449,
+        "Taishi": 121269547452989440
+    }
+    
     # YouTube monitoring roles
     YOUTUBE_ROLE_ID = 1375737416325009552  # Default role for YouTube videos
     SHORTS_ROLE_ID = 1392619703603822773  # Role to ping for YouTube Shorts (≤60 seconds)
