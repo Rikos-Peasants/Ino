@@ -2147,7 +2147,7 @@ class CommandsController:
                                         break
                         
                         # Audit the message
-                        audit_result = self.bot.leaderboard_manager.audit_reaction_discrepancies(
+                        audit_result = await self.bot.leaderboard_manager.audit_reaction_discrepancies(
                             str(message.id), discord_thumbs_up, discord_thumbs_down
                         )
                         
