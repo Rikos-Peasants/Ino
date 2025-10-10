@@ -76,6 +76,7 @@ class Config:
     HELP_CHANNEL_ID = 1301366087975178312  # "I need help" channel
     PROJECTS_CHANNEL_ID = 1278117139428933645  # Channel with all projects of rayen
     HELP_ROLE_ID = 1347922925218435114  # Role to ping for help requests
+    FORUM_CHANNEL_ID = 1426180987234287687  # Forum channel for automated pings on thread creation
     
     # YouTube monitoring roles
     YOUTUBE_ROLE_ID = 1375737416325009552  # Default role for YouTube videos

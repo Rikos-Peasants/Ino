@@ -63,6 +63,10 @@ class EventsController:
             await self._handle_reaction_change(reaction, user, added=False)
         
         @self.bot.event
+        async def on_thread_create(thread: discord.Thread):
+            await self._handle_thread_create(thread)
+        
+        @self.bot.event
         async def on_thread_update(before: discord.Thread, after: discord.Thread):
             await self._handle_thread_update(before, after)
         
@@ -736,6 +740,29 @@ Here are some useful resources to help you:
             logger.error(f"Missing permission to create thread in #{channel_name}")
         except Exception as e:
             logger.error(f"Error handling help channel message: {e}")
+
+    async def _handle_thread_create(self, thread: discord.Thread):
+        """Handle thread creation to ping help role for forum threads"""
+        try:
+            # Only handle threads in the specific forum channel
+            if thread.parent_id != Config.FORUM_CHANNEL_ID:
+                return
+            
+            # Skip if this is not a forum thread (should be, but safety check)
+            if not hasattr(thread.parent, 'type') or thread.parent.type != discord.ChannelType.forum:
+                return
+            
+            # Send ping message in the newly created thread
+            ping_message = f"<@&{Config.HELP_ROLE_ID}> 📋 New thread created: **{thread.name}**"
+            
+            await thread.send(ping_message)
+            
+            logger.info(f"Pinged help role for new forum thread: {thread.name} (ID: {thread.id})")
+            
+        except discord.Forbidden:
+            logger.error(f"Missing permission to send message in forum thread {thread.id}")
+        except Exception as e:
+            logger.error(f"Error handling thread creation: {e}")
 
     async def _handle_thread_update(self, before: discord.Thread, after: discord.Thread):
         """Handle thread updates to keep database synchronized"""
