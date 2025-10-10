@@ -584,6 +584,67 @@ class EmbedViews:
         return embed
     
     @staticmethod
+    def combined_points_leaderboard_embed(leaderboard: list, current_user_id: int) -> discord.Embed:
+        """Create an embed for the combined points leaderboard (general + quest points)"""
+        embed = discord.Embed(
+            title="🏆 Points Leaderboard",
+            description="Top users by total points (text messages, voice chat, and quests)!",
+            color=discord.Color.gold(),
+            timestamp=datetime.utcnow()
+        )
+        
+        if not leaderboard:
+            embed.add_field(
+                name="No Data Available",
+                value="Be the first to earn points by chatting, joining voice, and completing quests!",
+                inline=False
+            )
+        else:
+            leaderboard_text = []
+            medals = ["🥇", "🥈", "🥉"]
+            
+            for i, user_data in enumerate(leaderboard, 1):
+                medal = medals[i-1] if i <= 3 else f"**{i}.**"
+                
+                user_name = user_data.get("user_name", "Unknown")
+                user_id = user_data.get("user_id")
+                total_points = user_data.get("total_points", 0)
+                general_points = user_data.get("general_points", 0)
+                quest_points = user_data.get("quest_points", 0)
+                text_points = user_data.get("text_points", 0)
+                voice_points = user_data.get("voice_points", 0)
+                booster_points = user_data.get("booster_points", 0)
+                
+                # Highlight current user
+                if str(user_id) == str(current_user_id):
+                    user_display = f"**{user_name}** ⭐"
+                else:
+                    user_display = user_name
+                
+                # Create breakdown
+                breakdown_parts = []
+                if text_points > 0:
+                    breakdown_parts.append(f"💬 {text_points}")
+                if voice_points > 0:
+                    breakdown_parts.append(f"🎤 {voice_points}")
+                if booster_points > 0:
+                    breakdown_parts.append(f"⚡ {booster_points}")
+                if quest_points > 0:
+                    breakdown_parts.append(f"🎯 {quest_points}")
+                
+                breakdown = " • ".join(breakdown_parts) if breakdown_parts else "No activity yet"
+                
+                leaderboard_text.append(
+                    f"{medal} {user_display} - **{total_points:,}** pts\n"
+                    f"　└ {breakdown}"
+                )
+            
+            embed.description = "\n\n".join(leaderboard_text)
+            embed.set_footer(text="💬 Text • 🎤 Voice • ⚡ Booster • 🎯 Quests")
+        
+        return embed
+    
+    @staticmethod
     def quest_completed_embed(quest: dict) -> discord.Embed:
         """Create an embed for quest completion"""
         embed = discord.Embed(

@@ -49,11 +49,28 @@ class Config:
         1378693276206370969
     ]
     
-    # Chat channels for redirecting conversations
+    # Chat channels for redirecting conversations (also booster channels for 2x points)
     CHAT_CHANNELS = [
         1278117139428933647,
         1278117139428933649
     ]
+    
+    # Booster text channels (2 points per message instead of 1)
+    BOOSTER_TEXT_CHANNELS = [
+        1278117139428933647,
+        1278117139428933649
+    ]
+    
+    # Voice channel exclusions (no points earned in these channels)
+    EXCLUDED_VOICE_CHANNELS = [
+        1282209583086964766,
+        1424015547661811945
+    ]
+    
+    # Point system configuration
+    POINTS_PER_MESSAGE = 1  # Regular text channels
+    POINTS_PER_MESSAGE_BOOSTER = 2  # Booster text channels
+    POINTS_PER_MINUTE_VC = 2  # Voice channel participation
     
     # Help channel monitoring
     HELP_CHANNEL_ID = 1301366087975178312  # "I need help" channel
@@ -95,4 +112,4 @@ class Config:
         if missing_optional:
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Missing optional environment variables (some features may not work): {', '.join(missing_optional)}") 
+            logger.warning(f"Missing optional environment variables (some features may not work): {', '.join(missing_optional)}")

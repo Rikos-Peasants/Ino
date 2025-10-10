@@ -464,13 +464,13 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
         
-        @self.bot.hybrid_command(name="leaderboard", description="Show all leaderboards (Images, Quest Points, InoRep)")
+        @self.bot.hybrid_command(name="leaderboard", description="Show all leaderboards (Points, Images, Quest Points, InoRep)")
         @public_command
         async def leaderboard_command(ctx, type: Optional[str] = None):
             """Show combined leaderboard with interactive buttons
             
             Args:
-                type: Optional leaderboard type - 'images', 'points', or 'inorep' (default: images)
+                type: Optional leaderboard type - 'points', 'images', 'quests', or 'inorep' (default: points)
             """
             try:
                 # Check if this is a slash command (has defer) or text command
@@ -503,15 +503,21 @@ class CommandsController:
                 # Normalize type parameter
                 if type:
                     type = type.lower()
-                    if type not in ['images', 'points', 'inorep']:
-                        error_msg = "Invalid type. Use 'images', 'points', or 'inorep'."
+                    if type not in ['points', 'images', 'quests', 'inorep']:
+                        error_msg = "Invalid type. Use 'points', 'images', 'quests', or 'inorep'."
                         await ctx.send(error_msg, ephemeral=True)
                         return
                 else:
-                    type = 'images'  # Default
+                    type = 'points'  # Default to combined points
                 
                 # Generate appropriate leaderboard based on type
                 if type == 'points':
+                    # Combined points leaderboard (general + quest points)
+                    leaderboard = await leaderboard_manager.get_combined_leaderboard(limit=10, quest_manager=quest_manager)
+                    embed = EmbedViews.combined_points_leaderboard_embed(leaderboard, ctx.author.id)
+                    
+                elif type == 'quests':
+                    # Quest points only
                     if not quest_manager:
                         error_msg = "Quest system is not available."
                         await ctx.send(error_msg, ephemeral=True)

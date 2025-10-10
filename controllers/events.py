@@ -7,6 +7,7 @@ from config import Config
 import logging
 import asyncio
 import random
+from datetime import datetime
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,10 @@ class EventsController:
         @self.bot.event
         async def on_thread_delete(thread: discord.Thread):
             await self._handle_thread_delete(thread)
+        
+        @self.bot.event
+        async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+            await self._handle_voice_state_update(member, before, after)
     
     async def _handle_member_join(self, member: discord.Member):
         """Handle member join events to reapply NSFWBAN role if needed and send welcome message"""
@@ -405,6 +410,9 @@ class EventsController:
         
         # Check for spam channel flood detection
         await self._check_spam_channel_flood(message)
+        
+        # Award points for text messages (before other processing)
+        await self._award_text_message_points(message)
         
         # Check if message is in help channel
         if message.channel.id == Config.HELP_CHANNEL_ID:
@@ -1311,7 +1319,7 @@ Here are some useful resources to help you:
                 count=1
             )
             
-            # Track "support_new_users" quest - like images from different users
+            # Track "diverse_reactions" quest - like images from different users
             # We need to track which unique users they've liked today
             try:
                 await self.quest_manager.track_unique_user_like(
@@ -2131,3 +2139,186 @@ Here are some useful resources to help you:
         except Exception as e:
             logger.error(f"❌ Error during server-wide image reaction scan: {e}")
             return None
+
+    async def _award_text_message_points(self, message: discord.Message):
+        """Award points for text messages"""
+        try:
+            # Skip if no leaderboard manager
+            if not hasattr(self.bot, 'leaderboard_manager') or not self.bot.leaderboard_manager:
+                return
+            
+            # Skip commands (they start with prefix)
+            if message.content.startswith(Config.COMMAND_PREFIX):
+                return
+            
+            # Skip very short messages (less than 3 characters)
+            if len(message.content.strip()) < 3:
+                return
+            
+            # Determine points based on channel type
+            points = Config.POINTS_PER_MESSAGE  # Default 1 point
+            point_type = "text"
+            reason = f"Text message in #{message.channel.name}"
+            
+            # Check if it's a booster channel
+            if message.channel.id in Config.BOOSTER_TEXT_CHANNELS:
+                points = Config.POINTS_PER_MESSAGE_BOOSTER  # 2 points for booster channels
+                point_type = "booster"
+                reason = f"Booster channel message in #{message.channel.name}"
+            
+            # Award the points
+            await self.bot.leaderboard_manager.add_points(
+                user_id=message.author.id,
+                user_name=message.author.display_name,
+                points=points,
+                point_type=point_type,
+                reason=reason
+            )
+            
+            logger.debug(f"Awarded {points} {point_type} points to {message.author.display_name} for message")
+            
+        except Exception as e:
+            logger.error(f"Error awarding text message points: {e}")
+
+    async def _handle_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        """Handle voice channel state changes for point tracking"""
+        try:
+            # Skip if no leaderboard manager
+            if not hasattr(self.bot, 'leaderboard_manager') or not self.bot.leaderboard_manager:
+                return
+            
+            # Skip bots
+            if member.bot:
+                return
+            
+            # Initialize voice tracking if not exists
+            if not hasattr(self, 'voice_tracking'):
+                self.voice_tracking = {}
+            
+            user_id = member.id
+            
+            # Helper function to check if user should earn points
+            def _should_earn_points(voice_state: discord.VoiceState, channel: discord.VoiceChannel) -> bool:
+                if not voice_state or not channel:
+                    return False
+                
+                # Check if channel is excluded
+                if channel.id in Config.EXCLUDED_VOICE_CHANNELS:
+                    return False
+                
+                # Check if user is muted (self-muted or server-muted)
+                if voice_state.self_mute or voice_state.mute:
+                    return False
+                
+                # Check if there are at least 2 people in the channel (excluding bots)
+                non_bot_members = [m for m in channel.members if not m.bot]
+                if len(non_bot_members) < 2:
+                    return False
+                
+                return True
+            
+            # User joined a voice channel
+            if before.channel is None and after.channel is not None:
+                if _should_earn_points(after, after.channel):
+                    self.voice_tracking[user_id] = {
+                        "channel_id": after.channel.id,
+                        "join_time": datetime.now(),
+                        "user_name": member.display_name
+                    }
+                    logger.debug(f"{member.display_name} joined voice channel {after.channel.name} and is eligible for points")
+                else:
+                    logger.debug(f"{member.display_name} joined voice channel {after.channel.name} but is not eligible for points (muted, alone, or excluded)")
+            
+            # User left a voice channel
+            elif before.channel is not None and after.channel is None:
+                if user_id in self.voice_tracking:
+                    # Calculate time spent
+                    join_time = self.voice_tracking[user_id]["join_time"]
+                    leave_time = datetime.now()
+                    time_spent = (leave_time - join_time).total_seconds() / 60  # Convert to minutes
+                    
+                    # Award points (minimum 1 minute to get points)
+                    if time_spent >= 1:
+                        points = int(time_spent * Config.POINTS_PER_MINUTE_VC)
+                        await self.bot.leaderboard_manager.add_points(
+                            user_id=user_id,
+                            user_name=member.display_name,
+                            points=points,
+                            point_type="voice",
+                            reason=f"Voice chat for {time_spent:.1f} minutes in {before.channel.name}"
+                        )
+                        logger.debug(f"Awarded {points} voice points to {member.display_name} for {time_spent:.1f} minutes")
+                    
+                    # Remove from tracking
+                    del self.voice_tracking[user_id]
+            
+            # User switched channels
+            elif before.channel is not None and after.channel is not None and before.channel != after.channel:
+                # Award points for previous channel if tracked
+                if user_id in self.voice_tracking:
+                    join_time = self.voice_tracking[user_id]["join_time"]
+                    switch_time = datetime.now()
+                    time_spent = (switch_time - join_time).total_seconds() / 60
+                    
+                    if time_spent >= 1:
+                        points = int(time_spent * Config.POINTS_PER_MINUTE_VC)
+                        await self.bot.leaderboard_manager.add_points(
+                            user_id=user_id,
+                            user_name=member.display_name,
+                            points=points,
+                            point_type="voice",
+                            reason=f"Voice chat for {time_spent:.1f} minutes in {before.channel.name}"
+                        )
+                        logger.debug(f"Awarded {points} voice points to {member.display_name} for {time_spent:.1f} minutes")
+                
+                # Start tracking new channel if eligible
+                if _should_earn_points(after, after.channel):
+                    self.voice_tracking[user_id] = {
+                        "channel_id": after.channel.id,
+                        "join_time": datetime.now(),
+                        "user_name": member.display_name
+                    }
+                    logger.debug(f"{member.display_name} switched to voice channel {after.channel.name} and is eligible for points")
+                else:
+                    # Remove from tracking if switched to ineligible channel
+                    if user_id in self.voice_tracking:
+                        del self.voice_tracking[user_id]
+                    logger.debug(f"{member.display_name} switched to voice channel {after.channel.name} but is not eligible for points")
+            
+            # Handle mute/unmute or other state changes within the same channel
+            elif before.channel is not None and after.channel is not None and before.channel == after.channel:
+                # Check if eligibility changed
+                was_eligible = user_id in self.voice_tracking
+                is_eligible = _should_earn_points(after, after.channel)
+                
+                if was_eligible and not is_eligible:
+                    # User became ineligible (muted or channel became empty)
+                    join_time = self.voice_tracking[user_id]["join_time"]
+                    current_time = datetime.now()
+                    time_spent = (current_time - join_time).total_seconds() / 60
+                    
+                    if time_spent >= 1:
+                        points = int(time_spent * Config.POINTS_PER_MINUTE_VC)
+                        await self.bot.leaderboard_manager.add_points(
+                            user_id=user_id,
+                            user_name=member.display_name,
+                            points=points,
+                            point_type="voice",
+                            reason=f"Voice chat for {time_spent:.1f} minutes in {after.channel.name}"
+                        )
+                        logger.debug(f"Awarded {points} voice points to {member.display_name} before becoming ineligible")
+                    
+                    del self.voice_tracking[user_id]
+                    logger.debug(f"{member.display_name} became ineligible for points in {after.channel.name}")
+                
+                elif not was_eligible and is_eligible:
+                    # User became eligible (unmuted or someone joined)
+                    self.voice_tracking[user_id] = {
+                        "channel_id": after.channel.id,
+                        "join_time": datetime.now(),
+                        "user_name": member.display_name
+                    }
+                    logger.debug(f"{member.display_name} became eligible for points in {after.channel.name}")
+            
+        except Exception as e:
+            logger.error(f"Error handling voice state update: {e}")

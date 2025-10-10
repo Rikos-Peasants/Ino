@@ -1444,3 +1444,171 @@ class MongoLeaderboardManager:
         except Exception as e:
             logger.error(f"Error cleaning up help threads: {e}")
             return 0
+
+    # GENERAL POINT SYSTEM METHODS
+    async def add_points(self, user_id: int, user_name: str, points: int, point_type: str = "general", reason: str = None):
+        """Add points to a user for various activities (text messages, voice chat, etc.)"""
+        try:
+            # Initialize user_points collection if not exists
+            if not hasattr(self, 'user_points_collection'):
+                self.user_points_collection = self.db['user_points']
+                # Create index for better performance
+                self.user_points_collection.create_index([("user_id", 1)])
+            
+            # Update user's total points
+            result = self.user_points_collection.update_one(
+                {"user_id": str(user_id)},
+                {
+                    "$set": {
+                        "user_name": user_name,
+                        "last_updated": datetime.now()
+                    },
+                    "$inc": {
+                        "total_points": points,
+                        f"points_{point_type}": points
+                    },
+                    "$setOnInsert": {
+                        "user_id": str(user_id),
+                        "created_at": datetime.now()
+                    }
+                },
+                upsert=True
+            )
+            
+            # Log the point addition
+            if not hasattr(self, 'point_history_collection'):
+                self.point_history_collection = self.db['point_history']
+                # Create index for better performance
+                self.point_history_collection.create_index([("user_id", 1), ("timestamp", -1)])
+            
+            self.point_history_collection.insert_one({
+                "user_id": str(user_id),
+                "user_name": user_name,
+                "points": points,
+                "point_type": point_type,
+                "reason": reason,
+                "timestamp": datetime.now()
+            })
+            
+            logger.debug(f"Added {points} {point_type} points to {user_name}: {reason}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error adding points: {e}")
+            return False
+
+    async def get_user_points(self, user_id: int) -> Dict:
+        """Get a user's total points and breakdown"""
+        try:
+            if not hasattr(self, 'user_points_collection'):
+                self.user_points_collection = self.db['user_points']
+            
+            result = self.user_points_collection.find_one({"user_id": str(user_id)})
+            if result:
+                return {
+                    "total_points": result.get("total_points", 0),
+                    "text_points": result.get("points_text", 0),
+                    "voice_points": result.get("points_voice", 0),
+                    "booster_points": result.get("points_booster", 0),
+                    "last_updated": result.get("last_updated")
+                }
+            else:
+                return {
+                    "total_points": 0,
+                    "text_points": 0,
+                    "voice_points": 0,
+                    "booster_points": 0,
+                    "last_updated": None
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting user points: {e}")
+            return {"total_points": 0, "text_points": 0, "voice_points": 0, "booster_points": 0, "last_updated": None}
+
+    async def get_points_leaderboard(self, limit: int = 10) -> List[Tuple[str, int, int, int, int]]:
+        """Get points leaderboard (user_name, total_points, text_points, voice_points, booster_points)"""
+        try:
+            if not hasattr(self, 'user_points_collection'):
+                self.user_points_collection = self.db['user_points']
+            
+            cursor = self.user_points_collection.find().sort("total_points", -1).limit(limit)
+            leaderboard = []
+            
+            for user in cursor:
+                leaderboard.append((
+                    user.get("user_name", "Unknown"),
+                    user.get("total_points", 0),
+                    user.get("points_text", 0),
+                    user.get("points_voice", 0),
+                    user.get("points_booster", 0)
+                ))
+            
+            return leaderboard
+            
+        except Exception as e:
+            logger.error(f"Error getting points leaderboard: {e}")
+            return []
+
+    async def get_combined_leaderboard(self, limit: int = 10, quest_manager=None) -> List[Dict]:
+        """Get combined leaderboard with both general points and quest points"""
+        try:
+            # Get general points leaderboard
+            if not hasattr(self, 'user_points_collection'):
+                self.user_points_collection = self.db['user_points']
+            
+            # Get all users with points
+            general_points = {}
+            cursor = self.user_points_collection.find()
+            for user in cursor:
+                user_id = user.get("user_id")
+                general_points[user_id] = {
+                    "user_name": user.get("user_name", "Unknown"),
+                    "general_points": user.get("total_points", 0),
+                    "text_points": user.get("points_text", 0),
+                    "voice_points": user.get("points_voice", 0),
+                    "booster_points": user.get("points_booster", 0)
+                }
+            
+            # Get quest points if quest manager is available
+            quest_points = {}
+            if quest_manager:
+                try:
+                    # Get all users with quest points
+                    user_ids_quests = set(doc["user_id"] for doc in quest_manager.user_quests_collection.find({"completed": True}))
+                    user_ids_achievements = set(doc["user_id"] for doc in quest_manager.user_achievements_collection.find())
+                    all_quest_user_ids = user_ids_quests | user_ids_achievements
+                    
+                    for user_id in all_quest_user_ids:
+                        total_quest_points = await quest_manager.get_user_total_quest_points(int(user_id))
+                        if total_quest_points > 0:
+                            quest_points[user_id] = total_quest_points
+                except Exception as e:
+                    logger.error(f"Error getting quest points: {e}")
+            
+            # Combine the data
+            combined_data = {}
+            all_user_ids = set(general_points.keys()) | set(quest_points.keys())
+            
+            for user_id in all_user_ids:
+                general_data = general_points.get(user_id, {})
+                user_quest_points = quest_points.get(user_id, 0)
+                user_general_points = general_data.get("general_points", 0)
+                
+                combined_data[user_id] = {
+                    "user_id": user_id,
+                    "user_name": general_data.get("user_name", "Unknown"),
+                    "total_points": user_general_points + user_quest_points,
+                    "general_points": user_general_points,
+                    "quest_points": user_quest_points,
+                    "text_points": general_data.get("text_points", 0),
+                    "voice_points": general_data.get("voice_points", 0),
+                    "booster_points": general_data.get("booster_points", 0)
+                }
+            
+            # Sort by total points and return top entries
+            sorted_users = sorted(combined_data.values(), key=lambda x: x["total_points"], reverse=True)
+            return sorted_users[:limit]
+            
+        except Exception as e:
+            logger.error(f"Error getting combined leaderboard: {e}")
+            return []

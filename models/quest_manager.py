@@ -1723,7 +1723,7 @@ class QuestManager:
             return []
     
     async def track_unique_user_like(self, user_id: int, liked_user_id: int) -> List[Dict]:
-        """Track likes from unique users for the 'support_new_users' quest"""
+        """Track likes from unique users for the 'diverse_reactions' quest"""
         try:
             if user_id == liked_user_id:  # Don't count self-likes
                 return []
@@ -1786,11 +1786,11 @@ class QuestManager:
                 else:
                     return []  # Already liked this user today
             
-            # Update the support_new_users quest with the unique count
+            # Update the diverse_reactions quest with the unique count
             result = self.user_quests_collection.update_many(
                 {
                     "user_id": str(user_id),
-                    "quest_type": "support_new_users",
+                    "quest_type": "diverse_reactions",
                     "date": today.isoformat(),
                     "completed": False
                 },
@@ -1801,7 +1801,7 @@ class QuestManager:
             completed_quests = []
             quests_to_check = self.user_quests_collection.find({
                 "user_id": str(user_id),
-                "quest_type": "support_new_users",
+                "quest_type": "diverse_reactions",
                 "date": today.isoformat(),
                 "completed": False
             })
@@ -1818,7 +1818,7 @@ class QuestManager:
                         }
                     )
                     completed_quests.append(quest)
-                    logger.info(f"User {user_id} completed support_new_users quest! ({unique_count} unique users)")
+                    logger.info(f"User {user_id} completed diverse_reactions quest! ({unique_count} unique users)")
             
             if completed_quests:
                 await self._update_quest_streak(user_id)
