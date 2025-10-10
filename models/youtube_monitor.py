@@ -5,9 +5,20 @@ import requests
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, TYPE_CHECKING
 import logging
-from google import genai
-from google.genai import types
-from googleapiclient.discovery import build
+
+# Optional Google SDKs: import lazily/defensively so module import never fails
+try:  # New Google AI Python SDK (google-genai)
+    from google import genai  # type: ignore
+    from google.genai import types  # type: ignore
+except Exception:  # Library not installed or incompatible
+    genai = None  # type: ignore
+    types = None  # type: ignore
+
+try:  # YouTube Data API client
+    from googleapiclient.discovery import build  # type: ignore
+except Exception:
+    build = None  # type: ignore
+
 from config import Config
 import discord
 from discord.ext import commands
@@ -28,31 +39,36 @@ class YouTubeMonitor:
         self.guild_id = Config.GUILD_ID
         self.bot: Optional[commands.Bot] = None
         
-        # Initialize YouTube API client
+        # Initialize YouTube API client (if available)
         self.youtube_api_key = Config.YOUTUBE_API_KEY if hasattr(Config, 'YOUTUBE_API_KEY') and Config.YOUTUBE_API_KEY else None
-        if self.youtube_api_key:
+        self.youtube_client = None
+        if self.youtube_api_key and build is not None:
             try:
                 self.youtube_client = build('youtube', 'v3', developerKey=self.youtube_api_key)
                 logger.info("✅ YouTube API client initialized successfully")
             except Exception as e:
                 logger.error(f"❌ Failed to initialize YouTube API client: {e}")
                 self.youtube_client = None
+        elif self.youtube_api_key and build is None:
+            logger.warning("google-api-python-client not installed; using RSS fallback for YouTube")
         else:
             logger.warning("No YouTube API key found - will use RSS fallback")
-            self.youtube_client = None
         
-        # Configure Gemini AI if API key is available
+        # Configure Gemini AI if API key and SDK are available
+        self.gemini_client = None
         if self.gemini_api_key:
-            try:
-                self.gemini_client = genai.Client(api_key=self.gemini_api_key)
-                logger.info("Gemini AI configured successfully")
-            except Exception as e:
-                logger.error(f"Failed to configure Gemini AI: {e}")
-                self.gemini_api_key = None
-                self.gemini_client = None
+            if genai is None:
+                logger.warning("google-genai SDK not installed; using non-AI fallback responses")
+            else:
+                try:
+                    self.gemini_client = genai.Client(api_key=self.gemini_api_key)  # type: ignore[attr-defined]
+                    logger.info("Gemini AI configured successfully")
+                except Exception as e:
+                    logger.error(f"Failed to configure Gemini AI: {e}")
+                    self.gemini_api_key = None
+                    self.gemini_client = None
         else:
             logger.warning("No Gemini API key found - Ino responses will use fallback templates")
-            self.gemini_client = None
 
         # Note: monitored channels will be loaded later when an event loop is available
 
