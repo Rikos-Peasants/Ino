@@ -740,16 +740,28 @@ class EventsController:
                         ping_targets.append(f"<@{staff_id}>")
                         logger.info(f"Adding specific ping for {staff_name} (ID: {staff_id})")
             
-            # Check if this is a warning appeal
+            # Determine thread type and create appropriate title
             is_warning_appeal = "Warning Appeal" in tag_names
+            is_complaint = "Complaint" in tag_names
+            is_suggestion = "Suggestion" in tag_names
             
-            # Create embed for the staff notification
-            embed_color = 0xff9900 if is_warning_appeal else 0x0099ff  # Orange for appeals, blue for others
-            embed_title = "⚖️ New Warning Appeal" if is_warning_appeal else "📢 New Staff Thread"
+            # Create embed for the staff notification with specific titles
+            if is_warning_appeal:
+                embed_color = 0xff9900  # Orange for appeals
+                embed_title = "⚖️ New Warning Appeal"
+            elif is_complaint:
+                embed_color = 0xff4444  # Red for complaints
+                embed_title = "📢 New Complaint"
+            elif is_suggestion:
+                embed_color = 0x44ff44  # Green for suggestions
+                embed_title = "💡 New Suggestion"
+            else:
+                embed_color = 0x0099ff  # Blue for general threads
+                embed_title = "📢 New Question for Staff"
             
             embed = discord.Embed(
                 title=embed_title,
-                description=f"**{thread.name}**\n\nA new thread has been created in the staff forum.",
+                description=f"**{thread.name}**\n\nA new thread has been created. Please wait for a staff response.",
                 color=embed_color,
                 timestamp=datetime.utcnow()
             )
@@ -816,21 +828,7 @@ class EventsController:
                         inline=False
                     )
             
-            # Add staff guidelines
-            guidelines_text = "• Respond promptly and professionally\n"
-            guidelines_text += "• Review all provided information carefully\n"
-            if is_warning_appeal:
-                guidelines_text += "• Consider the warning history and context\n"
-                guidelines_text += "• Document your decision in the thread"
-            else:
-                guidelines_text += "• Escalate to admins if needed\n"
-                guidelines_text += "• Follow server policies and guidelines"
-            
-            embed.add_field(
-                name="📋 Staff Guidelines",
-                value=guidelines_text,
-                inline=False
-            )
+
             
             embed.set_footer(text="Staff Forum Notification System")
             
