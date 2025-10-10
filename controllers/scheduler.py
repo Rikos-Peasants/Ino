@@ -555,7 +555,8 @@ class SchedulerController:
                         continue
                     
                     # Check if this reaction is already tracked in our database
-                    existing_reaction = await self.bot.leaderboard_manager.user_reactions_collection.find_one({
+                    # PyMongo's find_one is synchronous; do not await it
+                    existing_reaction = self.bot.leaderboard_manager.user_reactions_collection.find_one({
                         "user_id": str(user.id),
                         "message_id": str(message.id),
                         "emoji": str(reaction.emoji)
