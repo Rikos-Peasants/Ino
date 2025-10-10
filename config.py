@@ -89,6 +89,13 @@ class Config:
         "Taishi": 121269547452989440
     }
     
+    # Tag to title prefix mapping for staff forum auto-formatting
+    STAFF_FORUM_TAG_PREFIXES = {
+        "Complaint": "[Complaint]",
+        "Suggestion": "[Suggestion]", 
+        "Warning Appeal": "[Appeal]"
+    }
+    
     # YouTube monitoring roles
     YOUTUBE_ROLE_ID = 1375737416325009552  # Default role for YouTube videos
     SHORTS_ROLE_ID = 1392619703603822773  # Role to ping for YouTube Shorts (≤60 seconds)

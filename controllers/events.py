@@ -725,6 +725,9 @@ class EventsController:
             
             logger.info(f"Thread tags: {tag_names}")
             
+            # Auto-format thread title based on tags
+            await self._auto_format_thread_title(thread, tag_names)
+            
             # Determine ping targets based on tags
             ping_targets = [f"<@&{Config.STAFF_ROLE_ID}>"]  # Always ping staff role
             
@@ -844,8 +847,47 @@ class EventsController:
         except Exception as e:
             logger.error(f"Error handling staff forum thread creation: {e}")
 
-
-    
+    async def _auto_format_thread_title(self, thread: discord.Thread, tag_names: list):
+        """Automatically format thread title with appropriate prefix based on tags"""
+        try:
+            current_title = thread.name
+            logger.info(f"Checking title formatting for thread: '{current_title}'")
+            
+            # Check if title already has a proper prefix
+            has_prefix = any(current_title.startswith(prefix) for prefix in Config.STAFF_FORUM_TAG_PREFIXES.values())
+            
+            if has_prefix:
+                logger.info(f"Thread '{current_title}' already has a proper prefix, skipping auto-format")
+                return
+            
+            # Find the appropriate prefix based on applied tags
+            prefix_to_add = None
+            for tag_name in tag_names:
+                if tag_name in Config.STAFF_FORUM_TAG_PREFIXES:
+                    prefix_to_add = Config.STAFF_FORUM_TAG_PREFIXES[tag_name]
+                    logger.info(f"Found matching tag '{tag_name}' for prefix '{prefix_to_add}'")
+                    break
+            
+            # If we found a matching tag, update the title
+            if prefix_to_add:
+                new_title = f"{prefix_to_add} {current_title}"
+                
+                # Discord thread titles have a 100 character limit
+                if len(new_title) > 100:
+                    # Truncate the original title to fit within the limit
+                    max_original_length = 100 - len(prefix_to_add) - 1  # -1 for the space
+                    truncated_title = current_title[:max_original_length].rstrip()
+                    new_title = f"{prefix_to_add} {truncated_title}"
+                
+                await thread.edit(name=new_title)
+                logger.info(f"Successfully updated thread title from '{current_title}' to '{new_title}'")
+            else:
+                logger.info(f"No matching tag found for auto-formatting thread '{current_title}'")
+                
+        except discord.Forbidden:
+            logger.error(f"Missing permission to edit thread title for thread {thread.id}")
+        except Exception as e:
+            logger.error(f"Error auto-formatting thread title: {e}")
 
     
     async def _check_spam_channel_flood(self, message: discord.Message):
