@@ -4733,7 +4733,7 @@ class CommandsController:
         
         @profile_group.command(name="achievements", description="View your achievements")
         async def profile_achievements(interaction: discord.Interaction, user: Optional[discord.Member] = None):
-            """View achievements"""
+            """View achievements with pagination"""
             try:
                 await interaction.response.defer()
                 
@@ -4749,10 +4749,12 @@ class CommandsController:
                 # Get user achievements
                 achievements = await quest_manager.get_user_achievements(target_user.id)
                 
-                # Create embed
-                embed = EmbedViews.achievements_embed(achievements, target_user.display_name)
+                # Create paginated view
+                from views.paginated_achievements_view import PaginatedAchievementsView
+                view = PaginatedAchievementsView(achievements, target_user.display_name, interaction.user.id, per_page=4)
+                embed = view.create_embed()
                 
-                await interaction.followup.send(embed=embed)
+                await interaction.followup.send(embed=embed, view=view)
                 
             except Exception as e:
                 logger.error(f"Error in profile achievements command: {e}")
