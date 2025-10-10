@@ -652,7 +652,7 @@ class EventsController:
             
             # Create embed for the help ping
             embed = discord.Embed(
-                title="🆘 New Help Thread Created",
+                title="New Help Thread Created",
                 description=f"**{thread.name}**\n\nA new thread has been created and helpers have been notified!",
                 color=0x00ff00,  # Green color
                 timestamp=datetime.utcnow()
@@ -669,8 +669,22 @@ class EventsController:
             )
             
             embed.add_field(
+                name="📚 Useful Resources",
+                value=f"📁 **Channel with all projects of rayen:** <#{Config.PROJECTS_CHANNEL_ID}>\n" +
+                      "💻 **Riko's Code:** https://github.com/rayenfeng/riko_project\n" +
+                      "🎬 **Rayen's YouTube:** https://www.youtube.com/@JustRayen",
+                inline=False
+            )
+            
+            embed.add_field(
                 name="ℹ️ How to get help",
                 value="• Describe your problem clearly\n• Include relevant code/screenshots\n• Be patient while waiting for responses\n• Use the close button when resolved",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="💡 Thread Management",
+                value="• This thread will automatically close after 1 hour of inactivity\n• To close it manually, right-click on the thread and select \"Archive Thread\"\n• You can also use the 🔒 button below",
                 inline=False
             )
             

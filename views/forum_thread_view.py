@@ -31,6 +31,11 @@ class ForumThreadView(discord.ui.View):
                 await interaction.response.send_message("❌ This can only be used in threads.", ephemeral=True)
                 return
             
+            # Check if thread is already archived/closed
+            if thread.archived:
+                await interaction.response.send_message("❌ This thread is already closed.", ephemeral=True)
+                return
+            
             # Check if user has permission to close the thread
             # Allow thread creator, moderators, or users with manage threads permission
             can_close = (
@@ -44,11 +49,6 @@ class ForumThreadView(discord.ui.View):
                     "❌ You can only close threads you created or if you have manage threads permission.", 
                     ephemeral=True
                 )
-                return
-            
-            # Check if thread is already archived/closed
-            if thread.archived:
-                await interaction.response.send_message("❌ This thread is already closed.", ephemeral=True)
                 return
             
             # Close the thread
@@ -65,26 +65,37 @@ class ForumThreadView(discord.ui.View):
             
             # Disable the button after use
             button.disabled = True
-            await interaction.edit_original_response(view=self)
+            try:
+                await interaction.edit_original_response(view=self)
+            except (discord.NotFound, discord.HTTPException):
+                # Interaction might be expired or thread archived, ignore
+                pass
             
             logger.info(f"Thread {thread.id} closed by user {interaction.user.id} ({interaction.user.display_name})")
             
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                "❌ I don't have permission to close this thread.", 
-                ephemeral=True
-            )
+        except discord.Forbidden as e:
+            # Check if we already responded
+            if not interaction.response.is_done():
+                if "Thread is archived" in str(e) or "50083" in str(e):
+                    await interaction.response.send_message("❌ This thread is already closed.", ephemeral=True)
+                else:
+                    await interaction.response.send_message("❌ I don't have permission to close this thread.", ephemeral=True)
+            else:
+                logger.warning(f"Thread {thread.id} was already archived when user {interaction.user.id} tried to close it")
         except discord.HTTPException as e:
-            await interaction.response.send_message(
-                f"❌ Failed to close thread: {str(e)}", 
-                ephemeral=True
-            )
+            # Check if we already responded
+            if not interaction.response.is_done():
+                if "Unknown interaction" in str(e) or "10062" in str(e):
+                    # Interaction expired, log but don't try to respond
+                    logger.warning(f"Interaction expired for thread {thread.id} close attempt by user {interaction.user.id}")
+                else:
+                    await interaction.response.send_message(f"❌ Failed to close thread: {str(e)}", ephemeral=True)
+            else:
+                logger.warning(f"HTTP exception after response sent for thread {thread.id}: {str(e)}")
         except Exception as e:
-            logger.error(f"Error closing thread: {e}")
-            await interaction.response.send_message(
-                "❌ An unexpected error occurred while closing the thread.", 
-                ephemeral=True
-            )
+            logger.error(f"Unexpected error closing thread {thread.id}: {str(e)}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ An unexpected error occurred.", ephemeral=True)
 
     @classmethod
     def from_custom_id(cls, custom_id: str):
