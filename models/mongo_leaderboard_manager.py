@@ -940,7 +940,7 @@ class MongoLeaderboardManager:
             logger.error(f"Error verifying reaction exists: {e}")
             return False
 
-    async def get_message_reactions_count(self, message_id: str, emoji: str) -> int:
+    def get_message_reactions_count(self, message_id: str, emoji: str) -> int:
         """Get the count of specific reactions for a message from database"""
         try:
             count = self.user_reactions_collection.count_documents({
@@ -956,8 +956,8 @@ class MongoLeaderboardManager:
     async def audit_reaction_discrepancies(self, message_id: str, discord_thumbs_up: int, discord_thumbs_down: int) -> Dict:
         """Audit discrepancies between Discord reactions and database records"""
         try:
-            db_thumbs_up = await self.get_message_reactions_count(message_id, "👍")
-            db_thumbs_down = await self.get_message_reactions_count(message_id, "👎")
+            db_thumbs_up = self.get_message_reactions_count(message_id, "👍")
+            db_thumbs_down = self.get_message_reactions_count(message_id, "👎")
             
             discrepancies = {
                 "message_id": message_id,
@@ -1422,16 +1422,28 @@ class MongoLeaderboardManager:
             return []
 
     async def get_combined_leaderboard(self, limit: int = 10, quest_manager=None) -> List[Dict]:
-        """Get combined leaderboard with both general points and quest points"""
+        """Get combined leaderboard with both general points and quest points (optimized)"""
         try:
-            # Get general points leaderboard
+            # Get general points leaderboard - limit to top performers only
             if not hasattr(self, 'user_points_collection'):
                 self.user_points_collection = self.db['user_points']
             
-            # Get all users with points
+            # Use aggregation pipeline to get top users by general points efficiently
+            general_pipeline = [
+                {"$sort": {"total_points": -1}},
+                {"$limit": limit * 3},  # Get more than needed to account for quest points
+                {"$project": {
+                    "user_id": 1,
+                    "user_name": 1,
+                    "total_points": 1,
+                    "points_text": 1,
+                    "points_voice": 1,
+                    "points_booster": 1
+                }}
+            ]
+            
             general_points = {}
-            cursor = self.user_points_collection.find()
-            for user in cursor:
+            for user in self.user_points_collection.aggregate(general_pipeline):
                 user_id = user.get("user_id")
                 general_points[user_id] = {
                     "user_name": user.get("user_name", "Unknown"),
@@ -1441,19 +1453,39 @@ class MongoLeaderboardManager:
                     "booster_points": user.get("points_booster", 0)
                 }
             
-            # Get quest points if quest manager is available
+            # Get quest points if quest manager is available - optimized approach
             quest_points = {}
             if quest_manager:
                 try:
-                    # Get all users with quest points
-                    user_ids_quests = set(doc["user_id"] for doc in quest_manager.user_quests_collection.find({"completed": True}))
-                    user_ids_achievements = set(doc["user_id"] for doc in quest_manager.user_achievements_collection.find())
-                    all_quest_user_ids = user_ids_quests | user_ids_achievements
+                    # Use aggregation to get quest points more efficiently
+                    quest_pipeline = [
+                        {"$match": {"completed": True}},
+                        {"$group": {
+                            "_id": "$user_id",
+                            "total_quest_points": {"$sum": "$points"}
+                        }},
+                        {"$sort": {"total_quest_points": -1}},
+                        {"$limit": limit * 2}  # Limit quest users too
+                    ]
                     
-                    for user_id in all_quest_user_ids:
-                        total_quest_points = await quest_manager.get_user_total_quest_points(int(user_id))
-                        if total_quest_points > 0:
-                            quest_points[user_id] = total_quest_points
+                    for result in quest_manager.user_quests_collection.aggregate(quest_pipeline):
+                        user_id = result["_id"]
+                        quest_points[user_id] = result["total_quest_points"]
+                    
+                    # Add achievement points efficiently
+                    achievement_pipeline = [
+                        {"$group": {
+                            "_id": "$user_id",
+                            "total_achievement_points": {"$sum": "$points"}
+                        }},
+                        {"$sort": {"total_achievement_points": -1}},
+                        {"$limit": limit * 2}
+                    ]
+                    
+                    for result in quest_manager.user_achievements_collection.aggregate(achievement_pipeline):
+                        user_id = result["_id"]
+                        quest_points[user_id] = quest_points.get(user_id, 0) + result["total_achievement_points"]
+                        
                 except Exception as e:
                     logger.error(f"Error getting quest points: {e}")
             

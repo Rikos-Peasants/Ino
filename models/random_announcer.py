@@ -6,8 +6,7 @@ from typing import Optional, Dict, Any, List
 import asyncio
 import random
 from config import Config
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 import aiohttp
 import feedparser
 import json
@@ -65,18 +64,16 @@ class RandomAnnouncer:
         self.gemini_api_key = Config.GEMINI_API_KEY if hasattr(Config, 'GEMINI_API_KEY') and Config.GEMINI_API_KEY else None
         if self.gemini_api_key:
             try:
-                self.gemini_client = genai.Client(api_key=self.gemini_api_key)
+                genai.configure(api_key=self.gemini_api_key)
+                self.gemini_client = True  # Just a flag to indicate it's configured
                 logger.info("✅ Gemini AI configured for random announcer")
                 
                 # Test the connection
                 logger.info("🧪 Testing Gemini AI connection...")
-                test_response = self.gemini_client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=[types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text="Say 'AI test successful'")]
-                    )],
-                    config=types.GenerateContentConfig(max_output_tokens=10)
+                test_model = genai.GenerativeModel("gemini-1.5-flash")
+                test_response = test_model.generate_content(
+                    "Say 'AI test successful'",
+                    generation_config={"max_output_tokens": 10}
                 )
                 if test_response and test_response.text:
                     logger.info("✅ Gemini AI test successful!")
@@ -286,44 +283,44 @@ class RandomAnnouncer:
             # Create conversational context with examples (like your code)
             contents = [
                 # Example conversation showing Ino's style
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=f"""New video announcement needed:
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": f"""New video announcement needed:
 Title: "Riko Reacts to Comments"
 Creator: Rayen
 Description: Riko reads and responds to viewer comments with her usual chaos
-Link: https://www.youtube.com/watch?v=-BGXD2Kggx8""")
+Link: https://www.youtube.com/watch?v=-BGXD2Kggx8"""}
                     ]
-                ),
-                types.Content(
-                    role="model", 
-                    parts=[
-                        types.Part.from_text(text="*sighs* Rayen's decided to unleash Riko on the comment section. My condolences, Riko simps. <@&1375737416325009552>")
+                },
+                {
+                    "role": "model", 
+                    "parts": [
+                        {"text": "*sighs* Rayen's decided to unleash Riko on the comment section. My condolences, Riko simps. <@&1375737416325009552>"}
                     ]
-                ),
+                },
                 # Another example to establish pattern
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=f"""New video announcement needed:
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": f"""New video announcement needed:
 Title: "Riko Attempts Cooking"
 Creator: Rayen  
 Description: Watch as Riko tries to make a simple meal and chaos ensues
-Link: https://www.youtube.com/watch?v=example""")
+Link: https://www.youtube.com/watch?v=example"""}
                     ]
-                ),
-                types.Content(
-                    role="model",
-                    parts=[
-                        types.Part.from_text(text="Well, well... Riko's attempting cooking again. Rayen, hide the fire extinguisher. <@&1375737416325009552>")
+                },
+                {
+                    "role": "model",
+                    "parts": [
+                        {"text": "Well, well... Riko's attempting cooking again. Rayen, hide the fire extinguisher. <@&1375737416325009552>"}
                     ]
-                ),
+                },
                 # Now the actual request with personality variation
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=f"""New video announcement needed with {personality.upper()} personality variation:
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": f"""New video announcement needed with {personality.upper()} personality variation:
 
 {personality_modifier}
 
@@ -333,27 +330,24 @@ Description: {video_description[:300]}
 Link: {video_link}
 Channel Context: {self._get_channel_context(channel_id, video_author)}
 
-Generate a short Ino announcement (10-20 words) that captures her {personality} personality while announcing this video. Remember to end with <@&1375737416325009552>""")
+Generate a short Ino announcement (10-20 words) that captures her {personality} personality while announcing this video. Remember to end with <@&1375737416325009552>"""}
                     ]
-                )
+                }
             ]
             
             # Enhanced configuration for better responses
-            generate_content_config = types.GenerateContentConfig(
-                thinking_config=types.ThinkingConfig(thinking_budget=0),  # Like your example
-                response_mime_type="text/plain",
-                temperature=0.8,  # More creative for personality variations
-                max_output_tokens=150,  # Shorter responses
-                system_instruction=[types.Part.from_text(text=system_prompt)]
-            )
+            generate_content_config = {
+                "temperature": 0.8,  # More creative for personality variations
+                "max_output_tokens": 150,  # Shorter responses
+            }
             
             logger.info(f"📝 Sending conversational prompt to Gemini AI (personality: {personality})")
             
             # Generate response
-            response = self.gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=generate_content_config
+            model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
+            response = model.generate_content(
+                contents,
+                generation_config=generate_content_config
             )
             
             if response and response.text:
@@ -690,4 +684,4 @@ EXAMPLES:
             
         except Exception as e:
             logger.error(f"❌ Error exporting training data: {e}")
-            return {"good_examples": [], "bad_examples": []} 
+            return {"good_examples": [], "bad_examples": []}

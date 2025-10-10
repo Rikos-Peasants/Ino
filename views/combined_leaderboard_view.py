@@ -82,6 +82,9 @@ class CombinedLeaderboardView(discord.ui.View):
             await interaction.response.send_message("❌ This is not your command!", ephemeral=True)
             return
         
+        # Defer the response to prevent timeout
+        await interaction.response.defer()
+        
         try:
             self.current_board = "points"
             
@@ -102,13 +105,10 @@ class CombinedLeaderboardView(discord.ui.View):
             from views.embeds import EmbedViews
             embed = EmbedViews.combined_points_leaderboard_embed(leaderboard, self.ctx.author.id)
             
-            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.followup.edit_message(interaction.message.id, embed=embed, view=self)
         except Exception as e:
             logger.error(f"Error showing combined points leaderboard: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
-            else:
-                await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
     
 
     
@@ -119,9 +119,12 @@ class CombinedLeaderboardView(discord.ui.View):
             await interaction.response.send_message("❌ This is not your command!", ephemeral=True)
             return
         
+        # Defer the response to prevent timeout
+        await interaction.response.defer()
+        
         try:
             if not self.leaderboard_manager.inorep_manager:
-                await interaction.response.send_message("❌ InoRep system is not available!", ephemeral=True)
+                await interaction.followup.send("❌ InoRep system is not available!", ephemeral=True)
                 return
             
             self.current_board = "inorep"
@@ -147,13 +150,10 @@ class CombinedLeaderboardView(discord.ui.View):
             from views.embeds import EmbedViews
             embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=False)
             
-            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.followup.edit_message(interaction.message.id, embed=embed, view=self)
         except Exception as e:
             logger.error(f"Error showing InoRep leaderboard: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
-            else:
-                await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
     
     async def on_timeout(self):
         """Disable buttons when view times out"""
@@ -200,6 +200,9 @@ class ImageSortSelect(discord.ui.Select):
             await interaction.response.send_message("❌ This is not your command!", ephemeral=True)
             return
         
+        # Defer the response to prevent timeout
+        await interaction.response.defer()
+        
         try:
             # Update sort preference
             self.parent_view.image_sort_by = self.values[0]
@@ -232,12 +235,9 @@ class ImageSortSelect(discord.ui.Select):
                 inline=False
             )
             
-            await interaction.response.edit_message(embed=embed, view=self.parent_view)
+            await interaction.followup.edit_message(interaction.message.id, embed=embed, view=self.parent_view)
             
         except Exception as e:
             logger.error(f"Error changing sort: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
-            else:
-                await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
 
