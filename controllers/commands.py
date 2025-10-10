@@ -4271,61 +4271,7 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
 
-        # THREAD MANAGEMENT COMMANDS
-        @self.bot.hybrid_command(name='closethread', description='Close your active help thread')
-        @public_command
-        async def close_thread_cmd(ctx):
-            """Close the user's active help thread"""
-            try:
-                # Check if user has an active help thread
-                leaderboard_manager = self.get_leaderboard_manager()
-                if not leaderboard_manager:
-                    await ctx.send("❌ Thread management not available.", ephemeral=True)
-                    return
-                
-                # Get user's active help thread
-                thread_data = await leaderboard_manager.get_user_active_help_thread(
-                    ctx.author.id, Config.HELP_CHANNEL_ID
-                )
-                
-                if not thread_data:
-                    await ctx.send("❌ You don't have any active help threads.", ephemeral=True)
-                    return
-                
-                # Check if the thread still exists
-                try:
-                    thread_id = int(thread_data['thread_id'])
-                    thread = ctx.guild.get_thread(thread_id)
-                    
-                    if not thread:
-                        # Thread doesn't exist, clean up database
-                        await leaderboard_manager.deactivate_help_thread(thread_id)
-                        await ctx.send("❌ Your help thread no longer exists.", ephemeral=True)
-                        return
-                    
-                    if thread.archived:
-                        # Thread is already archived
-                        await leaderboard_manager.deactivate_help_thread(thread_id)
-                        await ctx.send("❌ Your help thread is already closed.", ephemeral=True)
-                        return
-                    
-                    # Archive the thread
-                    await thread.edit(archived=True, reason=f"Thread closed by {ctx.author.display_name}")
-                    
-                    # Update database
-                    await leaderboard_manager.deactivate_help_thread(thread_id)
-                    
-                    # Send confirmation
-                    await ctx.send(f"✅ Your help thread '{thread.name}' has been closed successfully!", ephemeral=True)
-                    
-                except ValueError:
-                    # Invalid thread ID
-                    await leaderboard_manager.deactivate_help_thread(int(thread_data['thread_id']))
-                    await ctx.send("❌ Invalid thread data found. Database has been cleaned up.", ephemeral=True)
-                    return
-                
-            except Exception as e:
-                await ctx.send(f"❌ Error closing thread: {str(e)}", ephemeral=True)
+
         
         # Register InoRep commands
         inorep_cmds = self._register_inorep_commands()

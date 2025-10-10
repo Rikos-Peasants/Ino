@@ -72,8 +72,7 @@ class Config:
     POINTS_PER_MESSAGE_BOOSTER = 2  # Booster text channels
     POINTS_PER_MINUTE_VC = 2  # Voice channel participation
     
-    # Help channel monitoring
-    HELP_CHANNEL_ID = 1301366087975178312  # "I need help" channel
+    # Channel monitoring
     PROJECTS_CHANNEL_ID = 1278117139428933645  # Channel with all projects of rayen
     HELP_ROLE_ID = 1347922925218435114  # Role to ping for help requests
     FORUM_CHANNEL_ID = 1426180987234287687  # Forum channel for automated pings on thread creation

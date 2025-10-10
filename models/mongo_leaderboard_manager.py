@@ -26,7 +26,6 @@ class MongoLeaderboardManager:
         self.settings_collection = None  # New collection for bot settings
         self.bookmarks_collection = None  # New collection for user bookmarks
         self.user_reactions_collection = None  # New collection for tracking user reactions
-        self.help_threads_collection = None  # New collection for help channel threads
         self.moderation_manager = None  # Moderation manager instance
         self.inorep_manager = None  # InoRep manager instance
         self._connect()
@@ -45,7 +44,6 @@ class MongoLeaderboardManager:
             self.settings_collection = self.db['settings']  # New collection for bot settings
             self.bookmarks_collection = self.db['bookmarks']  # New collection for user bookmarks
             self.user_reactions_collection = self.db['user_reactions']  # New collection for tracking user reactions
-            self.help_threads_collection = self.db['help_threads']  # New collection for help channel threads
             
             # Create indexes for better performance
             self.collection.create_index("user_id", unique=True)
@@ -78,13 +76,7 @@ class MongoLeaderboardManager:
             self.user_reactions_collection.create_index([("user_id", 1), ("created_at", -1)])
             self.user_reactions_collection.create_index([("message_id", 1)])
             
-            # Create indexes for help threads
-            self.help_threads_collection.create_index([("user_id", 1), ("channel_id", 1)], unique=True)
-            self.help_threads_collection.create_index([("thread_id", 1)], unique=True)
-            self.help_threads_collection.create_index([("channel_id", 1), ("is_active", 1)])
-            self.help_threads_collection.create_index([("created_at", -1)])
-            
-            logger.info(f"Connected to MongoDB database '{self.database_name}', collections: {self.collection_name}, image_messages, nsfwban_users, warnings, settings, bookmarks, user_reactions, help_threads")
+            logger.info(f"Connected to MongoDB database '{self.database_name}', collections: {self.collection_name}, image_messages, nsfwban_users, warnings, settings, bookmarks, user_reactions")
             
             # Initialize moderation manager
             try:
@@ -1324,126 +1316,6 @@ class MongoLeaderboardManager:
             logger.error(f"Error getting leave message: {e}")
             return None
 
-    # HELP THREADS MANAGEMENT METHODS
-    async def create_help_thread(self, user_id: int, user_name: str, channel_id: int, thread_id: int, thread_name: str) -> bool:
-        """Create a help thread record in the database"""
-        try:
-            thread_doc = {
-                "user_id": str(user_id),
-                "user_name": user_name,
-                "channel_id": str(channel_id),
-                "thread_id": str(thread_id),
-                "thread_name": thread_name,
-                "is_active": True,
-                "created_at": datetime.now(),
-                "last_updated": datetime.now()
-            }
-            
-            # Use upsert to handle potential duplicates
-            result = self.help_threads_collection.update_one(
-                {"user_id": str(user_id), "channel_id": str(channel_id)},
-                {"$set": thread_doc},
-                upsert=True
-            )
-            
-            logger.info(f"Created help thread record for user {user_name}: thread {thread_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error creating help thread record: {e}")
-            return False
-
-    async def get_user_active_help_thread(self, user_id: int, channel_id: int) -> Optional[Dict]:
-        """Get active help thread for a user in a specific channel"""
-        try:
-            result = self.help_threads_collection.find_one({
-                "user_id": str(user_id),
-                "channel_id": str(channel_id),
-                "is_active": True
-            })
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error getting active help thread: {e}")
-            return None
-
-    async def update_help_thread(self, thread_id: int, thread_name: str = None, is_active: bool = None) -> bool:
-        """Update help thread information"""
-        try:
-            update_data = {"last_updated": datetime.now()}
-            
-            if thread_name is not None:
-                update_data["thread_name"] = thread_name
-            if is_active is not None:
-                update_data["is_active"] = is_active
-                if not is_active:
-                    update_data["closed_at"] = datetime.now()
-            
-            result = self.help_threads_collection.update_one(
-                {"thread_id": str(thread_id)},
-                {"$set": update_data}
-            )
-            
-            if result.modified_count > 0:
-                logger.info(f"Updated help thread {thread_id}")
-                return True
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error updating help thread: {e}")
-            return False
-
-    async def deactivate_help_thread(self, thread_id: int) -> bool:
-        """Deactivate a help thread (when archived or deleted)"""
-        try:
-            return await self.update_help_thread(thread_id, is_active=False)
-            
-        except Exception as e:
-            logger.error(f"Error deactivating help thread: {e}")
-            return False
-
-    async def get_help_thread_by_id(self, thread_id: int) -> Optional[Dict]:
-        """Get help thread by thread ID"""
-        try:
-            result = self.help_threads_collection.find_one({
-                "thread_id": str(thread_id)
-            })
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error getting help thread by ID: {e}")
-            return None
-
-    async def get_user_help_threads(self, user_id: int, limit: int = 10) -> List[Dict]:
-        """Get all help threads for a user (active and inactive)"""
-        try:
-            cursor = self.help_threads_collection.find({
-                "user_id": str(user_id)
-            }).sort("created_at", -1).limit(limit)
-            
-            return list(cursor)
-            
-        except Exception as e:
-            logger.error(f"Error getting user help threads: {e}")
-            return []
-
-    async def cleanup_inactive_help_threads(self, days_old: int = 30) -> int:
-        """Clean up help threads older than specified days"""
-        try:
-            from datetime import timedelta
-            cutoff_date = datetime.now() - timedelta(days=days_old)
-            
-            result = self.help_threads_collection.delete_many({
-                "is_active": False,
-                "closed_at": {"$lt": cutoff_date}
-            })
-            
-            logger.info(f"Cleaned up {result.deleted_count} old help threads")
-            return result.deleted_count
-            
-        except Exception as e:
-            logger.error(f"Error cleaning up help threads: {e}")
-            return 0
 
     # GENERAL POINT SYSTEM METHODS
     async def add_points(self, user_id: int, user_name: str, points: int, point_type: str = "general", reason: str = None):

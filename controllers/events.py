@@ -66,13 +66,7 @@ class EventsController:
         async def on_thread_create(thread: discord.Thread):
             await self._handle_thread_create(thread)
         
-        @self.bot.event
-        async def on_thread_update(before: discord.Thread, after: discord.Thread):
-            await self._handle_thread_update(before, after)
-        
-        @self.bot.event
-        async def on_thread_delete(thread: discord.Thread):
-            await self._handle_thread_delete(thread)
+
         
         @self.bot.event
         async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
@@ -418,10 +412,7 @@ class EventsController:
         # Award points for text messages (before other processing)
         await self._award_text_message_points(message)
         
-        # Check if message is in help channel
-        if message.channel.id == Config.HELP_CHANNEL_ID:
-            await self._handle_help_channel_message(message)
-            return
+
         
         # Check if message is in image reaction channels
         if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
@@ -634,112 +625,7 @@ class EventsController:
         except Exception as e:
             logger.error(f"Error checking for chat reminder: {e}")
     
-    async def _handle_help_channel_message(self, message: discord.Message):
-        """Handle messages in the help channel by creating a thread with resources"""
-        try:
-            # Skip if this is a reply to another message (likely a response/answer)
-            if message.reference and message.reference.message_id:
-                logger.debug(f"Skipping reply message from {message.author.display_name}")
-                return
-            
-            # Check if this message actually looks like a help request
-            if not self._is_help_request(message.content):
-                logger.debug(f"Message from {message.author.display_name} doesn't appear to be a help request: {message.content[:50]}...")
-                return
-            
-            # Check if user already has an active help thread in this channel (from database)
-            existing_thread_data = await self.bot.leaderboard_manager.get_user_active_help_thread(
-                message.author.id, message.channel.id
-            )
-            
-            if existing_thread_data:
-                # Check if the thread still exists and is active
-                try:
-                    thread_id = int(existing_thread_data['thread_id'])
-                    existing_thread = message.guild.get_thread(thread_id)
-                    
-                    if existing_thread and not existing_thread.archived:
-                        # Thread still exists and is active
-                        logger.info(f"User {message.author.display_name} already has an active help thread: {existing_thread.name}")
-                        try:
-                            await message.reply(
-                                f"You already have an active help thread: {existing_thread.mention}\n"
-                                f"Please continue your discussion there instead of creating a new one.",
-                                delete_after=15
-                            )
-                        except discord.Forbidden:
-                            pass
-                        return
-                    else:
-                        # Thread no longer exists or is archived, deactivate in database
-                        await self.bot.leaderboard_manager.deactivate_help_thread(thread_id)
-                        logger.info(f"Deactivated non-existent help thread {thread_id} for user {message.author.display_name}")
-                except ValueError:
-                    # Invalid thread ID in database
-                    logger.warning(f"Invalid thread ID in database for user {message.author.display_name}: {existing_thread_data['thread_id']}")
-                    await self.bot.leaderboard_manager.deactivate_help_thread(int(existing_thread_data['thread_id']))
-            
-            # Create a new help thread attached to the user's message
-            thread_name = f"Help - {message.author.display_name}"
-            
-            # Create the thread attached to the user's message
-            thread = await message.create_thread(
-                name=thread_name,
-                auto_archive_duration=60,  # Auto-archive after 1 hour for easier closing
-                reason=f"Help thread for {message.author.display_name}"
-            )
-            
-            # Store thread information in database
-            await self.bot.leaderboard_manager.create_help_thread(
-                message.author.id,
-                message.author.display_name,
-                message.channel.id,
-                thread.id,
-                thread_name
-            )
-            
-            # Create the help response message
-            help_content = f"""Hey {message.author.mention}! 👋
 
-Here are some useful resources to help you:
-
-**📂 Channel with all projects of rayen:**
-<#{Config.PROJECTS_CHANNEL_ID}>
-
-**💻 Riko's Code:**
-<https://github.com/rayenfeng/riko_project>
-
-**🎬 Rayen's YouTube:**
-<https://www.youtube.com/@JustRayen>
-
-<@&{Config.HELP_ROLE_ID}>
-
-💡 **Thread Management:**
-• This thread will automatically close after 1 hour of inactivity
-• To close it manually, right-click on the thread and select "Archive Thread"
-• You can also use the "🔒" button in the thread settings"""
-            
-            # Send the help message in the thread
-            await thread.send(help_content)
-            
-            # Send a reference message in the original channel linking to the thread
-            try:
-                await message.reply(
-                    f"I've created a help thread for you: {thread.mention}\n"
-                    f"Please continue your discussion there!",
-                    delete_after=30
-                )
-            except discord.Forbidden:
-                pass
-            
-            channel_name = getattr(message.channel, 'name', 'Unknown Channel')
-            logger.info(f"Created help thread for {message.author.display_name} in #{channel_name} (Thread ID: {thread.id})")
-            
-        except discord.Forbidden:
-            channel_name = getattr(message.channel, 'name', 'Unknown Channel')
-            logger.error(f"Missing permission to create thread in #{channel_name}")
-        except Exception as e:
-            logger.error(f"Error handling help channel message: {e}")
 
     async def _handle_thread_create(self, thread: discord.Thread):
         """Handle thread creation to ping help role for forum threads"""
@@ -764,119 +650,9 @@ Here are some useful resources to help you:
         except Exception as e:
             logger.error(f"Error handling thread creation: {e}")
 
-    async def _handle_thread_update(self, before: discord.Thread, after: discord.Thread):
-        """Handle thread updates to keep database synchronized"""
-        try:
-            # Only handle threads in the help channel
-            if after.parent_id != Config.HELP_CHANNEL_ID:
-                return
-            
-            # Get thread data from database
-            thread_data = await self.bot.leaderboard_manager.get_help_thread_by_id(after.id)
-            if not thread_data:
-                return
-            
-            # Update thread name if changed
-            if before.name != after.name:
-                await self.bot.leaderboard_manager.update_help_thread(
-                    after.id,
-                    thread_name=after.name
-                )
-                logger.info(f"Updated help thread name: {before.name} -> {after.name}")
-            
-            # Update status if archived/unarchived
-            if before.archived != after.archived:
-                await self.bot.leaderboard_manager.update_help_thread(
-                    after.id,
-                    is_active=not after.archived
-                )
-                status = "archived" if after.archived else "unarchived"
-                logger.info(f"Help thread {after.id} {status}")
-                
-        except Exception as e:
-            logger.error(f"Error handling thread update: {e}")
 
-    async def _handle_thread_delete(self, thread: discord.Thread):
-        """Handle thread deletion to update database"""
-        try:
-            # Only handle threads in the help channel
-            if thread.parent_id != Config.HELP_CHANNEL_ID:
-                return
-            
-            # Deactivate thread in database
-            await self.bot.leaderboard_manager.deactivate_help_thread(thread.id)
-            logger.info(f"Deactivated deleted help thread {thread.id}")
-            
-        except Exception as e:
-            logger.error(f"Error handling thread delete: {e}")
     
-    def _is_help_request(self, content: str) -> bool:
-        """Check if a message looks like a genuine help request"""
-        content_lower = content.lower().strip()
-        
-        # Too short messages are probably not help requests
-        if len(content_lower) < 15:
-            return False
-        
-        # Exclude messages that are giving help/advice rather than asking for it
-        giving_help_indicators = [
-            "you can", "you should", "you need to", "you could", "you might",
-            "try this", "try using", "try to", "here's how", "here is how",
-            "the way to", "what you need", "what you want", "what works",
-            "i recommend", "i suggest", "i think you", "you'll want",
-            "should work", "will work", "would work", "that'll", "that will",
-            "make sure", "just use", "simply use", "all you need",
-            "fastest way", "best way", "easier way", "better to"
-        ]
-        
-        for indicator in giving_help_indicators:
-            if indicator in content_lower:
-                return False
-        
-        # Exclude messages that end with advice-giving patterns
-        if content_lower.endswith(("should help", "will help", "might help", "helps", "works well", "works better")):
-            return False
-        
-        # Strong help request indicators (only check these if not giving help)
-        strong_help_keywords = [
-            # Direct help requests
-            "help me", "need help", "can someone help", "anyone help me",
-            "please help", "could someone help", "can anyone help", "help please"
-            
-            # Problem/issue indicators
-            "having trouble", "having issues", "having problems", "having difficulty",
-            "stuck on", "confused about", "not sure how", "don't know how", "dont know how",
-            "can't figure", "cant figure", "unable to", "doesn't work", "doesnt work",
-            "not working", "broken", "error", "issue with", "problem with",
-            
-            # Question starters
-            "how do i", "how can i", "how should i", "how would i",
-            "what is", "what are", "what does", "what's the",
-            "where is", "where can", "where do", "where should",
-            "when should", "when do", "when is",
-            "why is", "why does", "why can't", "why wont", "why won't",
-            "which is", "which should", "which one",
-            
-            # Learning/guidance requests
-            "teach me", "show me", "explain", "clarify",
-            "tutorial", "guide", "walkthrough", "step by step", "instructions",
-        ]
-        
-        # Check for question marks (strong indicator)
-        if "?" in content:
-            return True
-        
-        # Check for strong help keywords
-        for keyword in strong_help_keywords:
-            if keyword in content_lower:
-                return True
-        
-        # Check for sentence patterns that look like questions or requests
-        question_starters = ("can i", "could i", "would i", "should i", "is there", "are there", "do i", "does this", "will this")
-        if content_lower.startswith(question_starters):
-            return True
-        
-        return False
+
     
     async def _check_spam_channel_flood(self, message: discord.Message):
         """Check for message flooding in the spam channel"""
