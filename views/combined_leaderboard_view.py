@@ -70,7 +70,10 @@ class CombinedLeaderboardView(discord.ui.View):
             await interaction.response.edit_message(embed=embed, view=self)
         except Exception as e:
             logger.error(f"Error showing images leaderboard: {e}")
-            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
     
     @discord.ui.button(label="🏆 Points", style=discord.ButtonStyle.primary, custom_id="combined_points_lb")
     async def combined_points_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -102,7 +105,10 @@ class CombinedLeaderboardView(discord.ui.View):
             await interaction.response.edit_message(embed=embed, view=self)
         except Exception as e:
             logger.error(f"Error showing combined points leaderboard: {e}")
-            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
     
 
     
@@ -144,7 +150,10 @@ class CombinedLeaderboardView(discord.ui.View):
             await interaction.response.edit_message(embed=embed, view=self)
         except Exception as e:
             logger.error(f"Error showing InoRep leaderboard: {e}")
-            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
     
     async def on_timeout(self):
         """Disable buttons when view times out"""
@@ -227,5 +236,8 @@ class ImageSortSelect(discord.ui.Select):
             
         except Exception as e:
             logger.error(f"Error changing sort: {e}")
-            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
 

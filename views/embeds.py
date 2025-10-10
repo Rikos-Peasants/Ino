@@ -547,7 +547,7 @@ class EmbedViews:
         """Create an embed for the combined points leaderboard (general + quest points)"""
         embed = discord.Embed(
             title="🏆 Total Points Leaderboard",
-            description="*Top users by combined activity points*",
+            description="Top users by combined activity points",
             color=discord.Color.from_rgb(255, 215, 0),  # Gold color
             timestamp=datetime.utcnow()
         )
@@ -559,20 +559,23 @@ class EmbedViews:
                 inline=False
             )
         else:
-            leaderboard_text = []
+            # Add leaderboard entries using add_field format like image leaderboard
             medals = ["🥇", "🥈", "🥉"]
             
-            for i, user_data in enumerate(leaderboard, 1):
-                medal = medals[i-1] if i <= 3 else f"**{i}.**"
+            for i, user_data in enumerate(leaderboard[:10], 1):
+                # Use medal emojis for top 3, numbers for others
+                if i <= 3:
+                    position_emoji = medals[i-1]
+                else:
+                    position_emoji = f"{i}."
                 
                 user_name = user_data.get("user_name", "Unknown")
                 user_id = user_data.get("user_id")
                 total_points = user_data.get("total_points", 0)
-                general_points = user_data.get("general_points", 0)
-                quest_points = user_data.get("quest_points", 0)
                 text_points = user_data.get("text_points", 0)
                 voice_points = user_data.get("voice_points", 0)
                 booster_points = user_data.get("booster_points", 0)
+                quest_points = user_data.get("quest_points", 0)
                 
                 # Highlight current user
                 if str(user_id) == str(current_user_id):
@@ -580,32 +583,29 @@ class EmbedViews:
                 else:
                     user_display = user_name
                 
-                # Create enhanced breakdown with better formatting
+                # Create breakdown with better formatting
                 breakdown_parts = []
                 if text_points > 0:
-                    breakdown_parts.append(f"💬 **{text_points:,}**")
+                    breakdown_parts.append(f"💬 {text_points:,}")
                 if voice_points > 0:
-                    breakdown_parts.append(f"🎤 **{voice_points:,}**")
+                    breakdown_parts.append(f"🎤 {voice_points:,}")
                 if booster_points > 0:
-                    breakdown_parts.append(f"⚡ **{booster_points:,}**")
+                    breakdown_parts.append(f"⚡ {booster_points:,}")
                 if quest_points > 0:
-                    breakdown_parts.append(f"🎯 **{quest_points:,}**")
+                    breakdown_parts.append(f"🎯 {quest_points:,}")
                 
                 breakdown = " • ".join(breakdown_parts) if breakdown_parts else "*No activity yet*"
                 
-                # Enhanced formatting with better visual hierarchy
-                leaderboard_text.append(
-                    f"{medal} {user_display}\n"
-                    f"　**{total_points:,}** total points\n"
-                    f"　└ {breakdown}"
+                # Add field for each user (similar to image leaderboard)
+                embed.add_field(
+                    name=f"{position_emoji} {user_display}",
+                    value=f"**Total Points:** {total_points:,}\n**Breakdown:** {breakdown}",
+                    inline=True
                 )
-            
-            embed.description = "\n\n".join(leaderboard_text)
             
             # Enhanced footer with better explanation
             embed.set_footer(
-                text="💬 Text Messages • 🎤 Voice Activity • ⚡ Booster Bonus • 🎯 Quest Rewards",
-                icon_url="https://cdn.discordapp.com/emojis/741339071399723008.png"
+                text="💬 Text Messages • 🎤 Voice Activity • ⚡ Booster Bonus • 🎯 Quest Rewards • Showing top 10"
             )
         
         return embed
