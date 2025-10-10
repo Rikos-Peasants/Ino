@@ -24,7 +24,6 @@ class CombinedLeaderboardView(discord.ui.View):
             if isinstance(item, discord.ui.Button):
                 if (initial_type == "images" and item.custom_id == "images_lb") or \
                    (initial_type == "points" and item.custom_id == "combined_points_lb") or \
-                   (initial_type == "quests" and item.custom_id == "quests_lb") or \
                    (initial_type == "inorep" and item.custom_id == "inorep_lb"):
                     item.style = discord.ButtonStyle.primary
                 else:
@@ -105,41 +104,7 @@ class CombinedLeaderboardView(discord.ui.View):
             logger.error(f"Error showing combined points leaderboard: {e}")
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
     
-    @discord.ui.button(label="🎯 Quests", style=discord.ButtonStyle.secondary, custom_id="quests_lb")
-    async def quests_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Show Quest Points leaderboard"""
-        if interaction.user.id != self.ctx.author.id:
-            await interaction.response.send_message("❌ This is not your command!", ephemeral=True)
-            return
-        
-        try:
-            if not self.quest_manager:
-                await interaction.response.send_message("❌ Quest system is not available!", ephemeral=True)
-                return
-            
-            self.current_board = "quests"
-            
-            # Update button styles
-            for item in self.children:
-                if isinstance(item, discord.ui.Button):
-                    item.style = discord.ButtonStyle.primary if item.custom_id == "quests_lb" else discord.ButtonStyle.secondary
-            
-            # Remove dropdown when not on images board
-            items_to_remove = [item for item in self.children if isinstance(item, ImageSortSelect)]
-            for item in items_to_remove:
-                self.remove_item(item)
-            
-            # Get quest points leaderboard
-            leaderboard = await self.quest_manager.get_quest_points_leaderboard(limit=10, guild=self.ctx.guild)
-            
-            # Import here to avoid circular import
-            from views.embeds import EmbedViews
-            embed = EmbedViews.quest_points_leaderboard_embed(leaderboard, self.ctx.author.id)
-            
-            await interaction.response.edit_message(embed=embed, view=self)
-        except Exception as e:
-            logger.error(f"Error showing quest points leaderboard: {e}")
-            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
     
     @discord.ui.button(label="🎭 InoRep", style=discord.ButtonStyle.secondary, custom_id="inorep_lb")
     async def inorep_button(self, interaction: discord.Interaction, button: discord.ui.Button):

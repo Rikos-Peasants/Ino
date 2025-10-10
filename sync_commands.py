@@ -34,7 +34,7 @@ async def sync_commands():
         async def patreon_command(ctx):
             await ctx.send("✅ Patreon command working!")
         
-        @bot.hybrid_command(name="pointsleaderboard", description="View the quest points leaderboard")
+        @bot.hybrid_command(name="pointsleaderboard", description="View the points leaderboard")
         async def pointsleaderboard_command(ctx):
             await ctx.send("✅ Points leaderboard command working!")
         
@@ -119,4 +119,4 @@ async def sync_commands():
 
 if __name__ == "__main__":
     print("🤖 Starting manual sync...")
-    asyncio.run(sync_commands()) 
+    asyncio.run(sync_commands())

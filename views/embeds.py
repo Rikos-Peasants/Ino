@@ -540,62 +540,21 @@ class EmbedViews:
         
         return embed
     
-    @staticmethod
-    def quest_points_leaderboard_embed(leaderboard: list, current_user_id: int) -> discord.Embed:
-        """Create an embed for the quest points leaderboard"""
-        embed = discord.Embed(
-            title="🏆 Quest Points Leaderboard",
-            description="Top users by total quest and achievement points!",
-            color=discord.Color.gold(),
-            timestamp=datetime.utcnow()
-        )
-        
-        if not leaderboard:
-            embed.add_field(
-                name="No Data Available",
-                value="Be the first to complete quests and earn points!",
-                inline=False
-            )
-        else:
-            leaderboard_text = []
-            medals = ["🥇", "🥈", "🥉"]
-            
-            for i, (user_name, user_id, total_points, completed_quests, achievements) in enumerate(leaderboard, 1):
-                medal = medals[i-1] if i <= 3 else f"**{i}.**"
-                
-                # Highlight current user
-                if user_id == current_user_id:
-                    user_display = f"**{user_name}** ⭐"
-                else:
-                    user_display = user_name
-                
-                # Check for Patreon role indicator
-                patreon_indicator = ""
-                # We can't check role here, but we can show if they have the multiplier in their name
-                
-                leaderboard_text.append(
-                    f"{medal} {user_display} - **{total_points:,}** pts\n"
-                    f"　└ {completed_quests} quests • {achievements} achievements"
-                )
-            
-            embed.description = "\n\n".join(leaderboard_text)
-            embed.set_footer(text="💖 Patreon supporters get 1.5x points! Use /patreon to learn more")
-        
-        return embed
+
     
     @staticmethod
     def combined_points_leaderboard_embed(leaderboard: list, current_user_id: int) -> discord.Embed:
         """Create an embed for the combined points leaderboard (general + quest points)"""
         embed = discord.Embed(
-            title="🏆 Points Leaderboard",
-            description="Top users by total points (text messages, voice chat, and quests)!",
-            color=discord.Color.gold(),
+            title="🏆 Total Points Leaderboard",
+            description="*Top users by combined activity points*",
+            color=discord.Color.from_rgb(255, 215, 0),  # Gold color
             timestamp=datetime.utcnow()
         )
         
         if not leaderboard:
             embed.add_field(
-                name="No Data Available",
+                name="🎯 No Data Available",
                 value="Be the first to earn points by chatting, joining voice, and completing quests!",
                 inline=False
             )
@@ -621,26 +580,33 @@ class EmbedViews:
                 else:
                     user_display = user_name
                 
-                # Create breakdown
+                # Create enhanced breakdown with better formatting
                 breakdown_parts = []
                 if text_points > 0:
-                    breakdown_parts.append(f"💬 {text_points}")
+                    breakdown_parts.append(f"💬 **{text_points:,}**")
                 if voice_points > 0:
-                    breakdown_parts.append(f"🎤 {voice_points}")
+                    breakdown_parts.append(f"🎤 **{voice_points:,}**")
                 if booster_points > 0:
-                    breakdown_parts.append(f"⚡ {booster_points}")
+                    breakdown_parts.append(f"⚡ **{booster_points:,}**")
                 if quest_points > 0:
-                    breakdown_parts.append(f"🎯 {quest_points}")
+                    breakdown_parts.append(f"🎯 **{quest_points:,}**")
                 
-                breakdown = " • ".join(breakdown_parts) if breakdown_parts else "No activity yet"
+                breakdown = " • ".join(breakdown_parts) if breakdown_parts else "*No activity yet*"
                 
+                # Enhanced formatting with better visual hierarchy
                 leaderboard_text.append(
-                    f"{medal} {user_display} - **{total_points:,}** pts\n"
+                    f"{medal} {user_display}\n"
+                    f"　**{total_points:,}** total points\n"
                     f"　└ {breakdown}"
                 )
             
             embed.description = "\n\n".join(leaderboard_text)
-            embed.set_footer(text="💬 Text • 🎤 Voice • ⚡ Booster • 🎯 Quests")
+            
+            # Enhanced footer with better explanation
+            embed.set_footer(
+                text="💬 Text Messages • 🎤 Voice Activity • ⚡ Booster Bonus • 🎯 Quest Rewards",
+                icon_url="https://cdn.discordapp.com/emojis/741339071399723008.png"
+            )
         
         return embed
     
@@ -1567,11 +1533,12 @@ class EmbedViews:
 class QuestView(discord.ui.View):
     """Interactive view for quest command with buttons"""
     
-    def __init__(self, user_id: int, quest_manager, member):
+    def __init__(self, user_id: int, quest_manager, member, leaderboard_manager=None):
         super().__init__(timeout=300)  # 5 minute timeout
         self.user_id = user_id
         self.quest_manager = quest_manager
         self.member = member
+        self.leaderboard_manager = leaderboard_manager
     
     # Dropdown to view quest details
     @discord.ui.select(placeholder="📜 View quest details", min_values=1, max_values=1, options=[])
@@ -1655,12 +1622,20 @@ class QuestView(discord.ui.View):
     
     @discord.ui.button(label="Leaderboard", style=discord.ButtonStyle.success, emoji="🏆")
     async def leaderboard_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Show points leaderboard"""
+        """Show combined points leaderboard"""
         try:
             await interaction.response.defer(ephemeral=True)
             
-            # Get leaderboard
-            leaderboard = await self.quest_manager.get_quest_points_leaderboard(limit=10, guild=interaction.guild)
+            # Check if leaderboard manager is available
+            if not self.leaderboard_manager:
+                await interaction.followup.send(
+                    "❌ Leaderboard system is not available!",
+                    ephemeral=True
+                )
+                return
+            
+            # Get combined leaderboard (general + quest points)
+            leaderboard = await self.leaderboard_manager.get_combined_leaderboard(limit=10, quest_manager=self.quest_manager)
             
             if not leaderboard:
                 await interaction.followup.send(
@@ -1669,8 +1644,8 @@ class QuestView(discord.ui.View):
                 )
                 return
             
-            # Create leaderboard embed
-            embed = EmbedViews.quest_points_leaderboard_embed(leaderboard, interaction.user.id)
+            # Create combined leaderboard embed
+            embed = EmbedViews.combined_points_leaderboard_embed(leaderboard, interaction.user.id)
             await interaction.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
@@ -2114,7 +2089,7 @@ def add_profile_embeds():
         embed.add_field(
             name="🎯 Quest Progress",
             value=(
-                f"**Quest Points:** {quest_points}\n"
+                f"**Points:** {quest_points}\n"
                 f"**Quests Completed:** {completed_quests}\n"
                 f"**Achievements:** {achievements_count} 🏆"
             ),
