@@ -4787,4 +4787,55 @@ class CommandsController:
         
         # Add the profile group to the command tree
         self.bot.tree.add_command(profile_group)
+        
+        # Debug command for forum testing
+        @self.bot.hybrid_command(name="debugforum", description="Debug forum configuration")
+        @admin_command
+        async def debug_forum(ctx):
+            """Debug forum configuration and test functionality"""
+            try:
+                # Get forum channel
+                forum_channel = self.bot.get_channel(Config.FORUM_CHANNEL_ID)
+                
+                embed = discord.Embed(
+                    title="🔧 Forum Debug Information",
+                    color=0x00ff00,
+                    timestamp=datetime.utcnow()
+                )
+                
+                if forum_channel:
+                    embed.add_field(
+                        name="📋 Forum Channel Info",
+                        value=f"**Name:** {forum_channel.name}\n**ID:** {forum_channel.id}\n**Type:** {forum_channel.type}\n**Is Forum:** {forum_channel.type == discord.ChannelType.forum}",
+                        inline=False
+                    )
+                    
+                    # Get help role
+                    help_role = ctx.guild.get_role(Config.HELP_ROLE_ID)
+                    embed.add_field(
+                        name="🆘 Help Role Info",
+                        value=f"**Name:** {help_role.name if help_role else 'Not Found'}\n**ID:** {Config.HELP_ROLE_ID}\n**Members:** {len(help_role.members) if help_role else 'N/A'}",
+                        inline=False
+                    )
+                    
+                    # Check bot permissions
+                    bot_member = ctx.guild.get_member(self.bot.user.id)
+                    perms = forum_channel.permissions_for(bot_member)
+                    embed.add_field(
+                        name="🤖 Bot Permissions",
+                        value=f"**Send Messages:** {perms.send_messages}\n**View Channel:** {perms.view_channel}\n**Embed Links:** {perms.embed_links}\n**Use External Emojis:** {perms.use_external_emojis}",
+                        inline=False
+                    )
+                else:
+                    embed.add_field(
+                        name="❌ Error",
+                        value=f"Forum channel with ID {Config.FORUM_CHANNEL_ID} not found!",
+                        inline=False
+                    )
+                
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in debug forum command: {e}")
+                await ctx.send(f"Debug failed: {str(e)}")
                 

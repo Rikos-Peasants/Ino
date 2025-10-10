@@ -65,6 +65,7 @@ class EventsController:
         
         @self.bot.event
         async def on_thread_create(thread: discord.Thread):
+            logger.info(f"Thread create event triggered: {thread.name} (ID: {thread.id}) in channel {thread.parent_id}")
             await self._handle_thread_create(thread)
         
 
@@ -633,11 +634,21 @@ class EventsController:
         try:
             # Only handle threads in the specific forum channel
             if thread.parent_id != Config.FORUM_CHANNEL_ID:
+                logger.debug(f"Thread {thread.id} not in help forum (parent: {thread.parent_id})")
                 return
             
-            # Skip if this is not a forum thread (should be, but safety check)
-            if not hasattr(thread.parent, 'type') or thread.parent.type != discord.ChannelType.forum:
+            # Get the parent channel to verify it's a forum
+            parent_channel = thread.parent or self.bot.get_channel(thread.parent_id)
+            if not parent_channel:
+                logger.error(f"Could not find parent channel {thread.parent_id} for thread {thread.id}")
                 return
+                
+            # Verify this is a forum channel
+            if parent_channel.type != discord.ChannelType.forum:
+                logger.debug(f"Parent channel {parent_channel.id} is not a forum channel (type: {parent_channel.type})")
+                return
+                
+            logger.info(f"Processing new forum thread: {thread.name} (ID: {thread.id}) in forum {parent_channel.name}")
             
             # Create embed for the help ping
             embed = discord.Embed(
@@ -647,9 +658,13 @@ class EventsController:
                 timestamp=datetime.utcnow()
             )
             
+            # Add thread info with safe handling
+            creator_mention = thread.owner.mention if thread.owner else 'Unknown'
+            created_timestamp = int(thread.created_at.timestamp()) if thread.created_at else int(datetime.utcnow().timestamp())
+            
             embed.add_field(
                 name="📝 Thread Info",
-                value=f"**Creator:** {thread.owner.mention if thread.owner else 'Unknown'}\n**Created:** <t:{int(thread.created_at.timestamp())}:R>",
+                value=f"**Creator:** {creator_mention}\n**Created:** <t:{created_timestamp}:R>",
                 inline=False
             )
             
@@ -667,9 +682,9 @@ class EventsController:
             # Send ping message with embed and button
             ping_message = f"<@&{Config.HELP_ROLE_ID}>"
             
-            await thread.send(content=ping_message, embed=embed, view=view)
-            
-            logger.info(f"Pinged help role for new forum thread: {thread.name} (ID: {thread.id})")
+            logger.info(f"Sending help ping to thread {thread.name} (ID: {thread.id})")
+            message = await thread.send(content=ping_message, embed=embed, view=view)
+            logger.info(f"Successfully sent help ping message (ID: {message.id}) to thread {thread.name}")
             
         except discord.Forbidden:
             logger.error(f"Missing permission to send message in forum thread {thread.id}")
