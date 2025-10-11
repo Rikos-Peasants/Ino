@@ -1462,7 +1462,7 @@ class MongoLeaderboardManager:
                         {"$match": {"completed": True}},
                         {"$group": {
                             "_id": "$user_id",
-                            "total_quest_points": {"$sum": "$points"}
+                            "total_quest_points": {"$sum": "$reward_points"}
                         }},
                         {"$sort": {"total_quest_points": -1}},
                         {"$limit": limit * 2}  # Limit quest users too
@@ -1476,7 +1476,7 @@ class MongoLeaderboardManager:
                     achievement_pipeline = [
                         {"$group": {
                             "_id": "$user_id",
-                            "total_achievement_points": {"$sum": "$points"}
+                            "total_achievement_points": {"$sum": "$reward_points"}
                         }},
                         {"$sort": {"total_achievement_points": -1}},
                         {"$limit": limit * 2}
