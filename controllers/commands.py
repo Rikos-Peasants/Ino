@@ -4428,6 +4428,146 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
         
+        # Admin reshufflequests command
+        @self.bot.hybrid_command(name="reshufflequests", description="Regenerate daily quests for a user (Admin permissions required)")
+        @admin_command
+        @app_commands.describe(userid="User ID to reshuffle quests for")
+        async def reshufflequests_command(ctx, userid: str):
+            """Regenerate daily quests for a specific user"""
+            try:
+                # Check if this is a slash command (has defer) or text command
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                # Validate guild
+                if not ctx.guild or ctx.guild.id != Config.GUILD_ID:
+                    error_msg = "This command can only be used in the configured guild."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Validate user ID
+                try:
+                    user_id = int(userid)
+                except ValueError:
+                    error_msg = "Invalid user ID. Must be a number."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Get events controller and quest manager
+                events_controller = self.get_events_controller()
+                if not events_controller or not events_controller.quest_manager:
+                    error_msg = "Quest system is not available."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                quest_manager = events_controller.quest_manager
+                
+                # Try to get user info for confirmation
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                    user_mention = f"{user.display_name} ({user.id})"
+                    member = ctx.guild.get_member(user_id)
+                except:
+                    user_mention = f"User ID: {user_id}"
+                    member = None
+                
+                # Check if user has existing quests today
+                existing_quests = await quest_manager.get_user_daily_quests(user_id)
+                
+                if existing_quests:
+                    # Clear existing quests for today
+                    today = datetime.now().date().isoformat()
+                    quest_manager.user_quests_collection.delete_many({
+                        "user_id": str(user_id),
+                        "date": today
+                    })
+                    
+                    # Generate new quests
+                    new_quests = await quest_manager.generate_daily_quests(user_id, member=member)
+                    
+                    success_embed = discord.Embed(
+                        title="🔄 Quests Reshuffled",
+                        description=f"Successfully reshuffled daily quests for {user_mention}:\n"
+                                   f"• **{len(existing_quests)}** old quests removed\n"
+                                   f"• **{len(new_quests)}** new quests generated",
+                        color=discord.Color.blue(),
+                        timestamp=datetime.utcnow()
+                    )
+                    
+                    # Add quest details
+                    if new_quests:
+                        quest_list = []
+                        for quest in new_quests:
+                            difficulty_emoji = {
+                                "easy": "🟢",
+                                "medium": "🟡", 
+                                "hard": "🔴",
+                                "very_hard": "🟣"
+                            }.get(quest.get("difficulty", "medium"), "🟡")
+                            
+                            quest_list.append(f"{difficulty_emoji} **{quest['name']}** - {quest['reward_points']} pts")
+                        
+                        success_embed.add_field(
+                            name="📋 New Quests",
+                            value="\n".join(quest_list),
+                            inline=False
+                        )
+                    
+                    await ctx.send(embed=success_embed)
+                else:
+                    # No existing quests, just generate new ones
+                    new_quests = await quest_manager.generate_daily_quests(user_id, member=member)
+                    
+                    success_embed = discord.Embed(
+                        title="✨ Quests Generated",
+                        description=f"Generated daily quests for {user_mention} (no existing quests found):\n"
+                                   f"• **{len(new_quests)}** new quests created",
+                        color=discord.Color.green(),
+                        timestamp=datetime.utcnow()
+                    )
+                    
+                    # Add quest details
+                    if new_quests:
+                        quest_list = []
+                        for quest in new_quests:
+                            difficulty_emoji = {
+                                "easy": "🟢",
+                                "medium": "🟡", 
+                                "hard": "🔴",
+                                "very_hard": "🟣"
+                            }.get(quest.get("difficulty", "medium"), "🟡")
+                            
+                            quest_list.append(f"{difficulty_emoji} **{quest['name']}** - {quest['reward_points']} pts")
+                        
+                        success_embed.add_field(
+                            name="📋 Generated Quests",
+                            value="\n".join(quest_list),
+                            inline=False
+                        )
+                    
+                    await ctx.send(embed=success_embed)
+                
+            except Exception as e:
+                logger.error(f"Error in reshufflequests command: {e}")
+                error_embed = discord.Embed(
+                    title="❌ Command Error",
+                    description=f"An error occurred: {str(e)}",
+                    color=discord.Color.red()
+                )
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.send(embed=error_embed)
+        
         # Register InoRep commands
         inorep_cmds = self._register_inorep_commands()
         if inorep_cmds:
