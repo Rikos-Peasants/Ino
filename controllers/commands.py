@@ -4555,8 +4555,8 @@ class CommandsController:
                 guild_id = str(ctx.guild.id)
 
                 # Prevent moderators from changing other moderators' settings
-                from controllers.security import CommandSecurity
-                is_admin = await CommandSecurity.is_admin(ctx.author)
+                from controllers.security import CommandSecurity, SecurityLevel
+                is_admin, _ = await CommandSecurity.check_permissions(ctx, SecurityLevel.ADMIN)
                 if not is_admin and ctx.author.id != int(user_id):
                     await ctx.send("❌ You can only change your own settings.", ephemeral=True)
                     return
