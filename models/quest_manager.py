@@ -2947,10 +2947,13 @@ class QuestManager:
             return {}
     
     async def check_and_break_streaks(self):
-        """Check all users for broken streaks (called daily by scheduler)"""
+        """Check all users for broken streaks (called daily by scheduler at midnight)"""
         try:
             today = datetime.now().date()
             yesterday = today - timedelta(days=1)
+            two_days_ago = today - timedelta(days=2)
+            
+            logger.info(f"Starting daily streak check for {today}")
             
             # Find all users with active streaks
             active_streaks = list(self.user_streaks_collection.find({
@@ -2960,27 +2963,45 @@ class QuestManager:
                 ]
             }))
             
+            broken_post_streaks = 0
+            broken_quest_streaks = 0
+            
             for streak_doc in active_streaks:
                 user_id = streak_doc["user_id"]
                 updates = {}
                 
-                # Check post streak
+                # Check post streak - only break if last post was 2+ days ago
+                # This gives users until the end of the day to maintain their streak
                 if streak_doc.get("post_streak", 0) > 0:
                     last_post_date_str = streak_doc.get("last_post_date")
                     if last_post_date_str:
-                        last_post_date = datetime.fromisoformat(last_post_date_str).date()
-                        if last_post_date < yesterday:
+                        try:
+                            last_post_date = datetime.fromisoformat(last_post_date_str).date()
+                            # Break streak only if last post was before yesterday (2+ day gap)
+                            if last_post_date < yesterday:
+                                updates["post_streak"] = 0
+                                broken_post_streaks += 1
+                                logger.info(f"Broke post streak for user {user_id} (last post: {last_post_date})")
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Invalid last_post_date for user {user_id}: {last_post_date_str}")
                             updates["post_streak"] = 0
-                            logger.info(f"Broke post streak for user {user_id}")
+                            broken_post_streaks += 1
                 
-                # Check quest streak
+                # Check quest streak - only break if last quest was 2+ days ago
                 if streak_doc.get("quest_streak", 0) > 0:
                     last_quest_date_str = streak_doc.get("last_quest_date")
                     if last_quest_date_str:
-                        last_quest_date = datetime.fromisoformat(last_quest_date_str).date()
-                        if last_quest_date < yesterday:
+                        try:
+                            last_quest_date = datetime.fromisoformat(last_quest_date_str).date()
+                            # Break streak only if last quest was before yesterday (2+ day gap)
+                            if last_quest_date < yesterday:
+                                updates["quest_streak"] = 0
+                                broken_quest_streaks += 1
+                                logger.info(f"Broke quest streak for user {user_id} (last quest: {last_quest_date})")
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Invalid last_quest_date for user {user_id}: {last_quest_date_str}")
                             updates["quest_streak"] = 0
-                            logger.info(f"Broke quest streak for user {user_id}")
+                            broken_quest_streaks += 1
                 
                 # Apply updates if any
                 if updates:
@@ -2989,6 +3010,8 @@ class QuestManager:
                         {"user_id": user_id},
                         {"$set": updates}
                     )
+            
+            logger.info(f"Daily streak check completed: {broken_post_streaks} post streaks broken, {broken_quest_streaks} quest streaks broken")
                     
         except Exception as e:
             logger.error(f"Error checking and breaking streaks: {e}")

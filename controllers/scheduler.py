@@ -379,6 +379,13 @@ class SchedulerController:
     async def check_streaks(self):
         """Check and update user streaks daily"""
         try:
+            now = datetime.now()
+            
+            # Only run at midnight (between 00:00 and 01:00) to avoid running on startup
+            if not (0 <= now.hour < 1):
+                logger.debug(f"Skipping streak check - not midnight (current hour: {now.hour})")
+                return
+            
             # Check if quest manager is available
             events_controller = getattr(self.bot, 'events_controller', None)
             if not events_controller or not hasattr(events_controller, 'quest_manager') or not events_controller.quest_manager:
@@ -388,15 +395,25 @@ class SchedulerController:
             
             # Check for broken streaks
             await quest_manager.check_and_break_streaks()
-            logger.info("Daily streak check completed")
+            logger.info("Daily streak check completed at midnight")
             
         except Exception as e:
             logger.error(f"Error in daily streak check: {e}")
     
     @check_streaks.before_loop
     async def before_streaks_task(self):
-        """Wait until the bot is ready before starting streaks task"""
+        """Wait until the bot is ready and then wait until midnight before starting streaks task"""
         await self.bot.wait_until_ready()
+        
+        # Wait until the next midnight to start the streak checking
+        now = datetime.now()
+        next_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        wait_seconds = (next_midnight - now).total_seconds()
+        
+        logger.info(f"Streak checker will start at next midnight ({next_midnight.strftime('%Y-%m-%d %H:%M:%S')})")
+        logger.info(f"Waiting {wait_seconds/3600:.1f} hours until midnight...")
+        
+        await asyncio.sleep(wait_seconds)
     
     @tasks.loop(minutes=1)  # Check every minute for new videos
     async def check_youtube_videos(self):
