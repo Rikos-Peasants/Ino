@@ -1562,7 +1562,7 @@ class QuestManager:
         logger.info("Initialized default quests and achievements")
     
     async def generate_daily_quests(self, user_id: int, member: 'discord.Member' = None) -> List[Dict]:
-        """Generate 3-5 random daily quests for a user with difficulty/rarity system"""
+        """Generate 3-5 random daily quests for a user with progressive difficulty scaling"""
         try:
             today = datetime.now().date()
             
@@ -1574,6 +1574,10 @@ class QuestManager:
             
             if existing_quests:
                 return existing_quests
+            
+            # Get user's current quest streak for progressive difficulty
+            quest_streak = await self.get_user_streak(user_id, "quest_streak")
+            logger.info(f"User {user_id} has quest streak of {quest_streak} days - applying progressive difficulty")
             
             # Get all available daily quests
             available_quests = list(self.quests_collection.find({"is_daily": True}))
@@ -1639,28 +1643,38 @@ class QuestManager:
                         patreon_multiplier = 1.5
                         logger.info(f"User {user_id} has Patreon role - 1.5x points multiplier applied")
             
-            # Create user quest records
+            # Create user quest records with progressive difficulty scaling
             user_quests = []
             for quest in selected_quests:
-                base_points = quest["reward_points"]
+                # Apply progressive difficulty scaling based on quest streak
+                scaled_quest = await self._apply_progressive_difficulty(quest, user_id, quest_streak)
+                
+                base_points = scaled_quest["reward_points"]
                 final_points = int(base_points * patreon_multiplier)
                 
                 user_quest = {
                     "user_id": str(user_id),
-                    "quest_id": quest["quest_id"],
-                    "name": quest["name"],
-                    "description": quest["description"],
-                    "quest_type": quest["quest_type"],
-                    "category": quest.get("category", "general"),
-                    "difficulty": quest.get("difficulty", "medium"),
-                    "target_count": quest["target_count"],
+                    "quest_id": scaled_quest["quest_id"],
+                    "name": scaled_quest["name"],
+                    "description": scaled_quest["description"],
+                    "quest_type": scaled_quest["quest_type"],
+                    "category": scaled_quest.get("category", "general"),
+                    "difficulty": scaled_quest.get("difficulty", "medium"),
+                    "target_count": scaled_quest["target_count"],
                     "current_count": 0,
                     "reward_points": final_points,
                     "base_reward_points": base_points,
                     "patreon_multiplier": patreon_multiplier,
                     "completed": False,
                     "date": today.isoformat(),
-                    "created_at": datetime.now()
+                    "created_at": datetime.now(),
+                    # Progressive difficulty metadata
+                    "original_target_count": scaled_quest.get("original_target_count", scaled_quest["target_count"]),
+                    "original_reward_points": scaled_quest.get("original_reward_points", scaled_quest["reward_points"]),
+                    "difficulty_multiplier": scaled_quest.get("difficulty_multiplier", 1.0),
+                    "reward_multiplier": scaled_quest.get("reward_multiplier", 1.0),
+                    "difficulty_tier": scaled_quest.get("difficulty_tier", "Beginner"),
+                    "streak_days": quest_streak
                 }
                 
                 self.user_quests_collection.insert_one(user_quest)
@@ -2541,6 +2555,138 @@ class QuestManager:
             logger.error(f"Error awarding competition achievement: {e}")
             return None
     
+    # ==================== PROGRESSIVE DIFFICULTY SYSTEM ====================
+    
+    def _calculate_difficulty_multiplier(self, streak_days: int) -> float:
+        """Calculate difficulty multiplier based on streak duration
+        
+        Args:
+            streak_days: Current streak duration in days
+            
+        Returns:
+            float: Multiplier for quest difficulty (1.0 = base difficulty)
+        """
+        if streak_days < 2:
+            return 1.0  # Base difficulty
+        elif streak_days < 5:
+            return 1.2  # 20% increase at 2+ days
+        elif streak_days < 10:
+            return 1.4  # 40% increase at 5+ days
+        elif streak_days < 20:
+            return 1.6  # 60% increase at 10+ days
+        elif streak_days < 30:
+            return 1.8  # 80% increase at 20+ days
+        elif streak_days < 50:
+            return 2.0  # 100% increase at 30+ days
+        elif streak_days < 100:
+            return 2.2  # 120% increase at 50+ days
+        else:
+            return 2.5  # 150% increase at 100+ days (max)
+    
+    def _calculate_reward_multiplier(self, streak_days: int) -> float:
+        """Calculate reward multiplier based on streak duration
+        
+        Args:
+            streak_days: Current streak duration in days
+            
+        Returns:
+            float: Multiplier for quest rewards (1.0 = base rewards)
+        """
+        if streak_days < 2:
+            return 1.0  # Base rewards
+        elif streak_days < 5:
+            return 1.1  # 10% increase at 2+ days
+        elif streak_days < 10:
+            return 1.25  # 25% increase at 5+ days
+        elif streak_days < 20:
+            return 1.4  # 40% increase at 10+ days
+        elif streak_days < 30:
+            return 1.6  # 60% increase at 20+ days
+        elif streak_days < 50:
+            return 1.8  # 80% increase at 30+ days
+        elif streak_days < 100:
+            return 2.0  # 100% increase at 50+ days
+        else:
+            return 2.3  # 130% increase at 100+ days (max)
+    
+    def _get_difficulty_tier_name(self, streak_days: int) -> str:
+        """Get the difficulty tier name based on streak duration"""
+        if streak_days < 2:
+            return "Beginner"
+        elif streak_days < 5:
+            return "Novice"
+        elif streak_days < 10:
+            return "Apprentice"
+        elif streak_days < 20:
+            return "Adept"
+        elif streak_days < 30:
+            return "Expert"
+        elif streak_days < 50:
+            return "Master"
+        elif streak_days < 100:
+            return "Grandmaster"
+        else:
+            return "Legendary"
+    
+    async def _apply_progressive_difficulty(self, quest: Dict, user_id: int, streak_days: int) -> Dict:
+        """Apply progressive difficulty scaling to a quest based on user's streak
+        
+        Args:
+            quest: Original quest data
+            user_id: User ID for logging
+            streak_days: Current streak duration
+            
+        Returns:
+            Dict: Modified quest with scaled difficulty and rewards
+        """
+        try:
+            # Calculate multipliers
+            difficulty_multiplier = self._calculate_difficulty_multiplier(streak_days)
+            reward_multiplier = self._calculate_reward_multiplier(streak_days)
+            
+            # Create a copy of the quest to avoid modifying the original
+            scaled_quest = quest.copy()
+            
+            # Scale target count (difficulty)
+            original_target = quest["target_count"]
+            scaled_target = max(1, int(original_target * difficulty_multiplier))
+            scaled_quest["target_count"] = scaled_target
+            
+            # Scale reward points
+            original_reward = quest["reward_points"]
+            scaled_reward = int(original_reward * reward_multiplier)
+            scaled_quest["reward_points"] = scaled_reward
+            
+            # Update quest name and description to reflect scaling
+            tier_name = self._get_difficulty_tier_name(streak_days)
+            if streak_days >= 2:
+                scaled_quest["name"] = f"{quest['name']} ({tier_name})"
+                
+                # Update description to show scaling
+                if scaled_target != original_target:
+                    scaled_quest["description"] = quest["description"].replace(
+                        str(original_target), str(scaled_target)
+                    )
+            
+            # Add scaling metadata
+            scaled_quest["original_target_count"] = original_target
+            scaled_quest["original_reward_points"] = original_reward
+            scaled_quest["difficulty_multiplier"] = difficulty_multiplier
+            scaled_quest["reward_multiplier"] = reward_multiplier
+            scaled_quest["difficulty_tier"] = tier_name
+            scaled_quest["streak_days"] = streak_days
+            
+            logger.info(f"Applied progressive difficulty to quest '{quest['name']}' for user {user_id}: "
+                       f"streak={streak_days}d, tier={tier_name}, "
+                       f"target={original_target}→{scaled_target}, "
+                       f"reward={original_reward}→{scaled_reward}")
+            
+            return scaled_quest
+            
+        except Exception as e:
+            logger.error(f"Error applying progressive difficulty: {e}")
+            return quest  # Return original quest if scaling fails
+
     # ==================== STREAK SYSTEM ====================
     
     async def update_post_streak(self, user_id: int):
@@ -2569,14 +2715,50 @@ class QuestManager:
                 logger.info(f"Started post streak for user {user_id}")
                 return 1
             
-            last_post_date = datetime.fromisoformat(streak_doc["last_post_date"]).date()
+            # Handle null or missing last_post_date
+            last_post_date_str = streak_doc.get("last_post_date")
+            if not last_post_date_str:
+                # No previous post date recorded, treat as first post
+                self.user_streaks_collection.update_one(
+                    {"user_id": str(user_id)},
+                    {
+                        "$set": {
+                            "post_streak": 1,
+                            "last_post_date": today.isoformat(),
+                            "max_post_streak": max(1, streak_doc.get("max_post_streak", 0)),
+                            "updated_at": datetime.now()
+                        }
+                    }
+                )
+                logger.info(f"Started post streak for user {user_id} (no previous date)")
+                return 1
+            
+            try:
+                last_post_date = datetime.fromisoformat(last_post_date_str).date()
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid last_post_date format for user {user_id}: {last_post_date_str}, resetting streak")
+                # Invalid date format, reset streak
+                self.user_streaks_collection.update_one(
+                    {"user_id": str(user_id)},
+                    {
+                        "$set": {
+                            "post_streak": 1,
+                            "last_post_date": today.isoformat(),
+                            "max_post_streak": max(1, streak_doc.get("max_post_streak", 0)),
+                            "updated_at": datetime.now()
+                        }
+                    }
+                )
+                return 1
             
             if last_post_date == today:
                 # Already posted today, no change
-                return streak_doc["post_streak"]
+                current_streak = streak_doc.get("post_streak", 0)
+                logger.debug(f"User {user_id} already posted today, streak remains {current_streak}")
+                return current_streak
             elif last_post_date == yesterday:
                 # Continuing streak
-                new_streak = streak_doc["post_streak"] + 1
+                new_streak = streak_doc.get("post_streak", 0) + 1
                 max_streak = max(new_streak, streak_doc.get("max_post_streak", 0))
                 
                 self.user_streaks_collection.update_one(
@@ -2604,11 +2786,11 @@ class QuestManager:
                         }
                     }
                 )
-                logger.info(f"Post streak broken for user {user_id}, restarted at 1")
+                logger.info(f"Post streak broken for user {user_id} (last post: {last_post_date}), restarted at 1")
                 return 1
                 
         except Exception as e:
-            logger.error(f"Error updating post streak: {e}")
+            logger.error(f"Error updating post streak for user {user_id}: {e}")
             return 0
     
     async def _update_quest_streak(self, user_id: int):
@@ -2650,12 +2832,34 @@ class QuestManager:
             # Check if already updated today
             last_quest_date_str = streak_doc.get("last_quest_date")
             if last_quest_date_str:
-                last_quest_date = datetime.fromisoformat(last_quest_date_str).date()
-                if last_quest_date == today:
-                    return streak_doc["quest_streak"]  # Already counted today
-                elif last_quest_date == yesterday:
+                try:
+                    last_quest_date = datetime.fromisoformat(last_quest_date_str).date()
+                    if last_quest_date == today:
+                        return streak_doc.get("quest_streak", 0)  # Already counted today
+                    elif last_quest_date == yesterday:
+                        # Continuing streak
+                        new_streak = streak_doc.get("quest_streak", 0) + 1
+                        max_streak = max(new_streak, streak_doc.get("max_quest_streak", 0))
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid last_quest_date format for user {user_id}: {last_quest_date_str}, resetting streak")
+                    # Invalid date format, reset streak
+                    self.user_streaks_collection.update_one(
+                        {"user_id": str(user_id)},
+                        {
+                            "$set": {
+                                "quest_streak": 1,
+                                "last_quest_date": today.isoformat(),
+                                "max_quest_streak": max(1, streak_doc.get("max_quest_streak", 0)),
+                                "updated_at": datetime.now()
+                            }
+                        }
+                    )
+                    logger.info(f"Quest streak reset for user {user_id} due to invalid date, restarted at 1")
+                    return 1
+                     
+                if last_quest_date == yesterday:
                     # Continuing streak
-                    new_streak = streak_doc["quest_streak"] + 1
+                    new_streak = streak_doc.get("quest_streak", 0) + 1
                     max_streak = max(new_streak, streak_doc.get("max_quest_streak", 0))
                     
                     self.user_streaks_collection.update_one(
@@ -2686,7 +2890,7 @@ class QuestManager:
                     logger.info(f"Quest streak broken for user {user_id}, restarted at 1")
                     return 1
             else:
-                # First quest completion
+                # First quest completion (no previous date)
                 self.user_streaks_collection.update_one(
                     {"user_id": str(user_id)},
                     {
@@ -2698,7 +2902,7 @@ class QuestManager:
                         }
                     }
                 )
-                logger.info(f"Started quest streak for user {user_id}")
+                logger.info(f"Started quest streak for user {user_id} (no previous date)")
                 return 1
                 
         except Exception as e:
