@@ -4533,6 +4533,44 @@ class CommandsController:
             except Exception as e:
                 logger.error(f"Error removing rep: {e}")
                 await ctx.send(f"❌ Failed to remove rep: {str(e)}", ephemeral=True)
+
+        @inorep_group.group(name='settings', description='[MODERATOR] Configure InoRep settings')
+        @moderator_command
+        async def inorep_settings_group(ctx):
+            """InoRep settings command group"""
+            if ctx.invoked_subcommand is None:
+                await ctx.send("Run `/inorep settings modmode` to configure moderator point reduction settings.", ephemeral=True)
+
+        @inorep_settings_group.command(name='modmode', description='Toggle automatic point reduction for yourself')
+        @moderator_command
+        async def inorep_modmode_cmd(ctx, enabled: bool):
+            """Enable or disable automatic InoRep point reduction for yourself when you say mean things to Ino"""
+            try:
+                inorep_manager = self.get_leaderboard_manager().inorep_manager
+                if not inorep_manager:
+                    await ctx.send("❌ Inorep system not available.", ephemeral=True)
+                    return
+
+                user_id = str(ctx.author.id)
+                guild_id = str(ctx.guild.id)
+
+                # Prevent moderators from changing other moderators' settings
+                from controllers.security import CommandSecurity
+                is_admin = await CommandSecurity.is_admin(ctx.author)
+                if not is_admin and ctx.author.id != int(user_id):
+                    await ctx.send("❌ You can only change your own settings.", ephemeral=True)
+                    return
+
+                success = await inorep_manager.set_mod_mode(user_id, guild_id, enabled)
+
+                if success:
+                    await ctx.send(f"✅ Automatic point reduction has been **{'enabled' if enabled else 'disabled'}** for you.", ephemeral=True)
+                else:
+                    await ctx.send("❌ Failed to update your settings.", ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error in inorep_modmode_cmd: {e}")
+                await ctx.send("❌ An error occurred while updating your settings.", ephemeral=True)
         
         # Return command references for storage
         return {

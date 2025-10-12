@@ -24,6 +24,7 @@ class InoRepManager:
             # InoRep indexes
             self.inorep_collection.create_index([("user_id", 1), ("guild_id", 1)], unique=True)
             self.inorep_collection.create_index([("rep", -1)])
+            self.inorep_collection.create_index([("mod_mode", 1)])
             
             # History indexes
             self.inorep_history_collection.create_index([("user_id", 1), ("created_at", -1)])
@@ -54,6 +55,16 @@ class InoRepManager:
     async def add_rep(self, user_id: str, guild_id: str, user_name: str, amount: int, reason: str, moderator_id: str, moderator_name: str) -> bool:
         """Add reputation points to a user (can be negative for warnings)"""
         try:
+            # Check if the user is a moderator with mod_mode enabled
+            user_data = self.inorep_collection.find_one({
+                "user_id": user_id,
+                "guild_id": guild_id
+            })
+
+            if amount < 0 and user_data and user_data.get('mod_mode', False):
+                logger.info(f"Skipped negative rep for {user_name} because mod_mode is enabled.")
+                return True # Pretend it was successful
+
             current_rep = await self.get_user_rep(user_id, guild_id)
             new_rep = current_rep + amount
             
@@ -151,6 +162,27 @@ class InoRepManager:
         except Exception as e:
             logger.error(f"Error getting leaderboard: {e}")
             return []
+
+    async def set_mod_mode(self, user_id: str, guild_id: str, enabled: bool) -> bool:
+        """Enable or disable moderator mode for a user"""
+        try:
+            self.inorep_collection.update_one(
+                {
+                    "user_id": user_id,
+                    "guild_id": guild_id
+                },
+                {
+                    "$set": {
+                        "mod_mode": enabled
+                    }
+                },
+                upsert=True
+            )
+            logger.info(f"Set mod_mode for user {user_id} to {enabled}")
+            return True
+        except Exception as e:
+            logger.error(f"Error setting mod_mode: {e}")
+            return False
     
     def close(self):
         """Close MongoDB connection"""
