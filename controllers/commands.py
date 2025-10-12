@@ -4265,6 +4265,169 @@ class CommandsController:
 
 
         
+        # Admin resetquests command
+        @self.bot.hybrid_command(name="resetquests", description="Reset quest data for users (Admin permissions required)")
+        @admin_command
+        @app_commands.describe(
+            type="Type of reset: 'all' for all users or 'user' for specific user",
+            userid="User ID to reset (required when type='user')"
+        )
+        @app_commands.choices(type=[
+            app_commands.Choice(name="all", value="all"),
+            app_commands.Choice(name="user", value="user")
+        ])
+        async def resetquests_command(ctx, type: str, userid: str = None):
+            """Reset quest data for all users or a specific user"""
+            try:
+                # Check if this is a slash command (has defer) or text command
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                # Validate guild
+                if not ctx.guild or ctx.guild.id != Config.GUILD_ID:
+                    error_msg = "This command can only be used in the configured guild."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Validate parameters
+                if type not in ["all", "user"]:
+                    error_msg = "Type must be either 'all' or 'user'."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                if type == "user" and not userid:
+                    error_msg = "User ID is required when type is 'user'."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Get events controller and quest manager
+                events_controller = self.get_events_controller()
+                if not events_controller or not events_controller.quest_manager:
+                    error_msg = "Quest system is not available."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                quest_manager = events_controller.quest_manager
+                
+                # Execute reset based on type
+                if type == "all":
+                    # Confirm before resetting all users
+                    confirm_embed = discord.Embed(
+                        title="⚠️ Reset All Quest Data",
+                        description="**WARNING:** This will permanently delete ALL quest data for ALL users including:\n"
+                                   "• All daily quests\n"
+                                   "• All achievements\n"
+                                   "• All user stats\n"
+                                   "• All streaks\n\n"
+                                   "**This action cannot be undone!**",
+                        color=discord.Color.red(),
+                        timestamp=datetime.utcnow()
+                    )
+                    confirm_embed.set_footer(text="Type 'CONFIRM' to proceed or wait 30 seconds to cancel")
+                    
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(embed=confirm_embed)
+                    else:
+                        await ctx.send(embed=confirm_embed)
+                    
+                    # Wait for confirmation
+                    def check(m):
+                        return m.author == ctx.author and m.channel == ctx.channel and m.content.upper() == 'CONFIRM'
+                    
+                    try:
+                        await self.bot.wait_for('message', check=check, timeout=30.0)
+                    except asyncio.TimeoutError:
+                        timeout_embed = discord.Embed(
+                            title="❌ Reset Cancelled",
+                            description="Reset operation timed out. No data was modified.",
+                            color=discord.Color.orange()
+                        )
+                        await ctx.send(embed=timeout_embed)
+                        return
+                    
+                    # Execute reset all
+                    result = await quest_manager.reset_all_quests()
+                    
+                elif type == "user":
+                    # Validate user ID
+                    try:
+                        user_id = int(userid)
+                    except ValueError:
+                        error_msg = "Invalid user ID. Must be a number."
+                        if hasattr(ctx, 'followup'):
+                            await ctx.followup.send(error_msg, ephemeral=True)
+                        else:
+                            await ctx.send(error_msg)
+                        return
+                    
+                    # Try to get user info for confirmation
+                    try:
+                        user = await self.bot.fetch_user(user_id)
+                        user_mention = f"{user.display_name} ({user.id})"
+                    except:
+                        user_mention = f"User ID: {user_id}"
+                    
+                    # Execute reset for specific user
+                    result = await quest_manager.reset_user_quests(user_id)
+                
+                # Send result
+                if result["success"]:
+                    if type == "all":
+                        success_embed = discord.Embed(
+                            title="✅ All Quest Data Reset",
+                            description=f"Successfully reset quest data for all users:\n"
+                                       f"• **{result['deleted_counts']['quests']}** quests deleted\n"
+                                       f"• **{result['deleted_counts']['achievements']}** achievements deleted\n"
+                                       f"• **{result['deleted_counts']['stats']}** stats deleted\n"
+                                       f"• **{result['deleted_counts']['streaks']}** streaks deleted",
+                            color=discord.Color.green(),
+                            timestamp=datetime.utcnow()
+                        )
+                    else:
+                        success_embed = discord.Embed(
+                            title="✅ User Quest Data Reset",
+                            description=f"Successfully reset quest data for {user_mention}:\n"
+                                       f"• **{result['deleted_counts']['quests']}** quests deleted\n"
+                                       f"• **{result['deleted_counts']['achievements']}** achievements deleted\n"
+                                       f"• **{result['deleted_counts']['stats']}** stats deleted\n"
+                                       f"• **{result['deleted_counts']['streaks']}** streaks deleted",
+                            color=discord.Color.green(),
+                            timestamp=datetime.utcnow()
+                        )
+                    
+                    await ctx.send(embed=success_embed)
+                else:
+                    error_embed = discord.Embed(
+                        title="❌ Reset Failed",
+                        description=result["message"],
+                        color=discord.Color.red()
+                    )
+                    await ctx.send(embed=error_embed)
+                
+            except Exception as e:
+                logger.error(f"Error in resetquests command: {e}")
+                error_embed = discord.Embed(
+                    title="❌ Command Error",
+                    description=f"An error occurred: {str(e)}",
+                    color=discord.Color.red()
+                )
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.send(embed=error_embed)
+        
         # Register InoRep commands
         inorep_cmds = self._register_inorep_commands()
         if inorep_cmds:
@@ -4564,7 +4727,8 @@ class CommandsController:
                 success = await inorep_manager.set_mod_mode(user_id, guild_id, enabled)
 
                 if success:
-                    await ctx.send(f"✅ Automatic point reduction has been **{'enabled' if enabled else 'disabled'}** for you.", ephemeral=True)
+                    status_text = "enabled" if enabled else "disabled"
+                    await ctx.send(f"✅ Automatic point reduction has been **{status_text}** for you.", ephemeral=True)
                 else:
                     await ctx.send("❌ Failed to update your settings.", ephemeral=True)
 

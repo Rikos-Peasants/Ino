@@ -3015,3 +3015,73 @@ class QuestManager:
                     
         except Exception as e:
             logger.error(f"Error checking and breaking streaks: {e}")
+    
+    async def reset_user_quests(self, user_id: int) -> Dict:
+        """Reset all quests for a specific user"""
+        try:
+            if not self._ensure_connected():
+                return {"success": False, "message": "Database connection failed"}
+            
+            # Delete all user quests
+            quest_result = self.user_quests_collection.delete_many({"user_id": str(user_id)})
+            
+            # Delete all user achievements
+            achievement_result = self.user_achievements_collection.delete_many({"user_id": str(user_id)})
+            
+            # Reset user stats
+            stats_result = self.user_stats_collection.delete_many({"user_id": str(user_id)})
+            
+            # Reset user streaks
+            streaks_result = self.user_streaks_collection.delete_many({"user_id": str(user_id)})
+            
+            logger.info(f"Reset quests for user {user_id}: {quest_result.deleted_count} quests, {achievement_result.deleted_count} achievements, {stats_result.deleted_count} stats, {streaks_result.deleted_count} streaks")
+            
+            return {
+                "success": True,
+                "message": f"Successfully reset all quest data for user {user_id}",
+                "deleted_counts": {
+                    "quests": quest_result.deleted_count,
+                    "achievements": achievement_result.deleted_count,
+                    "stats": stats_result.deleted_count,
+                    "streaks": streaks_result.deleted_count
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error resetting quests for user {user_id}: {e}")
+            return {"success": False, "message": f"Failed to reset quests: {str(e)}"}
+    
+    async def reset_all_quests(self) -> Dict:
+        """Reset all quests for all users"""
+        try:
+            if not self._ensure_connected():
+                return {"success": False, "message": "Database connection failed"}
+            
+            # Delete all user quests
+            quest_result = self.user_quests_collection.delete_many({})
+            
+            # Delete all user achievements
+            achievement_result = self.user_achievements_collection.delete_many({})
+            
+            # Reset all user stats
+            stats_result = self.user_stats_collection.delete_many({})
+            
+            # Reset all user streaks
+            streaks_result = self.user_streaks_collection.delete_many({})
+            
+            logger.info(f"Reset all quests: {quest_result.deleted_count} quests, {achievement_result.deleted_count} achievements, {stats_result.deleted_count} stats, {streaks_result.deleted_count} streaks")
+            
+            return {
+                "success": True,
+                "message": "Successfully reset all quest data for all users",
+                "deleted_counts": {
+                    "quests": quest_result.deleted_count,
+                    "achievements": achievement_result.deleted_count,
+                    "stats": stats_result.deleted_count,
+                    "streaks": streaks_result.deleted_count
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error resetting all quests: {e}")
+            return {"success": False, "message": f"Failed to reset all quests: {str(e)}"}
