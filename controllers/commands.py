@@ -2085,8 +2085,93 @@ class CommandsController:
                 await ctx.send(embed=embed)
                 
             except Exception as e:
-                error_embed = EmbedViews.error_embed(f"Failed to debug reactions: {str(e)}")
-                await ctx.send(embed=error_embed)
+                 error_embed = EmbedViews.error_embed(f"Failed to debug reactions: {str(e)}")
+                 await ctx.send(embed=error_embed)
+        
+        # Test help notification system
+        @self.bot.hybrid_command(name="testhelpnotify", description="Test the help forum notification system (Admin only)")
+        @admin_command
+        async def test_help_notify(ctx):
+            """Test the help forum notification system by simulating a notification"""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                # Get forum channel
+                forum_channel = self.bot.get_channel(Config.FORUM_CHANNEL_ID)
+                if not forum_channel:
+                    error_msg = f"Help forum channel {Config.FORUM_CHANNEL_ID} not found!"
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Get help role
+                help_role = ctx.guild.get_role(Config.HELP_ROLE_ID)
+                if not help_role:
+                    error_msg = f"Help role {Config.HELP_ROLE_ID} not found!"
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Send test notification in the current channel
+                test_embed = discord.Embed(
+                    title="🧪 Help Notification System Test",
+                    description=f"**Testing automatic help notifications**\n\n"
+                               f"This simulates what happens when someone creates a help thread.",
+                    color=0x00ff00,
+                    timestamp=datetime.utcnow()
+                )
+                
+                test_embed.add_field(
+                    name="📋 Test Details",
+                    value=f"**Forum Channel:** {forum_channel.name} ({forum_channel.id})\n"
+                         f"**Help Role:** {help_role.name} ({help_role.id})\n"
+                         f"**Role Members:** {len(help_role.members)}\n"
+                         f"**Test Initiated By:** {ctx.author.mention}",
+                    inline=False
+                )
+                
+                test_embed.add_field(
+                    name="🔔 Notification Test",
+                    value=f"The following ping should notify all helpers:\n{help_role.mention}",
+                    inline=False
+                )
+                
+                test_embed.add_field(
+                    name="✅ Expected Behavior",
+                    value="• All members with the help role should receive a notification\n"
+                         "• This same notification is sent for EVERY help forum thread\n"
+                         "• No thread title or content filtering is applied",
+                    inline=False
+                )
+                
+                test_embed.set_footer(text="🧪 This is a test of the automatic help notification system")
+                
+                # Send the test
+                ping_message = f"<@&{Config.HELP_ROLE_ID}>"
+                
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(content=ping_message, embed=test_embed)
+                else:
+                    await ctx.send(content=ping_message, embed=test_embed)
+                
+                logger.info(f"✅ Help notification test completed by {ctx.author.display_name} in channel {ctx.channel.name}")
+                
+            except Exception as e:
+                logger.error(f"Error in test help notify command: {e}")
+                error_embed = discord.Embed(
+                    title="❌ Test Failed",
+                    description=f"Failed to test help notifications: {str(e)}",
+                    color=0xff0000
+                )
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.send(embed=error_embed)
 
         @self.bot.hybrid_command(name="testreactions", description="Test enhanced reaction tracking system (Bot owners only)")
         @owner_command
@@ -4568,7 +4653,163 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
         
-        # Register InoRep commands
+        # Admin quest analysis command
+        @self.bot.hybrid_command(name="analyzequest", description="Analyze quest generation patterns for a user (Admin permissions required)")
+        @admin_command
+        @app_commands.describe(userid="User ID to analyze quest patterns for", days="Number of days to analyze (default: 7)")
+        async def analyzequest_command(ctx, userid: str, days: int = 7):
+            """Analyze quest generation patterns for a user to identify repetition issues"""
+            try:
+                # Check if this is a slash command (has defer) or text command
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                # Validate guild
+                if not ctx.guild or ctx.guild.id != Config.GUILD_ID:
+                    error_msg = "This command can only be used in the configured guild."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Validate parameters
+                try:
+                    user_id = int(userid)
+                except ValueError:
+                    error_msg = "Invalid user ID. Must be a number."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                if days < 1 or days > 30:
+                    error_msg = "Days must be between 1 and 30."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                # Get events controller and quest manager
+                events_controller = self.get_events_controller()
+                if not events_controller or not events_controller.quest_manager:
+                    error_msg = "Quest system is not available."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                quest_manager = events_controller.quest_manager
+                
+                # Try to get user info
+                try:
+                    user = await self.bot.fetch_user(user_id)
+                    user_mention = f"{user.display_name} ({user.id})"
+                except:
+                    user_mention = f"User ID: {user_id}"
+                
+                # Analyze quest patterns
+                result = await quest_manager.analyze_quest_patterns(user_id, days)
+                
+                if result["success"]:
+                    analysis = result["analysis"]
+                    
+                    # Create analysis embed
+                    embed = discord.Embed(
+                        title="📊 Quest Pattern Analysis",
+                        description=f"**User:** {user_mention}\n**Period:** {analysis['period']}",
+                        color=discord.Color.blue(),
+                        timestamp=datetime.utcnow()
+                    )
+                    
+                    # Overview stats
+                    embed.add_field(
+                        name="📈 Overview",
+                        value=f"**Days Analyzed:** {analysis['days_analyzed']}\n"
+                             f"**Total Quests:** {analysis['total_quests']}\n"
+                             f"**Unique Quests:** {analysis['unique_quests']}\n"
+                             f"**Variety Score:** {analysis['variety_score']} (1.0 = perfect variety)",
+                        inline=False
+                    )
+                    
+                    # Repeated quests
+                    if analysis['repeated_quests']:
+                        repeated_list = [f"• **{qid}**: {count} times" for qid, count in analysis['repeated_quests'].items()]
+                        embed.add_field(
+                            name="🔄 Repeated Quests",
+                            value="\n".join(repeated_list[:10]) + ("\n..." if len(repeated_list) > 10 else ""),
+                            inline=False
+                        )
+                    else:
+                        embed.add_field(
+                            name="✅ Repeated Quests",
+                            value="No quest repetitions found!",
+                            inline=False
+                        )
+                    
+                    # Category distribution
+                    cat_list = [f"• **{cat}**: {count}" for cat, count in analysis['category_distribution'].items()]
+                    embed.add_field(
+                        name="📋 Category Distribution",
+                        value="\n".join(cat_list),
+                        inline=True
+                    )
+                    
+                    # Difficulty distribution
+                    diff_list = [f"• **{diff}**: {count}" for diff, count in analysis['difficulty_distribution'].items()]
+                    embed.add_field(
+                        name="⚖️ Difficulty Distribution",
+                        value="\n".join(diff_list),
+                        inline=True
+                    )
+                    
+                    # Recommendations
+                    recommendations = []
+                    if analysis['variety_score'] < 0.7:
+                        recommendations.append("• Low variety score - consider using `/admin reshufflequests`")
+                    if len(analysis['repeated_quests']) > 3:
+                        recommendations.append("• High repetition detected - quest generation may need adjustment")
+                    if analysis['days_analyzed'] < days // 2:
+                        recommendations.append("• Limited data available - user may not be active daily")
+                    
+                    if recommendations:
+                        embed.add_field(
+                            name="💡 Recommendations",
+                            value="\n".join(recommendations),
+                            inline=False
+                        )
+                    else:
+                        embed.add_field(
+                            name="✅ Status",
+                            value="Quest generation appears to be working well!",
+                            inline=False
+                        )
+                    
+                    await ctx.send(embed=embed)
+                else:
+                    error_embed = discord.Embed(
+                        title="❌ Analysis Failed",
+                        description=result["message"],
+                        color=discord.Color.red()
+                    )
+                    await ctx.send(embed=error_embed)
+                
+            except Exception as e:
+                logger.error(f"Error in analyzequest command: {e}")
+                error_embed = discord.Embed(
+                    title="❌ Command Error",
+                    description=f"An error occurred: {str(e)}",
+                    color=discord.Color.red()
+                )
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.send(embed=error_embed)
+         
+         # Register InoRep commands
         inorep_cmds = self._register_inorep_commands()
         if inorep_cmds:
             self.inorep_group = inorep_cmds['inorep_group']
@@ -5125,7 +5366,7 @@ class CommandsController:
         self.bot.tree.add_command(profile_group)
         
         # Debug command for forum testing
-        @self.bot.hybrid_command(name="debugforum", description="Debug forum configuration")
+        @self.bot.hybrid_command(name="debugforum", description="Debug forum configuration and help notification system")
         @admin_command
         async def debug_forum(ctx):
             """Debug forum configuration and test functionality"""
@@ -5134,44 +5375,137 @@ class CommandsController:
                 forum_channel = self.bot.get_channel(Config.FORUM_CHANNEL_ID)
                 
                 embed = discord.Embed(
-                    title="🔧 Forum Debug Information",
+                    title="🔧 Help Forum Notification System Debug",
+                    description="**Comprehensive diagnostic of the help request notification system**",
                     color=0x00ff00,
                     timestamp=datetime.utcnow()
                 )
                 
                 if forum_channel:
                     embed.add_field(
-                        name="📋 Forum Channel Info",
-                        value=f"**Name:** {forum_channel.name}\n**ID:** {forum_channel.id}\n**Type:** {forum_channel.type}\n**Is Forum:** {forum_channel.type == discord.ChannelType.forum}",
+                        name="📋 Forum Channel Status",
+                        value=f"**Name:** {forum_channel.name}\n"
+                             f"**ID:** {forum_channel.id}\n"
+                             f"**Type:** {forum_channel.type}\n"
+                             f"**Is Forum:** {'✅ Yes' if forum_channel.type == discord.ChannelType.forum else '❌ No'}\n"
+                             f"**Configured ID:** {Config.FORUM_CHANNEL_ID}",
                         inline=False
                     )
                     
                     # Get help role
                     help_role = ctx.guild.get_role(Config.HELP_ROLE_ID)
-                    embed.add_field(
-                        name="🆘 Help Role Info",
-                        value=f"**Name:** {help_role.name if help_role else 'Not Found'}\n**ID:** {Config.HELP_ROLE_ID}\n**Members:** {len(help_role.members) if help_role else 'N/A'}",
-                        inline=False
-                    )
+                    if help_role:
+                        embed.add_field(
+                            name="🆘 Help Role Status",
+                            value=f"**Name:** {help_role.name}\n"
+                                 f"**ID:** {Config.HELP_ROLE_ID}\n"
+                                 f"**Members:** {len(help_role.members)}\n"
+                                 f"**Mentionable:** {'✅ Yes' if help_role.mentionable else '⚠️ No'}\n"
+                                 f"**Color:** {help_role.color}",
+                            inline=False
+                        )
+                        
+                        # List some role members for verification
+                        if help_role.members:
+                            member_list = [member.display_name for member in help_role.members[:5]]
+                            if len(help_role.members) > 5:
+                                member_list.append(f"... and {len(help_role.members) - 5} more")
+                            embed.add_field(
+                                name="👥 Help Role Members (Sample)",
+                                value="\n".join(f"• {name}" for name in member_list),
+                                inline=False
+                            )
+                    else:
+                        embed.add_field(
+                            name="❌ Help Role Error",
+                            value=f"**Help role not found!**\n**Looking for ID:** {Config.HELP_ROLE_ID}",
+                            inline=False
+                        )
                     
                     # Check bot permissions
                     bot_member = ctx.guild.get_member(self.bot.user.id)
                     perms = forum_channel.permissions_for(bot_member)
+                    
+                    permission_status = []
+                    critical_perms = {
+                        "View Channel": perms.view_channel,
+                        "Send Messages": perms.send_messages,
+                        "Send Messages in Threads": perms.send_messages_in_threads,
+                        "Embed Links": perms.embed_links,
+                        "Use External Emojis": perms.use_external_emojis,
+                        "Read Message History": perms.read_message_history
+                    }
+                    
+                    for perm_name, has_perm in critical_perms.items():
+                        status = "✅" if has_perm else "❌"
+                        permission_status.append(f"{status} {perm_name}")
+                    
                     embed.add_field(
                         name="🤖 Bot Permissions",
-                        value=f"**Send Messages:** {perms.send_messages}\n**View Channel:** {perms.view_channel}\n**Embed Links:** {perms.embed_links}\n**Use External Emojis:** {perms.use_external_emojis}",
+                        value="\n".join(permission_status),
                         inline=False
                     )
+                    
+                    # Check recent threads for testing
+                    try:
+                        recent_threads = []
+                        for thread in forum_channel.threads:
+                            if thread.created_at and (datetime.utcnow() - thread.created_at.replace(tzinfo=None)).days < 1:
+                                recent_threads.append(f"• {thread.name} (ID: {thread.id})")
+                        
+                        if recent_threads:
+                            embed.add_field(
+                                name="🧵 Recent Threads (Last 24h)",
+                                value="\n".join(recent_threads[:5]) if recent_threads else "No recent threads",
+                                inline=False
+                            )
+                    except Exception as thread_error:
+                        embed.add_field(
+                            name="⚠️ Thread Check Error",
+                            value=f"Could not check recent threads: {thread_error}",
+                            inline=False
+                        )
+                    
+                    # System status
+                    events_controller = self.get_events_controller()
+                    embed.add_field(
+                        name="🔧 System Status",
+                        value=f"**Events Controller:** {'✅ Active' if events_controller else '❌ Missing'}\n"
+                             f"**Thread Handler:** {'✅ Registered' if hasattr(events_controller, '_handle_thread_create') else '❌ Missing'}\n"
+                             f"**Help Handler:** {'✅ Available' if hasattr(events_controller, '_handle_help_forum_thread') else '❌ Missing'}",
+                        inline=False
+                    )
+                    
                 else:
                     embed.add_field(
-                        name="❌ Error",
-                        value=f"Forum channel with ID {Config.FORUM_CHANNEL_ID} not found!",
+                        name="❌ Critical Error",
+                        value=f"**Forum channel not found!**\n"
+                             f"**Looking for ID:** {Config.FORUM_CHANNEL_ID}\n"
+                             f"**This will prevent ALL help notifications!**",
                         inline=False
                     )
+                
+                # Add instructions
+                embed.add_field(
+                    name="📝 How It Works",
+                    value="1. User creates thread in help forum\n"
+                         "2. `on_thread_create` event triggers\n"
+                         "3. System checks if thread is in help forum\n"
+                         "4. Automatic ping sent to help role\n"
+                         "5. Helpers get notified regardless of thread title",
+                    inline=False
+                )
+                
+                embed.set_footer(text="🔔 All help forum threads should automatically trigger notifications")
                 
                 await ctx.send(embed=embed)
                 
             except Exception as e:
                 logger.error(f"Error in debug forum command: {e}")
-                await ctx.send(f"Debug failed: {str(e)}")
+                error_embed = discord.Embed(
+                    title="❌ Debug Command Error",
+                    description=f"Failed to run forum debug: {str(e)}",
+                    color=0xff0000
+                )
+                await ctx.send(embed=error_embed)
                 

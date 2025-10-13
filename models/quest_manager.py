@@ -29,6 +29,7 @@ class QuestManager:
         self.user_achievements_collection: Optional[Collection] = None
         self.user_stats_collection: Optional[Collection] = None
         self.user_streaks_collection: Optional[Collection] = None
+        self.daily_quests = []  # Will be populated during initialization
         self._connect()
         self._initialize_quests_and_achievements()
     
@@ -82,7 +83,7 @@ class QuestManager:
             logger.error("Cannot initialize quests and achievements: Database not connected")
             return
         # Daily Quests with difficulty levels and categories
-        daily_quests = [
+        self.daily_quests = [
             # ========== POSTING QUESTS ==========
             {
                 "quest_id": "daily_post_1",
@@ -1544,7 +1545,7 @@ class QuestManager:
         ]
         
         # Insert quests if they don't exist
-        for quest in daily_quests:
+        for quest in self.daily_quests:
             self.quests_collection.update_one(
                 {"quest_id": quest["quest_id"]},
                 {"$set": quest},
@@ -1582,54 +1583,156 @@ class QuestManager:
             # Get all available daily quests
             available_quests = list(self.quests_collection.find({"is_daily": True}))
             
-            # Filter quests by rarity chance
+            # Get user's recent quest history to avoid repetition
+            yesterday = today - timedelta(days=1)
+            day_before = today - timedelta(days=2)
+            
+            recent_quest_ids = set()
+            for past_date in [yesterday, day_before]:
+                past_quests = list(self.user_quests_collection.find({
+                    "user_id": str(user_id),
+                    "date": past_date.isoformat()
+                }))
+                recent_quest_ids.update(quest["quest_id"] for quest in past_quests)
+            
+            logger.info(f"User {user_id} had {len(recent_quest_ids)} quests in the last 2 days: {recent_quest_ids}")
+            
+            # IMPROVED RARITY SYSTEM: More lenient approach
             potential_quests = []
+            
+            # First pass: Apply rarity filtering but be more lenient
             for quest in available_quests:
                 rarity_chance = quest.get("rarity_chance", 1.0)
-                if random.random() <= rarity_chance:
+                
+                # Skip quests from the last 2 days to avoid repetition
+                if quest["quest_id"] in recent_quest_ids:
+                    logger.debug(f"Skipping recent quest: {quest['quest_id']}")
+                    continue
+                
+                # More lenient rarity check: increase chances for variety
+                adjusted_rarity = min(1.0, rarity_chance + 0.3)  # Boost all rarity chances by 30%
+                
+                if random.random() <= adjusted_rarity:
                     potential_quests.append(quest)
             
-            # Ensure we have at least some quests
-            if len(potential_quests) < 3:
-                # Add some easy quests to guarantee at least 3
-                easy_quests = [q for q in available_quests if q.get("difficulty") == "easy"]
-                potential_quests.extend(easy_quests[:3])
+            # Second pass: If we don't have enough variety, be even more lenient
+            if len(potential_quests) < 8:  # Need more options for good selection
+                logger.info(f"Only {len(potential_quests)} quests passed rarity filter, being more lenient...")
+                
+                for quest in available_quests:
+                    if quest in potential_quests or quest["quest_id"] in recent_quest_ids:
+                        continue
+                    
+                    # Very lenient rarity check for variety
+                    rarity_chance = quest.get("rarity_chance", 1.0)
+                    boosted_rarity = min(1.0, rarity_chance + 0.5)  # Boost by 50%
+                    
+                    if random.random() <= boosted_rarity:
+                        potential_quests.append(quest)
+            
+            # Third pass: If still not enough, add guaranteed quests
+            if len(potential_quests) < 6:
+                logger.info(f"Still only {len(potential_quests)} quests available, adding guaranteed options...")
+                
+                # Add easy quests that weren't used recently
+                for quest in available_quests:
+                    if (quest not in potential_quests and 
+                        quest["quest_id"] not in recent_quest_ids and
+                        quest.get("difficulty") in ["easy", "medium"]):
+                        potential_quests.append(quest)
+                        if len(potential_quests) >= 10:  # Good selection pool
+                            break
+            
+            # Final fallback: If we still don't have enough, ignore recent history for essential quests
+            if len(potential_quests) < 4:
+                logger.warning(f"Critical: Only {len(potential_quests)} quests available, ignoring recent history...")
+                essential_quests = [q for q in available_quests if q.get("rarity_chance", 1.0) >= 0.8]
+                potential_quests.extend(essential_quests)
                 potential_quests = list({q["quest_id"]: q for q in potential_quests}.values())  # Remove duplicates
             
-            # Select exactly 4 quests with improved prioritization
+            # IMPROVED QUEST SELECTION: Better variety and balance
             selected_count = 4
             selected_quests = []
             used_categories = set()
+            used_difficulties = {}
             
-            # Priority categories to ensure variety
-            priority_categories = ["posting", "rating", "community", "time_based", "special"]
+            logger.info(f"Selecting from {len(potential_quests)} potential quests for user {user_id}")
             
-            # First pass: Try to get one quest from each priority category
+            # Priority categories to ensure variety (expanded)
+            priority_categories = ["posting", "rating", "community", "time_based", "special", "combo", "engagement"]
+            
+            # Shuffle potential quests to add randomness
+            shuffled_quests = potential_quests.copy()
+            random.shuffle(shuffled_quests)
+            
+            # First pass: Try to get variety across categories and difficulties
             for category in priority_categories:
                 if len(selected_quests) >= selected_count:
                     break
                     
-                category_quests = [q for q in potential_quests if q.get("category", "general") == category]
+                category_quests = [q for q in shuffled_quests if q.get("category", "general") == category]
                 if category_quests and category not in used_categories:
-                    # Sort by rarity chance (higher chance = more likely to be selected)
-                    category_quests.sort(key=lambda x: x.get("rarity_chance", 1.0), reverse=True)
-                    selected_quests.append(category_quests[0])
+                    # Prefer different difficulties for variety
+                    best_quest = None
+                    for quest in category_quests:
+                        difficulty = quest.get("difficulty", "medium")
+                        # Prefer difficulties we haven't used much
+                        if used_difficulties.get(difficulty, 0) < 2:  # Max 2 per difficulty
+                            best_quest = quest
+                            break
+                    
+                    # If no preferred difficulty found, just take the first one
+                    if not best_quest:
+                        best_quest = category_quests[0]
+                    
+                    selected_quests.append(best_quest)
                     used_categories.add(category)
+                    difficulty = best_quest.get("difficulty", "medium")
+                    used_difficulties[difficulty] = used_difficulties.get(difficulty, 0) + 1
+                    
+                    logger.debug(f"Selected {best_quest['name']} ({category}, {difficulty})")
             
-            # Second pass: Fill remaining slots with best available quests
-            remaining_quests = [q for q in potential_quests if q not in selected_quests]
-            remaining_quests.sort(key=lambda x: (x.get("rarity_chance", 1.0), x.get("reward_points", 0)), reverse=True)
+            # Second pass: Fill remaining slots with balanced selection
+            remaining_quests = [q for q in shuffled_quests if q not in selected_quests]
+            
+            # Sort by a combination of factors for better balance
+            def quest_score(quest):
+                rarity = quest.get("rarity_chance", 1.0)
+                points = quest.get("reward_points", 0)
+                difficulty = quest.get("difficulty", "medium")
+                category = quest.get("category", "general")
+                
+                # Bonus for unused categories and balanced difficulties
+                category_bonus = 0.2 if category not in used_categories else 0
+                difficulty_bonus = 0.1 if used_difficulties.get(difficulty, 0) < 2 else 0
+                
+                return rarity + (points / 100) + category_bonus + difficulty_bonus
+            
+            remaining_quests.sort(key=quest_score, reverse=True)
             
             for quest in remaining_quests:
                 if len(selected_quests) >= selected_count:
                     break
+                
+                difficulty = quest.get("difficulty", "medium")
+                category = quest.get("category", "general")
+                
+                # Add quest and update tracking
                 selected_quests.append(quest)
+                used_categories.add(category)
+                used_difficulties[difficulty] = used_difficulties.get(difficulty, 0) + 1
+                
+                logger.debug(f"Added {quest['name']} ({category}, {difficulty}) - Score: {quest_score(quest):.2f}")
             
-            # Ensure we have at least 3 quests (fallback)
+            # Final safety check: Ensure we have at least 3 quests
             if len(selected_quests) < 3:
-                for quest in potential_quests:
+                logger.warning(f"Only {len(selected_quests)} quests selected, adding emergency fallbacks...")
+                
+                # Add any available quests as emergency fallback
+                for quest in available_quests:
                     if quest not in selected_quests:
                         selected_quests.append(quest)
+                        logger.info(f"Emergency fallback: Added {quest['name']}")
                         if len(selected_quests) >= 3:
                             break
             
@@ -1680,7 +1783,24 @@ class QuestManager:
                 self.user_quests_collection.insert_one(user_quest)
                 user_quests.append(user_quest)
             
-            logger.info(f"Generated {len(user_quests)} daily quests for user {user_id} (Patreon: {patreon_multiplier}x)")
+            # Log quest generation summary
+            quest_summary = []
+            category_counts = {}
+            difficulty_counts = {}
+            
+            for quest in user_quests:
+                category = quest.get("category", "general")
+                difficulty = quest.get("difficulty", "medium")
+                
+                category_counts[category] = category_counts.get(category, 0) + 1
+                difficulty_counts[difficulty] = difficulty_counts.get(difficulty, 0) + 1
+                
+                quest_summary.append(f"{quest['name']} ({category}, {difficulty}, {quest['reward_points']}pts)")
+            
+            logger.info(f"✅ Generated {len(user_quests)} daily quests for user {user_id} (Patreon: {patreon_multiplier}x)")
+            logger.info(f"📋 Quest variety - Categories: {dict(category_counts)}, Difficulties: {dict(difficulty_counts)}")
+            logger.info(f"🎯 Selected quests: {', '.join(quest_summary)}")
+            
             return user_quests
             
         except Exception as e:
@@ -3085,3 +3205,73 @@ class QuestManager:
         except Exception as e:
             logger.error(f"Error resetting all quests: {e}")
             return {"success": False, "message": f"Failed to reset all quests: {str(e)}"}
+    
+    async def analyze_quest_patterns(self, user_id: int, days_back: int = 7) -> Dict:
+        """Analyze quest generation patterns for a user to identify repetition issues"""
+        try:
+            if not self._ensure_connected():
+                return {"success": False, "message": "Database connection failed"}
+            
+            # Get quest history for the specified period
+            end_date = datetime.now().date()
+            start_date = end_date - timedelta(days=days_back)
+            
+            quest_history = []
+            date_range = [start_date + timedelta(days=x) for x in range(days_back + 1)]
+            
+            for date in date_range:
+                day_quests = list(self.user_quests_collection.find({
+                    "user_id": str(user_id),
+                    "date": date.isoformat()
+                }))
+                
+                if day_quests:
+                    quest_history.append({
+                        "date": date.isoformat(),
+                        "quests": [{"name": q["name"], "quest_id": q["quest_id"], "category": q.get("category", "general"), "difficulty": q.get("difficulty", "medium")} for q in day_quests]
+                    })
+            
+            # Analyze patterns
+            all_quest_ids = []
+            category_frequency = {}
+            difficulty_frequency = {}
+            quest_frequency = {}
+            
+            for day in quest_history:
+                for quest in day["quests"]:
+                    quest_id = quest["quest_id"]
+                    category = quest["category"]
+                    difficulty = quest["difficulty"]
+                    
+                    all_quest_ids.append(quest_id)
+                    quest_frequency[quest_id] = quest_frequency.get(quest_id, 0) + 1
+                    category_frequency[category] = category_frequency.get(category, 0) + 1
+                    difficulty_frequency[difficulty] = difficulty_frequency.get(difficulty, 0) + 1
+            
+            # Find repeated quests
+            repeated_quests = {qid: count for qid, count in quest_frequency.items() if count > 1}
+            
+            # Calculate variety metrics
+            total_days_with_quests = len(quest_history)
+            unique_quests = len(set(all_quest_ids))
+            total_quests = len(all_quest_ids)
+            variety_score = unique_quests / total_quests if total_quests > 0 else 0
+            
+            return {
+                "success": True,
+                "analysis": {
+                    "period": f"{start_date} to {end_date}",
+                    "days_analyzed": total_days_with_quests,
+                    "total_quests": total_quests,
+                    "unique_quests": unique_quests,
+                    "variety_score": round(variety_score, 2),
+                    "repeated_quests": repeated_quests,
+                    "category_distribution": category_frequency,
+                    "difficulty_distribution": difficulty_frequency,
+                    "quest_history": quest_history
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing quest patterns: {e}")
+            return {"success": False, "message": f"Failed to analyze patterns: {str(e)}"}

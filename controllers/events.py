@@ -630,39 +630,68 @@ class EventsController:
 
 
     async def _handle_thread_create(self, thread: discord.Thread):
-        """Handle thread creation for different forum channels"""
+        """Handle thread creation for different forum channels - ENSURES all help requests get notifications"""
         try:
+            logger.info(f"🧵 THREAD CREATED: '{thread.name}' (ID: {thread.id}) in parent channel {thread.parent_id}")
+            
             # Get the parent channel to verify it's a forum
             parent_channel = thread.parent or self.bot.get_channel(thread.parent_id)
             if not parent_channel:
-                logger.error(f"Could not find parent channel {thread.parent_id} for thread {thread.id}")
+                logger.error(f"❌ Could not find parent channel {thread.parent_id} for thread {thread.id}")
                 return
+                
+            logger.info(f"📁 Parent channel found: {parent_channel.name} (ID: {parent_channel.id}, Type: {parent_channel.type})")
                 
             # Verify this is a forum channel
             if parent_channel.type != discord.ChannelType.forum:
-                logger.debug(f"Parent channel {parent_channel.id} is not a forum channel (type: {parent_channel.type})")
+                logger.debug(f"⏭️ Parent channel {parent_channel.id} is not a forum channel (type: {parent_channel.type}) - skipping")
                 return
             
-            # Handle different forum channels
+            # Handle different forum channels with explicit logging
             if thread.parent_id == Config.FORUM_CHANNEL_ID:
+                logger.info(f"🆘 HELP FORUM THREAD DETECTED: '{thread.name}' - Processing notification...")
                 await self._handle_help_forum_thread(thread, parent_channel)
             elif thread.parent_id == Config.ASK_COMPLAIN_STAFF_CHANNEL_ID:
+                logger.info(f"👥 STAFF FORUM THREAD DETECTED: '{thread.name}' - Processing notification...")
                 await self._handle_staff_forum_thread(thread, parent_channel)
             else:
-                logger.debug(f"Thread {thread.id} not in monitored forums (parent: {thread.parent_id})")
+                logger.info(f"📋 Thread {thread.id} in unmonitored forum (parent: {thread.parent_id}) - no notification needed")
+                logger.debug(f"🔍 Monitored forums: Help={Config.FORUM_CHANNEL_ID}, Staff={Config.ASK_COMPLAIN_STAFF_CHANNEL_ID}")
                 
         except Exception as e:
-            logger.error(f"Error handling thread creation: {e}")
+            logger.error(f"💥 CRITICAL ERROR handling thread creation for {thread.id}: {e}")
+            # If this is a help forum thread, try emergency notification
+            if hasattr(thread, 'parent_id') and thread.parent_id == Config.FORUM_CHANNEL_ID:
+                logger.error(f"🚨 EMERGENCY: Help forum thread {thread.id} failed processing - attempting emergency ping")
+                try:
+                    await thread.send(f"<@&{Config.HELP_ROLE_ID}> 🆘 **Emergency Help Request Notification**\n\nThread: **{thread.name}**\n\n*Automated notification system encountered an error but this help request needs attention!*")
+                    logger.info(f"✅ Emergency ping sent for help thread {thread.id}")
+                except Exception as emergency_error:
+                    logger.error(f"💀 Emergency ping also failed for help thread {thread.id}: {emergency_error}")
 
     async def _handle_help_forum_thread(self, thread: discord.Thread, parent_channel: discord.ForumChannel):
-        """Handle thread creation in the help forum"""
+        """Handle thread creation in the help forum - ALWAYS sends notification ping"""
         try:
             logger.info(f"Processing new help forum thread: {thread.name} (ID: {thread.id}) in forum {parent_channel.name}")
             
+            # CRITICAL: Always send notification ping regardless of thread title or content
+            # This ensures ALL help requests get proper attention
+            ping_message = f"<@&{Config.HELP_ROLE_ID}>"
+            
+            # Verify the help role exists
+            help_role = thread.guild.get_role(Config.HELP_ROLE_ID) if thread.guild else None
+            if not help_role:
+                logger.error(f"Help role {Config.HELP_ROLE_ID} not found in guild {thread.guild.id if thread.guild else 'None'}")
+                # Still try to send the ping even if role verification fails
+            else:
+                logger.info(f"Help role verified: {help_role.name} ({help_role.id}) with {len(help_role.members)} members")
+            
             # Create embed for the help ping
             embed = discord.Embed(
-                title="New Help Thread Created",
-                description=f"**{thread.name}**\n\nA new thread has been created and helpers have been notified!",
+                title="🆘 New Help Request",
+                description=f"**{thread.name}**\n\n✅ **Helpers have been automatically notified!**\n\n"
+                           f"📋 **Thread Type:** General Help Request\n"
+                           f"👤 **Created by:** {thread.owner.mention if thread.owner else 'Unknown User'}",
                 color=0x00ff00,  # Green color
                 timestamp=datetime.utcnow()
             )
@@ -672,8 +701,10 @@ class EventsController:
             created_timestamp = int(thread.created_at.timestamp()) if thread.created_at else int(datetime.utcnow().timestamp())
             
             embed.add_field(
-                name="📝 Thread Info",
-                value=f"**Creator:** {creator_mention}\n**Created:** <t:{created_timestamp}:R>",
+                name="📝 Thread Details",
+                value=f"**Creator:** {creator_mention}\n"
+                     f"**Created:** <t:{created_timestamp}:R>\n"
+                     f"**Thread ID:** `{thread.id}`",
                 inline=False
             )
             
@@ -697,22 +728,53 @@ class EventsController:
                 inline=False
             )
             
-            embed.set_footer(text="Click the button below to close this thread when resolved")
+            embed.set_footer(text="🔔 Automatic notification system • Click button below to close when resolved")
             
             # Create the view with close button
             view = ForumThreadView(thread_id=thread.id)
             
-            # Send ping message with embed and button
-            ping_message = f"<@&{Config.HELP_ROLE_ID}>"
+            # PRIORITY: Send the ping message first to ensure notification goes out
+            logger.info(f"🔔 SENDING HELP PING to thread '{thread.name}' (ID: {thread.id})")
+            logger.info(f"📋 Ping target: <@&{Config.HELP_ROLE_ID}> (Role ID: {Config.HELP_ROLE_ID})")
             
-            logger.info(f"Sending help ping to thread {thread.name} (ID: {thread.id})")
-            message = await thread.send(content=ping_message, embed=embed, view=view)
-            logger.info(f"Successfully sent help ping message (ID: {message.id}) to thread {thread.name}")
+            try:
+                # Send ping message with embed and button
+                message = await thread.send(content=ping_message, embed=embed, view=view)
+                logger.info(f"✅ SUCCESS: Help ping sent! Message ID: {message.id} in thread '{thread.name}'")
+                
+                # Log additional details for debugging
+                logger.info(f"📊 Thread details - Name: '{thread.name}', Owner: {thread.owner.display_name if thread.owner else 'None'}, Parent: {parent_channel.name}")
+                
+            except discord.HTTPException as e:
+                logger.error(f"❌ HTTP error sending help ping to thread {thread.id}: {e}")
+                # Try sending a simpler message as fallback
+                try:
+                    fallback_message = await thread.send(f"🆘 **New Help Request** {ping_message}\n\nHelpers have been notified for: **{thread.name}**")
+                    logger.info(f"✅ FALLBACK SUCCESS: Simple ping sent! Message ID: {fallback_message.id}")
+                except Exception as fallback_error:
+                    logger.error(f"❌ CRITICAL: Both primary and fallback ping failed for thread {thread.id}: {fallback_error}")
+                    
+            except discord.Forbidden as e:
+                logger.error(f"❌ PERMISSION ERROR: Cannot send message in help forum thread {thread.id}: {e}")
+                logger.error(f"🔧 Bot may be missing 'Send Messages' or 'Send Messages in Threads' permission")
+                
+            except Exception as e:
+                logger.error(f"❌ UNEXPECTED ERROR sending help ping to thread {thread.id}: {e}")
+                # Try one more time with just the ping
+                try:
+                    emergency_message = await thread.send(ping_message)
+                    logger.info(f"🚨 EMERGENCY PING SUCCESS: Message ID: {emergency_message.id}")
+                except Exception as emergency_error:
+                    logger.error(f"💥 EMERGENCY PING FAILED: {emergency_error}")
             
-        except discord.Forbidden:
-            logger.error(f"Missing permission to send message in help forum thread {thread.id}")
         except Exception as e:
-            logger.error(f"Error handling help forum thread creation: {e}")
+            logger.error(f"💥 CRITICAL ERROR in help forum thread handler for thread {thread.id}: {e}")
+            # Last resort: try to send just the ping without any embeds
+            try:
+                emergency_ping = await thread.send(f"<@&{Config.HELP_ROLE_ID}>")
+                logger.info(f"🆘 LAST RESORT PING SUCCESS: {emergency_ping.id}")
+            except Exception as last_resort_error:
+                logger.error(f"💀 COMPLETE FAILURE: Cannot send any message to thread {thread.id}: {last_resort_error}")
 
     async def _handle_staff_forum_thread(self, thread: discord.Thread, parent_channel: discord.ForumChannel):
         """Handle thread creation in the ask and complain to staff forum"""
