@@ -656,7 +656,7 @@ class EventsController:
                 for mentioned_user in message.mentions:
                     if mod_offline_manager.is_mod_offline(mentioned_user.id):
                         # Create and send the offline embed
-                        embed = mod_offline_manager.create_offline_embed(mentioned_user)
+                        embed = mod_offline_manager.create_offline_embed(mentioned_user.id)
                         await message.channel.send(embed=embed)
                         logger.info(f"Sent offline embed for mod {mentioned_user.display_name} ({mentioned_user.id})")
                         
