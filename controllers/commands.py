@@ -7,6 +7,7 @@ import json
 import asyncio
 from typing import Optional, Union
 from models.role_manager import RoleManager
+from models.mod_offline_manager import ModOfflineManager
 from views.embeds import EmbedViews, PurgeConfirmationView, QuestView, QuestSelectionView
 from config import Config
 from controllers.security import CommandSecurity, SecurityLevel, public_command, moderator_command, admin_command, owner_command
@@ -19,6 +20,7 @@ class CommandsController:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.start_time = datetime.utcnow()
+        self.mod_offline_manager = ModOfflineManager()
     
     def get_bot_attr(self, attr_name: str) -> Optional[object]:
         """Safely get bot attribute"""
@@ -329,6 +331,34 @@ class CommandsController:
                     await ctx.followup.send(embed=error_embed, ephemeral=True)
                 else:
                     await ctx.send(embed=error_embed)
+        
+        # Mod offline/logoff command
+        @self.bot.hybrid_command(name="logoff", description="[MODERATOR] Set yourself as offline for ping responses")
+        @moderator_command
+        async def logoff_command(ctx):
+            """Set moderator as offline - pings will get an offline response"""
+            try:
+                user_id = ctx.author.id
+                user_name = ctx.author.display_name
+                avatar_url = ctx.author.display_avatar.url
+                
+                # Set mod as offline
+                success = self.mod_offline_manager.set_mod_offline(user_id, user_name, avatar_url)
+                
+                if success:
+                    embed = discord.Embed(
+                        title="🔴 Logged Off",
+                        description=f"**{user_name}** is now marked as **OFFLINE**\n\nPings to you will receive an offline response until you send any message in the server.",
+                        color=0x808080
+                    )
+                    embed.set_footer(text="Send any message anywhere in the server to automatically log back on")
+                    await ctx.send(embed=embed, ephemeral=True)
+                else:
+                    await ctx.send("❌ Failed to set offline status.", ephemeral=True)
+                    
+            except Exception as e:
+                logger.error(f"Error in logoff command: {e}")
+                await ctx.send("❌ An error occurred while setting offline status.", ephemeral=True)
         
         @self.bot.hybrid_command(name="bestweek", description="Manually post the best image of this week (Bot owners only)")
         @owner_command

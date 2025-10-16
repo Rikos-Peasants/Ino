@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from models.role_manager import RoleManager
 from models.quest_manager import QuestManager
+from models.mod_offline_manager import ModOfflineManager
 from views.embeds import EmbedViews
 from views.forum_thread_view import ForumThreadView
 from config import Config
@@ -20,6 +21,13 @@ class EventsController:
         self.bot = bot
         self.spam_channel_message_count = 0  # Track messages in spam channel
         self.quest_manager = None  # Will be initialized when bot is ready
+    
+    def get_mod_offline_manager(self) -> Optional[ModOfflineManager]:
+        """Get the mod offline manager from the commands controller"""
+        commands_controller = getattr(self.bot, 'commands_controller', None)
+        if commands_controller:
+            return getattr(commands_controller, 'mod_offline_manager', None)
+        return None
     
     def register_events(self):
         """Register all Discord events"""
@@ -391,6 +399,9 @@ class EventsController:
         if message.author.bot:
             return
         
+        # Handle mod offline system (auto-logon and ping detection)
+        await self._handle_mod_offline_system(message)
+        
         # Log message if it starts with command prefix
         if message.content.startswith('R!'):
             logger.info(f"Received command: {message.content} from {message.author.display_name}")
@@ -627,6 +638,30 @@ class EventsController:
         except Exception as e:
             logger.error(f"Error checking for chat reminder: {e}")
     
+    async def _handle_mod_offline_system(self, message: discord.Message):
+        """Handle mod offline system - ping detection and auto-logon"""
+        try:
+            mod_offline_manager = self.get_mod_offline_manager()
+            if not mod_offline_manager:
+                return
+            
+            # Check if the message author is a mod who is currently offline
+            # If so, automatically log them back on (no notification)
+            if mod_offline_manager.is_mod_offline(message.author.id):
+                mod_offline_manager.set_mod_online(message.author.id)
+                logger.info(f"Mod {message.author.display_name} ({message.author.id}) automatically logged back on")
+            
+            # Check if any offline mods are mentioned/pinged in this message
+            if message.mentions:
+                for mentioned_user in message.mentions:
+                    if mod_offline_manager.is_mod_offline(mentioned_user.id):
+                        # Create and send the offline embed
+                        embed = mod_offline_manager.create_offline_embed(mentioned_user)
+                        await message.channel.send(embed=embed)
+                        logger.info(f"Sent offline embed for mod {mentioned_user.display_name} ({mentioned_user.id})")
+                        
+        except Exception as e:
+            logger.error(f"Error handling mod offline system: {e}")
 
 
     async def _handle_thread_create(self, thread: discord.Thread):
