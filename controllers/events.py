@@ -5,6 +5,7 @@ from models.quest_manager import QuestManager
 from models.mod_offline_manager import ModOfflineManager
 from views.embeds import EmbedViews
 from views.forum_thread_view import ForumThreadView
+from views.ask_staff_topic_view import AskStaffTopicView
 from config import Config
 import logging
 import asyncio
@@ -936,6 +937,32 @@ class EventsController:
             logger.info(f"Ping targets: {ping_targets}")
             message = await thread.send(content=ping_message, embed=embed)
             logger.info(f"Successfully sent staff ping message (ID: {message.id}) to thread {thread.name}")
+
+            # Prompt for topic selection if user only tagged a staff member and no topic
+            try:
+                has_staff_tag = any(t.startswith("Moderator: ") or t.startswith("Admin: ") for t in tag_names)
+                has_topic_tag = is_warning_appeal or is_complaint or is_suggestion
+                if has_staff_tag and not has_topic_tag:
+                    prompt_embed = discord.Embed(
+                        title="📌 Select a Topic",
+                        description=(
+                            "It looks like you tagged a specific staff member but didn’t select a thread reason.\n\n"
+                            "Please choose one below so staff know whether this is a complaint, suggestion, or warning appeal."
+                        ),
+                        color=discord.Color.blurple(),
+                        timestamp=datetime.utcnow()
+                    )
+                    prompt_embed.add_field(
+                        name="Available topics",
+                        value="• Complaint\n• Suggestion\n• Warning Appeal",
+                        inline=False
+                    )
+                    prompt_embed.set_footer(text="This helps staff route and respond faster")
+
+                    await thread.send(embed=prompt_embed, view=AskStaffTopicView())
+                    logger.info(f"Posted topic selection prompt in staff thread {thread.id}")
+            except Exception as e:
+                logger.error(f"Failed to send topic selection prompt: {e}")
             
         except discord.Forbidden:
             logger.error(f"Missing permission to send message in staff forum thread {thread.id}")
