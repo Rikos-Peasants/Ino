@@ -6,7 +6,12 @@ from typing import Optional, Dict, Any, List
 import asyncio
 import random
 from config import Config
-import google.generativeai as genai
+try:
+    from google import genai  # type: ignore
+    from google.genai import types  # type: ignore
+except Exception:
+    genai = None  # type: ignore
+    types = None  # type: ignore
 import aiohttp
 import feedparser
 import json
@@ -64,22 +69,31 @@ class RandomAnnouncer:
         self.gemini_api_key = Config.GEMINI_API_KEY if hasattr(Config, 'GEMINI_API_KEY') and Config.GEMINI_API_KEY else None
         if self.gemini_api_key:
             try:
-                genai.configure(api_key=self.gemini_api_key)
-                self.gemini_client = True  # Just a flag to indicate it's configured
-                logger.info("✅ Gemini AI configured for random announcer")
-                
-                # Test the connection
-                logger.info("🧪 Testing Gemini AI connection...")
-                test_model = genai.GenerativeModel("gemini-1.5-flash")
-                test_response = test_model.generate_content(
-                    "Say 'AI test successful'",
-                    generation_config={"max_output_tokens": 10}
-                )
-                if test_response and test_response.text:
-                    logger.info("✅ Gemini AI test successful!")
+                if genai is None:
+                    logger.warning("google-genai SDK not installed; using fallback")
+                    self.gemini_client = None
                 else:
-                    logger.warning("⚠️ Gemini AI test returned empty response")
-                    
+                    self.gemini_client = genai.Client(api_key=self.gemini_api_key)
+                    logger.info("✅ Gemini AI configured for random announcer")
+
+                    # Test the connection
+                    logger.info("🧪 Testing Gemini AI connection...")
+                    test_contents = [
+                        types.Content(
+                            role="user",
+                            parts=[types.Part.from_text(text="Say 'AI test successful'")],
+                        )
+                    ]
+                    test_cfg = types.GenerateContentConfig(max_output_tokens=10)
+                    test_response = self.gemini_client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=test_contents,
+                        config=test_cfg,
+                    )
+                    if test_response and getattr(test_response, 'text', None):
+                        logger.info("✅ Gemini AI test successful!")
+                    else:
+                        logger.warning("⚠️ Gemini AI test returned empty response")
             except Exception as e:
                 logger.error(f"❌ Failed to configure Gemini AI: {e}")
                 self.gemini_client = None
@@ -257,70 +271,62 @@ class RandomAnnouncer:
     async def generate_ino_announcement(self, video: Dict[str, Any], personality: str) -> Optional[str]:
         """Generate Ino's announcement using Gemini AI with full system prompt and video context"""
         logger.info(f"🤖 Generating AI announcement for {personality} personality...")
-        
         try:
             if not self.gemini_client:
                 logger.warning("❌ No Gemini client available, using fallback")
                 return self._get_fallback_announcement(video, personality)
-            
-            # Load FULL system prompt from system-prompt.txt
+
             system_prompt = self.load_system_prompt()
             logger.info(f"📜 Using FULL system prompt: {len(system_prompt)} characters")
-            
-            # Get video details
+
             video_title = video.get('title', 'Unknown')
             video_link = video.get('link', '')
             video_description = video.get('description', '')
             video_author = video.get('author', '')
             channel_id = video.get('test_channel_id', '')
-            
+
             logger.info(f"📺 Video: {video_title[:50]}... by {video_author}")
-            
-            # Get personality modifier for context
+
             personality_info = self.personality_variations.get(personality, {})
             personality_modifier = personality_info.get('modifier', '')
-            
-            # Create conversational context with examples (like your code)
+
             contents = [
-                # Example conversation showing Ino's style
-                {
-                    "role": "user",
-                    "parts": [
-                        {"text": f"""New video announcement needed:
-Title: "Riko Reacts to Comments"
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=f"""New video announcement needed:
+Title: \"Riko Reacts to Comments\"
 Creator: Rayen
 Description: Riko reads and responds to viewer comments with her usual chaos
-Link: https://www.youtube.com/watch?v=-BGXD2Kggx8"""}
-                    ]
-                },
-                {
-                    "role": "model", 
-                    "parts": [
-                        {"text": "*sighs* Rayen's decided to unleash Riko on the comment section. My condolences, Riko simps. <@&1375737416325009552>"}
-                    ]
-                },
-                # Another example to establish pattern
-                {
-                    "role": "user",
-                    "parts": [
-                        {"text": f"""New video announcement needed:
-Title: "Riko Attempts Cooking"
+Link: https://www.youtube.com/watch?v=-BGXD2Kggx8"""),
+                    ],
+                ),
+                types.Content(
+                    role="model",
+                    parts=[
+                        types.Part.from_text(text="*sighs* Rayen's decided to unleash Riko on the comment section. My condolences, Riko simps. <@&1375737416325009552>"),
+                    ],
+                ),
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=f"""New video announcement needed:
+Title: \"Riko Attempts Cooking\"
 Creator: Rayen  
 Description: Watch as Riko tries to make a simple meal and chaos ensues
-Link: https://www.youtube.com/watch?v=example"""}
-                    ]
-                },
-                {
-                    "role": "model",
-                    "parts": [
-                        {"text": "Well, well... Riko's attempting cooking again. Rayen, hide the fire extinguisher. <@&1375737416325009552>"}
-                    ]
-                },
-                # Now the actual request with personality variation
-                {
-                    "role": "user",
-                    "parts": [
-                        {"text": f"""New video announcement needed with {personality.upper()} personality variation:
+Link: https://www.youtube.com/watch?v=example"""),
+                    ],
+                ),
+                types.Content(
+                    role="model",
+                    parts=[
+                        types.Part.from_text(text="Well, well... Riko's attempting cooking again. Rayen, hide the fire extinguisher. <@&1375737416325009552>"),
+                    ],
+                ),
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=f"""New video announcement needed with {personality.upper()} personality variation:
 
 {personality_modifier}
 
@@ -330,51 +336,34 @@ Description: {video_description[:300]}
 Link: {video_link}
 Channel Context: {self._get_channel_context(channel_id, video_author)}
 
-Generate a short Ino announcement (10-20 words) that captures her {personality} personality while announcing this video. Remember to end with <@&1375737416325009552>"""}
-                    ]
-                }
+Generate a short Ino announcement (10-20 words) that captures her {personality} personality while announcing this video. Remember to end with <@&1375737416325009552>"""),
+                    ],
+                ),
             ]
-            
-            # Enhanced configuration for better responses
-            generate_content_config = {
-                "temperature": 0.8,  # More creative for personality variations
-                "max_output_tokens": 150,  # Shorter responses
-            }
-            
-            logger.info(f"📝 Sending conversational prompt to Gemini AI (personality: {personality})")
-            
-            # Generate response
-            model = genai.GenerativeModel("gemini-1.5-flash", system_instruction=system_prompt)
-            response = model.generate_content(
-                contents,
-                generation_config=generate_content_config
+
+            generate_content_config = types.GenerateContentConfig(
+                temperature=0.8,
+                max_output_tokens=150,
+                system_instruction=[types.Part.from_text(text=system_prompt)],
             )
-            
-            if response and response.text:
+
+            logger.info(f"📝 Sending conversational prompt to Gemini AI (personality: {personality})")
+
+            response = self.gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=generate_content_config,
+            )
+
+            if response and getattr(response, 'text', None):
                 ai_response = response.text.strip()
                 logger.info(f"✅ AI generated response: {ai_response}")
                 return ai_response
             else:
-                # Enhanced error handling
-                if response and hasattr(response, 'candidates') and response.candidates:
-                    candidate = response.candidates[0]
-                    if hasattr(candidate, 'finish_reason') and candidate.finish_reason:
-                        finish_reason = candidate.finish_reason.name if hasattr(candidate.finish_reason, 'name') else str(candidate.finish_reason)
-                        logger.warning(f"⚠️ AI stopped with reason: {finish_reason}")
-                        
-                        # If it's a content/safety issue, use fallback
-                        if finish_reason in ['SAFETY', 'OTHER']:
-                            logger.info("🔄 Using fallback due to content filters...")
-                            return self._get_fallback_announcement(video, personality)
-                else:
-                    logger.warning("❌ AI returned completely empty response")
-                
-                logger.info("🔄 Using fallback announcement")
+                logger.warning("❌ AI returned empty response; using fallback")
                 return self._get_fallback_announcement(video, personality)
-                
         except Exception as e:
             logger.error(f"❌ Error generating AI announcement: {e}")
-            logger.info("🔄 Falling back to template announcement")
             return self._get_fallback_announcement(video, personality)
     
     def _get_channel_context(self, channel_id: str, video_author: str) -> str:
