@@ -738,55 +738,7 @@ class QuestManager:
                 "is_daily": True
             },
             
-            # Time-Based Variety
-            {
-                "quest_id": "daily_sunrise_special",
-                "name": "Sunrise Special",
-                "description": "Post before 8 AM",
-                "quest_type": "early_post",
-                "category": "time_based",
-                "difficulty": "medium",
-                "target_count": 1,
-                "reward_points": 28,
-                "rarity_chance": 0.45,
-                "is_daily": True
-            },
-            {
-                "quest_id": "daily_midnight_post",
-                "name": "Midnight Oil",
-                "description": "Post after midnight",
-                "quest_type": "late_post",
-                "category": "time_based",
-                "difficulty": "medium",
-                "target_count": 1,
-                "reward_points": 32,
-                "rarity_chance": 0.4,
-                "is_daily": True
-            },
-            {
-                "quest_id": "daily_lunch_break",
-                "name": "Lunch Break Post",
-                "description": "Post between 11 AM and 2 PM",
-                "quest_type": "post_images",
-                "category": "time_based",
-                "difficulty": "easy",
-                "target_count": 1,
-                "reward_points": 14,
-                "rarity_chance": 0.75,
-                "is_daily": True
-            },
-            {
-                "quest_id": "daily_evening_artist",
-                "name": "Evening Artist",
-                "description": "Post 2 images between 6 PM and 10 PM",
-                "quest_type": "post_images",
-                "category": "time_based",
-                "difficulty": "easy",
-                "target_count": 2,
-                "reward_points": 20,
-                "rarity_chance": 0.7,
-                "is_daily": True
-            },
+
             
             # Combo Quests
             {
@@ -914,7 +866,7 @@ class QuestManager:
             {
                 "quest_id": "daily_channel_variety",
                 "name": "Channel Variety",
-                "description": "React in both channels with at least 3 reactions each",
+                "description": "React at least once in both image channels",
                 "quest_type": "explore_channels",
                 "category": "community",
                 "difficulty": "medium",
@@ -1544,28 +1496,43 @@ class QuestManager:
             }
         ]
         
-        # Insert quests if they don't exist
+        # Insert quests if they don't exist (skip time-based)
         for quest in self.daily_quests:
-            self.quests_collection.update_one(
-                {"quest_id": quest["quest_id"]},
-                {"$set": quest},
-                upsert=True
-            )
+            if quest.get("category") != "time_based":
+                self.quests_collection.update_one(
+                    {"quest_id": quest["quest_id"]},
+                    {"$set": quest},
+                    upsert=True
+                )
         
-        # Insert achievements if they don't exist
+        # Remove any legacy time-based quests from the database
+        self.quests_collection.delete_many({"category": "time_based"})
+        
+        # Insert achievements if they don't exist (skip time-based posting achievements)
         for achievement in achievements:
-            self.achievements_collection.update_one(
-                {"achievement_id": achievement["achievement_id"]},
-                {"$set": achievement},
-                upsert=True
-            )
+            if achievement.get("achievement_type") not in ("early_posts", "late_posts"):
+                self.achievements_collection.update_one(
+                    {"achievement_id": achievement["achievement_id"]},
+                    {"$set": achievement},
+                    upsert=True
+                )
         
-        logger.info("Initialized default quests and achievements")
+        # Remove any legacy time-based posting achievements
+        self.achievements_collection.delete_many({"achievement_type": {"$in": ["early_posts", "late_posts"]}})
+        
+        logger.info("Initialized default quests and achievements (time-based removed)")
     
     async def generate_daily_quests(self, user_id: int, member: 'discord.Member' = None) -> List[Dict]:
         """Generate 3-5 random daily quests for a user with progressive difficulty scaling"""
         try:
             today = datetime.now().date()
+            
+            # Remove any time-based quests already assigned today for this user
+            self.user_quests_collection.delete_many({
+                "user_id": str(user_id),
+                "date": today.isoformat(),
+                "category": "time_based"
+            })
             
             # Check if user already has quests for today
             existing_quests = list(self.user_quests_collection.find({
@@ -1580,8 +1547,8 @@ class QuestManager:
             quest_streak = await self.get_user_streak(user_id, "quest_streak")
             logger.info(f"User {user_id} has quest streak of {quest_streak} days - applying progressive difficulty")
             
-            # Get all available daily quests
-            available_quests = list(self.quests_collection.find({"is_daily": True}))
+            # Get all available daily quests (excluding time-based)
+            available_quests = list(self.quests_collection.find({"is_daily": True, "category": {"$ne": "time_based"}}))
             
             # Get user's recent quest history to avoid repetition
             yesterday = today - timedelta(days=1)
@@ -1658,8 +1625,8 @@ class QuestManager:
             
             logger.info(f"Selecting from {len(potential_quests)} potential quests for user {user_id}")
             
-            # Priority categories to ensure variety (expanded)
-            priority_categories = ["posting", "rating", "community", "time_based", "special", "combo", "engagement"]
+            # Priority categories to ensure variety (expanded, time-based removed)
+            priority_categories = ["posting", "rating", "community", "special", "combo", "engagement"]
             
             # Shuffle potential quests to add randomness
             shuffled_quests = potential_quests.copy()
@@ -2770,6 +2737,14 @@ class QuestManager:
             # Scale target count (difficulty)
             original_target = quest["target_count"]
             scaled_target = max(1, int(original_target * difficulty_multiplier))
+            # Cap channel exploration quests to available channels
+            if quest.get("quest_type") == "explore_channels":
+                try:
+                    from config import Config
+                    max_channels = len(getattr(Config, "IMAGE_REACTION_CHANNELS", [])) or 2
+                except Exception:
+                    max_channels = 2
+                scaled_target = min(scaled_target, max_channels)
             scaled_quest["target_count"] = scaled_target
             
             # Scale reward points
