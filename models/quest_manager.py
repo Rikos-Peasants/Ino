@@ -791,18 +791,7 @@ class QuestManager:
             },
             
             # Special Achievement-Style Quests
-            {
-                "quest_id": "daily_comeback",
-                "name": "The Comeback",
-                "description": "Post after being inactive for a day",
-                "quest_type": "comeback",
-                "category": "special",
-                "difficulty": "easy",
-                "target_count": 1,
-                "reward_points": 25,
-                "rarity_chance": 0.3,
-                "is_daily": True
-            },
+
             {
                 "quest_id": "daily_quality_control",
                 "name": "Quality Control",
@@ -1507,6 +1496,8 @@ class QuestManager:
         
         # Remove any legacy time-based quests from the database
         self.quests_collection.delete_many({"category": "time_based"})
+        # Remove the Comeback quest from the database
+        self.quests_collection.delete_many({"quest_type": "comeback"})
         
         # Insert achievements if they don't exist (skip time-based posting achievements)
         for achievement in achievements:
@@ -1527,11 +1518,16 @@ class QuestManager:
         try:
             today = datetime.now().date()
             
-            # Remove any time-based quests already assigned today for this user
+            # Remove any time-based quests and comeback already assigned today for this user
             self.user_quests_collection.delete_many({
                 "user_id": str(user_id),
                 "date": today.isoformat(),
                 "category": "time_based"
+            })
+            self.user_quests_collection.delete_many({
+                "user_id": str(user_id),
+                "date": today.isoformat(),
+                "quest_type": "comeback"
             })
             
             # Check if user already has quests for today
@@ -1547,8 +1543,8 @@ class QuestManager:
             quest_streak = await self.get_user_streak(user_id, "quest_streak")
             logger.info(f"User {user_id} has quest streak of {quest_streak} days - applying progressive difficulty")
             
-            # Get all available daily quests (excluding time-based)
-            available_quests = list(self.quests_collection.find({"is_daily": True, "category": {"$ne": "time_based"}}))
+            # Get all available daily quests (excluding time-based and comeback)
+            available_quests = list(self.quests_collection.find({"is_daily": True, "category": {"$ne": "time_based"}, "quest_type": {"$ne": "comeback"}}))
             
             # Get user's recent quest history to avoid repetition
             yesterday = today - timedelta(days=1)
