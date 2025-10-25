@@ -2215,6 +2215,7 @@ class QuestManager:
                 },
                 {"$set": {"current_count": quality_count}}
             )
+            logger.debug(f"Updated {result.modified_count} quality_post quest(s) for user {user_id}")
             
             # Check for completed quests
             completed_quests = []

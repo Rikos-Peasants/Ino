@@ -84,7 +84,8 @@ async def test_event_controller_integration():
             
         # Check that quality_post tracking is integrated
         assert "track_quality_post" in content, "track_quality_post method should be called in events controller"
-        assert "min_likes=4" in content, "Should check for 4 likes for Quality Control quest"
+        assert "QUALITY_POST_MIN_LIKES = 4" in content, "Should define QUALITY_POST_MIN_LIKES constant with value 4"
+        assert "min_likes=QUALITY_POST_MIN_LIKES" in content, "Should use QUALITY_POST_MIN_LIKES constant"
         
         # Verify the tracking is in the _update_quest_progress_likes method
         assert "_update_quest_progress_likes" in content, "_update_quest_progress_likes method should exist"
