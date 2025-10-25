@@ -15,6 +15,11 @@ from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Quest tracking constants
+QUALITY_POST_MIN_LIKES = 4  # Minimum likes for "Quality Control (Expert)" quest
+TRENDING_POST_MIN_LIKES = 7  # Minimum likes for "Trending Creator" quest
+VIRAL_IMAGE_MIN_LIKES = 15  # Minimum likes for "viral_image" quest
+
 class EventsController:
     """Controller for handling Discord events"""
     
@@ -1444,12 +1449,33 @@ class EventsController:
             )
             
             # Check for "viral_image" quest (15+ likes on a single image)
-            if thumbs_up_count >= 15:
-                await self.quest_manager.track_viral_image(
+            if thumbs_up_count >= VIRAL_IMAGE_MIN_LIKES:
+                viral_completed = await self.quest_manager.track_viral_image(
                     user_id=user.id,
                     message_id=str(message.id),
                     like_count=thumbs_up_count
-            )
+                )
+                completed_quests.extend(viral_completed)
+            
+            # Check for "quality_post" quest (4+ likes on a single image) - Quality Control (Expert)
+            if thumbs_up_count >= QUALITY_POST_MIN_LIKES:
+                quality_completed = await self.quest_manager.track_quality_post(
+                    user_id=user.id,
+                    message_id=str(message.id),
+                    like_count=thumbs_up_count,
+                    min_likes=QUALITY_POST_MIN_LIKES
+                )
+                completed_quests.extend(quality_completed)
+            
+            # Check for "quality_post" quest (7+ likes on a single image) - Trending Creator
+            if thumbs_up_count >= TRENDING_POST_MIN_LIKES:
+                trending_completed = await self.quest_manager.track_quality_post(
+                    user_id=user.id,
+                    message_id=str(message.id),
+                    like_count=thumbs_up_count,
+                    min_likes=TRENDING_POST_MIN_LIKES
+                )
+                completed_quests.extend(trending_completed)
             
             # Send notifications for completed quests
             for quest in completed_quests:
