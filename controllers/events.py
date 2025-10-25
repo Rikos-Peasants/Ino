@@ -1445,11 +1445,32 @@ class EventsController:
             
             # Check for "viral_image" quest (15+ likes on a single image)
             if thumbs_up_count >= 15:
-                await self.quest_manager.track_viral_image(
+                viral_completed = await self.quest_manager.track_viral_image(
                     user_id=user.id,
                     message_id=str(message.id),
                     like_count=thumbs_up_count
-            )
+                )
+                completed_quests.extend(viral_completed)
+            
+            # Check for "quality_post" quest (4+ likes on a single image)
+            if thumbs_up_count >= 4:
+                quality_completed = await self.quest_manager.track_quality_post(
+                    user_id=user.id,
+                    message_id=str(message.id),
+                    like_count=thumbs_up_count,
+                    min_likes=4
+                )
+                completed_quests.extend(quality_completed)
+            
+            # Check for "quality_post" quest (7+ likes on a single image) - for Trending Creator quest
+            if thumbs_up_count >= 7:
+                trending_completed = await self.quest_manager.track_quality_post(
+                    user_id=user.id,
+                    message_id=str(message.id),
+                    like_count=thumbs_up_count,
+                    min_likes=7
+                )
+                completed_quests.extend(trending_completed)
             
             # Send notifications for completed quests
             for quest in completed_quests:

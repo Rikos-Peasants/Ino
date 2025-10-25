@@ -794,13 +794,13 @@ class QuestManager:
 
             {
                 "quest_id": "daily_quality_control",
-                "name": "Quality Control",
+                "name": "Quality Control (Expert)",
                 "description": "Post 1 image with at least 4 likes",
                 "quest_type": "quality_post",
                 "category": "special",
-                "difficulty": "medium",
+                "difficulty": "very_hard",
                 "target_count": 1,
-                "reward_points": 35,
+                "reward_points": 56,
                 "rarity_chance": 0.55,
                 "is_daily": True
             },
@@ -2124,6 +2124,128 @@ class QuestManager:
             
         except Exception as e:
             logger.error(f"Error tracking viral image: {e}")
+            return []
+    
+    async def track_quality_post(self, user_id: int, message_id: str, like_count: int, min_likes: int) -> List[Dict]:
+        """Track quality posts (images with specific minimum likes) for the 'quality_post' quest
+        
+        Args:
+            user_id: ID of the user who posted the image
+            message_id: ID of the message containing the image
+            like_count: Current number of likes on the image
+            min_likes: Minimum number of likes required for the quest
+            
+        Returns:
+            List of completed quests
+        """
+        try:
+            today = datetime.now().date()
+            tracking_key = f"quality_posts_{min_likes}likes_{today.isoformat()}"
+            
+            # Get or create tracking document for today
+            track_doc = self.user_stats_collection.find_one({
+                "user_id": str(user_id),
+                "tracking_key": tracking_key
+            })
+            
+            quality_messages = []
+            if not track_doc:
+                # Create new tracking document
+                track_doc = {
+                    "user_id": str(user_id),
+                    "tracking_key": tracking_key,
+                    "quality_message_ids": [message_id],
+                    "quality_count": 1,
+                    "min_likes": min_likes,
+                    "created_at": datetime.now()
+                }
+                try:
+                    self.user_stats_collection.insert_one(track_doc)
+                    quality_count = 1
+                except Exception:
+                    # Race condition: document was created by another process
+                    track_doc = self.user_stats_collection.find_one({
+                        "user_id": str(user_id),
+                        "tracking_key": tracking_key
+                    })
+                    if track_doc:
+                        quality_messages = track_doc.get("quality_message_ids", [])
+                        if message_id not in quality_messages:
+                            quality_messages.append(message_id)
+                            quality_count = len(quality_messages)
+                            self.user_stats_collection.update_one(
+                                {"_id": track_doc["_id"]},
+                                {
+                                    "$set": {
+                                        "quality_message_ids": quality_messages,
+                                        "quality_count": quality_count
+                                    }
+                                }
+                            )
+                        else:
+                            return []  # Already tracked this quality post today
+                    else:
+                        quality_count = 1
+            else:
+                # Check if this message was already tracked as quality post today
+                quality_messages = track_doc.get("quality_message_ids", [])
+                if message_id not in quality_messages:
+                    quality_messages.append(message_id)
+                    quality_count = len(quality_messages)
+                    
+                    self.user_stats_collection.update_one(
+                        {"_id": track_doc["_id"]},
+                        {
+                            "$set": {
+                                "quality_message_ids": quality_messages,
+                                "quality_count": quality_count
+                            }
+                        }
+                    )
+                else:
+                    return []  # Already tracked this quality post today
+            
+            # Update the quality_post quest
+            result = self.user_quests_collection.update_many(
+                {
+                    "user_id": str(user_id),
+                    "quest_type": "quality_post",
+                    "date": today.isoformat(),
+                    "completed": False
+                },
+                {"$set": {"current_count": quality_count}}
+            )
+            
+            # Check for completed quests
+            completed_quests = []
+            quests_to_check = self.user_quests_collection.find({
+                "user_id": str(user_id),
+                "quest_type": "quality_post",
+                "date": today.isoformat(),
+                "completed": False
+            })
+            
+            for quest in quests_to_check:
+                if quest["current_count"] >= quest["target_count"]:
+                    self.user_quests_collection.update_one(
+                        {"_id": quest["_id"]},
+                        {
+                            "$set": {
+                                "completed": True,
+                                "completed_at": datetime.now()
+                            }
+                        }
+                    )
+                    completed_quests.append(quest)
+                    logger.info(f"User {user_id} completed quality_post quest! (Image got {like_count} likes, needed {min_likes})")
+            
+            if completed_quests:
+                await self._update_quest_streak(user_id)
+            
+            return completed_quests
+            
+        except Exception as e:
+            logger.error(f"Error tracking quality post: {e}")
             return []
     
     async def get_user_total_quest_points(self, user_id: int) -> int:
