@@ -42,6 +42,14 @@ class CommandsController:
         """Safely get random announcer"""
         return getattr(self.bot, 'random_announcer', None)
     
+    async def _delete_after(self, message: discord.Message, delay: int):
+        """Helper to delete a message after a delay (for followup messages)"""
+        try:
+            await asyncio.sleep(delay)
+            await message.delete()
+        except (discord.NotFound, discord.HTTPException):
+            pass  # Message already deleted or can't be deleted
+    
     def register_commands(self):
         """Register all hybrid commands (both text and slash)"""
         
@@ -5773,7 +5781,9 @@ class CommandsController:
                 if result.get("success"):
                     from views.art_challenge_view import ArtChallengeEmbed
                     embed = ArtChallengeEmbed.create_submission_result_embed(result, ctx.author)
-                    await ctx.followup.send(embed=embed)
+                    # Send and schedule deletion after 1 minute
+                    msg = await ctx.followup.send(embed=embed, wait=True)
+                    asyncio.create_task(self._delete_after(msg, 60))
                     
                     # Award general points if verified (art challenge leaderboard is updated in submit_entry)
                     if result.get("verified") and result.get("points_awarded", 0) > 0:

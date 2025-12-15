@@ -20,12 +20,15 @@ class ArtChallengeEmbed:
         challenge_type = challenge_data.get("challenge_type")
         end_time = challenge_data.get("end_time")
         
-        # Calculate time remaining
+        # Create Discord timestamp for end time
         if isinstance(end_time, datetime):
-            time_remaining = end_time - datetime.utcnow()
-            minutes_remaining = max(0, int(time_remaining.total_seconds() / 60))
+            # Convert to Unix timestamp for Discord
+            unix_timestamp = int(end_time.timestamp())
+            time_display = f"<t:{unix_timestamp}:R>"  # Relative time (e.g., "in 59 minutes")
         else:
-            minutes_remaining = 60
+            # Fallback: 1 hour from now
+            unix_timestamp = int((datetime.utcnow() + timedelta(hours=1)).timestamp())
+            time_display = f"<t:{unix_timestamp}:R>"
         
         if challenge_type == "remake":
             embed = discord.Embed(
@@ -63,10 +66,10 @@ class ArtChallengeEmbed:
                 inline=False
             )
         
-        # Common fields
+        # Common fields - use Discord timestamp for live countdown
         embed.add_field(
-            name="⏰ Time Remaining",
-            value=f"**{minutes_remaining}** minutes",
+            name="⏰ Ends",
+            value=time_display,
             inline=True
         )
         

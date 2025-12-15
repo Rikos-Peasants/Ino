@@ -2598,7 +2598,7 @@ class EventsController:
                     from views.art_challenge_view import ArtChallengeEmbed
                     
                     embed = ArtChallengeEmbed.create_submission_result_embed(result, message.author)
-                    await message.reply(embed=embed)
+                    await message.reply(embed=embed, delete_after=60)  # Auto-delete after 1 minute
                     
                     # Award points to user's main leaderboard if verified
                     if result.get("verified") and result.get("points_awarded", 0) > 0:
