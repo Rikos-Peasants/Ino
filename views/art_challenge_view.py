@@ -53,27 +53,20 @@ class ArtChallengeEmbed:
         
         elif challenge_type == "mixed":
             # Mixed challenge - combine two images
+            # We'll return a list of embeds to show both images
             embed = discord.Embed(
                 title=challenge_data.get("challenge_title", "🔀 Mix These Images!"),
                 description=challenge_data.get("challenge_description", "Combine elements from BOTH images!"),
                 color=discord.Color.from_rgb(0, 191, 255)  # Deep sky blue
             )
             
-            # For mixed challenges, we need to show both images
-            # Primary image as embed image
             reference_url_1 = challenge_data.get("reference_image_url")
             reference_url_2 = challenge_data.get("reference_image_url_2")
             
+            # First image in main embed
             if reference_url_1:
+                embed.add_field(name="🖼️ Image 1", value="⬇️", inline=True)
                 embed.set_image(url=reference_url_1)
-            
-            # Add second image URL in a field (Discord only allows one embed image)
-            if reference_url_2:
-                embed.add_field(
-                    name="🖼️ Second Image",
-                    value=f"[Click to view]({reference_url_2})",
-                    inline=False
-                )
             
             # Combined tags from both images
             ref_tags_1 = challenge_data.get("reference_tags", [])
@@ -85,6 +78,16 @@ class ArtChallengeEmbed:
                     value=", ".join(all_tags[:10]) if all_tags else "No tags",
                     inline=False
                 )
+            
+            # Create second embed for second image
+            if reference_url_2:
+                embed2 = discord.Embed(
+                    title="🖼️ Image 2",
+                    color=discord.Color.from_rgb(0, 191, 255)
+                )
+                embed2.set_image(url=reference_url_2)
+                # Store second embed in challenge_data for post_challenge to use
+                challenge_data["_second_embed"] = embed2
         
         elif challenge_type == "edit":
             # Edit challenge - modify image and add an item
@@ -560,9 +563,13 @@ class ArtChallengeViewManager:
             embed = ArtChallengeEmbed.create_challenge_embed(challenge_data)
             view = self.create_challenge_view(challenge_data.get("challenge_id"))
             
+            # Check if there's a second embed (for mixed challenges)
+            second_embed = challenge_data.pop("_second_embed", None)
+            embeds = [embed, second_embed] if second_embed else [embed]
+            
             message = await channel.send(
                 content="🚨 **NEW ART CHALLENGE!** 🚨",
-                embed=embed,
+                embeds=embeds,
                 view=view
             )
             

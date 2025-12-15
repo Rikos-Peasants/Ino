@@ -5701,6 +5701,48 @@ class CommandsController:
                 logger.error(f"Error in forcechallenge command: {e}")
                 await ctx.send("❌ An error occurred.", ephemeral=True)
         
+        @self.bot.hybrid_command(name="forceendchallenge", description="[Admin] Force end the active art challenge")
+        @admin_command
+        async def force_end_challenge_command(ctx):
+            """Force end the active art challenge in this channel (Admin only)"""
+            try:
+                art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
+                
+                if not art_manager or not art_view_manager:
+                    await ctx.send("❌ Art challenge system is not available.", ephemeral=True)
+                    return
+                
+                # Check for active challenge
+                challenge = art_manager.get_active_challenge(ctx.channel.id)
+                if not challenge:
+                    await ctx.send("❌ There's no active challenge in this channel!", ephemeral=True)
+                    return
+                
+                await ctx.defer()
+                
+                # End the challenge
+                challenge_id = str(challenge.get("_id"))
+                success = art_manager.end_challenge(challenge_id)
+                
+                # Helper to send response
+                async def send_response(content, **kwargs):
+                    if ctx.interaction:
+                        await ctx.interaction.followup.send(content, **kwargs)
+                    else:
+                        await ctx.send(content)
+                
+                if success:
+                    # Post the ended message
+                    await art_view_manager.end_challenge(ctx.channel, challenge)
+                    await send_response("✅ Art challenge has been ended!", ephemeral=True)
+                else:
+                    await send_response("❌ Failed to end challenge.")
+                
+            except Exception as e:
+                logger.error(f"Error in forceendchallenge command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
+        
         @self.bot.hybrid_command(name="artsubmit", description="Submit artwork to the current challenge")
         @app_commands.describe(image="The image to submit to the challenge")
         @public_command
