@@ -5541,4 +5541,237 @@ class CommandsController:
                     color=0xff0000
                 )
                 await ctx.send(embed=error_embed)
+        
+        # ==================== ART CHALLENGE COMMANDS ====================
+        
+        @self.bot.hybrid_command(name="artchallenge", description="Show current active art challenge in this channel")
+        @public_command
+        async def art_challenge_command(ctx):
+            """Show the current active art challenge"""
+            try:
+                art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
+                
+                if not art_manager or not art_view_manager:
+                    await ctx.send("❌ Art challenge system is not available.", ephemeral=True)
+                    return
+                
+                # Check for active challenge in this channel
+                active = art_manager.get_active_challenge(ctx.channel.id)
+                
+                if not active:
+                    await ctx.send(
+                        "🎨 **No active art challenge in this channel right now.**\n"
+                        "Challenges drop randomly throughout the day - stay tuned!",
+                        ephemeral=True
+                    )
+                    return
+                
+                # Show the challenge
+                from views.art_challenge_view import ArtChallengeEmbed, ArtChallengeView
+                embed = ArtChallengeEmbed.create_challenge_embed(active)
+                view = ArtChallengeView(challenge_id=active.get("challenge_id"), art_manager=art_manager)
+                
+                await ctx.send(embed=embed, view=view)
+                
+            except Exception as e:
+                logger.error(f"Error in artchallenge command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
+        
+        @self.bot.hybrid_command(name="artstats", description="View your art challenge statistics")
+        @public_command
+        async def art_stats_command(ctx, user: Optional[discord.Member] = None):
+            """View art challenge statistics for yourself or another user"""
+            try:
+                target_user = user or ctx.author
+                art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                
+                if not art_manager:
+                    await ctx.send("❌ Art challenge system is not available.", ephemeral=True)
+                    return
+                
+                stats = art_manager.get_user_challenge_stats(target_user.id)
+                
+                if not stats:
+                    if target_user == ctx.author:
+                        await ctx.send("📊 You haven't participated in any art challenges yet!", ephemeral=True)
+                    else:
+                        await ctx.send(f"📊 {target_user.display_name} hasn't participated in any art challenges yet!", ephemeral=True)
+                    return
+                
+                from views.art_challenge_view import ArtChallengeEmbed
+                embed = ArtChallengeEmbed.create_stats_embed(target_user, stats)
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in artstats command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
+        
+        @self.bot.hybrid_command(name="artleaderboard", description="View the art challenge leaderboard")
+        @public_command
+        async def art_leaderboard_command(ctx):
+            """View the art challenge leaderboard"""
+            try:
+                art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                
+                if not art_manager:
+                    await ctx.send("❌ Art challenge system is not available.", ephemeral=True)
+                    return
+                
+                leaderboard = art_manager.get_challenge_leaderboard(10)
+                
+                from views.art_challenge_view import ArtChallengeEmbed
+                embed = ArtChallengeEmbed.create_leaderboard_embed(leaderboard, self.bot)
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                logger.error(f"Error in artleaderboard command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
+        
+        @self.bot.hybrid_command(name="forcechallenge", description="[Admin] Force drop an art challenge")
+        @admin_command
+        async def force_challenge_command(ctx, challenge_type: Optional[str] = None):
+            """Force drop an art challenge (Admin only)
+            
+            Parameters
+            ----------
+            challenge_type : str, optional
+                Type of challenge: 'remake' or 'tags'. Random if not specified.
+            """
+            try:
+                art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
+                
+                if not art_manager or not art_view_manager:
+                    await ctx.send("❌ Art challenge system is not available.", ephemeral=True)
+                    return
+                
+                # Check for existing active challenge
+                existing = art_manager.get_active_challenge(ctx.channel.id)
+                if existing:
+                    await ctx.send("❌ There's already an active challenge in this channel!", ephemeral=True)
+                    return
+                
+                # Validate challenge type
+                if challenge_type and challenge_type.lower() not in ['remake', 'tags']:
+                    await ctx.send("❌ Invalid challenge type. Use 'remake' or 'tags'.", ephemeral=True)
+                    return
+                
+                await ctx.defer()
+                
+                # Create the challenge
+                challenge_data = await art_manager.create_challenge(
+                    channel_id=ctx.channel.id,
+                    guild_id=ctx.guild.id,
+                    challenge_type=challenge_type.lower() if challenge_type else None
+                )
+                
+                if not challenge_data:
+                    await ctx.followup.send("❌ Failed to create challenge. Please try again.")
+                    return
+                
+                # Post the challenge
+                message = await art_view_manager.post_challenge(ctx.channel, challenge_data)
+                
+                if message:
+                    await ctx.followup.send("✅ Art challenge dropped!", ephemeral=True)
+                else:
+                    await ctx.followup.send("❌ Failed to post challenge.")
+                
+            except Exception as e:
+                logger.error(f"Error in forcechallenge command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
+        
+        @self.bot.hybrid_command(name="artsubmit", description="Submit artwork to the current challenge")
+        @public_command
+        async def art_submit_command(ctx, image: Optional[discord.Attachment] = None):
+            """Submit artwork to the current art challenge
+            
+            Parameters
+            ----------
+            image : discord.Attachment, optional
+                The image to submit (can also be provided in a reply)
+            """
+            try:
+                art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                
+                if not art_manager:
+                    await ctx.send("❌ Art challenge system is not available.", ephemeral=True)
+                    return
+                
+                # Check for active challenge
+                active = art_manager.get_active_challenge(ctx.channel.id)
+                if not active:
+                    await ctx.send("❌ No active art challenge in this channel.", ephemeral=True)
+                    return
+                
+                # Get image URL
+                image_url = None
+                
+                # Check attachment from command
+                if image and any(image.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                    image_url = image.url
+                
+                # Check message attachments
+                if not image_url and ctx.message.attachments:
+                    for attachment in ctx.message.attachments:
+                        if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                            image_url = attachment.url
+                            break
+                
+                # Check for reference/reply
+                if not image_url and ctx.message.reference:
+                    try:
+                        ref_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+                        if ref_msg.author.id == ctx.author.id:
+                            for attachment in ref_msg.attachments:
+                                if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                                    image_url = attachment.url
+                                    break
+                    except:
+                        pass
+                
+                if not image_url:
+                    await ctx.send(
+                        "❌ **No image found!**\n"
+                        "Please either:\n"
+                        "• Attach an image to this command\n"
+                        "• Reply to your posted artwork with `/artsubmit`",
+                        ephemeral=True
+                    )
+                    return
+                
+                await ctx.defer()
+                
+                # Submit the entry
+                result = await art_manager.submit_entry(
+                    challenge_id=active.get("challenge_id"),
+                    user_id=ctx.author.id,
+                    image_url=image_url,
+                    message_id=ctx.message.id if ctx.message else 0
+                )
+                
+                if result.get("success"):
+                    from views.art_challenge_view import ArtChallengeEmbed
+                    embed = ArtChallengeEmbed.create_submission_result_embed(result, ctx.author)
+                    await ctx.followup.send(embed=embed)
+                    
+                    # Award points if verified
+                    if result.get("verified") and result.get("points_awarded", 0) > 0:
+                        points = result.get("points_awarded", 0)
+                        leaderboard = self.get_leaderboard_manager()
+                        if leaderboard:
+                            await leaderboard.add_points(
+                                user_id=ctx.author.id,
+                                user_name=ctx.author.display_name,
+                                points=points,
+                                point_type="art_challenge",
+                                reason="Art challenge completion"
+                            )
+                else:
+                    await ctx.followup.send(f"❌ {result.get('error', 'Failed to submit entry')}", ephemeral=True)
+                
+            except Exception as e:
+                logger.error(f"Error in artsubmit command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
                 

@@ -129,6 +129,21 @@ class RikoBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Failed to initialize moderation view manager: {e}")
             self.moderation_view_manager = None
+        
+        # Initialize art challenge manager and view manager
+        self.art_challenge_manager = None
+        self.art_challenge_view_manager = None
+        try:
+            from models.art_challenge_manager import ArtChallengeManager
+            from views.art_challenge_view import ArtChallengeViewManager
+            self.art_challenge_manager = ArtChallengeManager()
+            self.art_challenge_view_manager = ArtChallengeViewManager(self)
+            self.art_challenge_view_manager.set_art_manager(self.art_challenge_manager)
+            logger.info("✅ Art challenge manager initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize art challenge manager: {e}")
+            self.art_challenge_manager = None
+            self.art_challenge_view_manager = None
     
     async def setup_hook(self):
         """Initial setup when bot is starting"""
@@ -192,6 +207,14 @@ class RikoBot(commands.Bot):
             logger.info("✅ Persistent view registration completed")
         except Exception as e:
             logger.error(f"❌ Failed to register persistent views: {e}")
+        
+        # Register art challenge persistent views
+        try:
+            if self.art_challenge_view_manager:
+                self.art_challenge_view_manager.setup_persistent_views()
+                logger.info("✅ Art challenge persistent views registered")
+        except Exception as e:
+            logger.error(f"❌ Failed to register art challenge views: {e}")
         
         # Start scheduler tasks for best image posting
         if self.scheduler_controller:

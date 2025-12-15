@@ -431,7 +431,8 @@ class EventsController:
         # Award points for text messages (before other processing)
         await self._award_text_message_points(message)
         
-
+        # Check for art challenge submissions (!submit command)
+        await self._handle_art_challenge_submission(message)
         
         # Check if message is in image reaction channels
         if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
@@ -2509,3 +2510,117 @@ class EventsController:
             
         except Exception as e:
             logger.error(f"Error handling voice state update: {e}")
+    
+    # ==================== ART CHALLENGE SUBMISSION ====================
+    
+    async def _handle_art_challenge_submission(self, message: discord.Message):
+        """Handle art challenge submissions via !submit command"""
+        # Check if this is a !submit command
+        if not message.content.lower().strip() == '!submit':
+            return
+        
+        # Check if message is in an art challenge channel
+        art_channels = getattr(Config, 'ART_CHALLENGE_CHANNELS', Config.IMAGE_REACTION_CHANNELS)
+        if message.channel.id not in art_channels:
+            return
+        
+        # Get the art challenge manager
+        art_manager = getattr(self.bot, 'art_challenge_manager', None)
+        if not art_manager:
+            await message.reply("❌ Art challenge system is not available right now.", delete_after=10)
+            return
+        
+        # Check if there's an active challenge in this channel
+        active_challenge = art_manager.get_active_challenge(message.channel.id)
+        if not active_challenge:
+            await message.reply("❌ There's no active art challenge in this channel right now.", delete_after=10)
+            return
+        
+        # Check if user is replying to a message with an image
+        if not message.reference or not message.reference.message_id:
+            await message.reply(
+                "❌ **How to submit:**\n"
+                "1. Post your artwork as an image\n"
+                "2. **Reply to your image** with `!submit`",
+                delete_after=15
+            )
+            return
+        
+        try:
+            # Fetch the referenced message
+            referenced_message = await message.channel.fetch_message(message.reference.message_id)
+            
+            # Check if the referenced message is from the same user
+            if referenced_message.author.id != message.author.id:
+                await message.reply("❌ You can only submit your own artwork!", delete_after=10)
+                return
+            
+            # Extract image URL from the referenced message
+            image_url = None
+            
+            # Check attachments
+            for attachment in referenced_message.attachments:
+                if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                    image_url = attachment.url
+                    break
+            
+            # Check embeds if no attachment found
+            if not image_url:
+                for embed in referenced_message.embeds:
+                    if embed.image:
+                        image_url = embed.image.url
+                        break
+                    elif embed.thumbnail:
+                        image_url = embed.thumbnail.url
+                        break
+            
+            if not image_url:
+                await message.reply("❌ The referenced message doesn't contain an image.", delete_after=10)
+                return
+            
+            # Send a processing message
+            processing_msg = await message.reply("🔄 **Verifying your submission...** This may take a moment.")
+            
+            try:
+                # Submit the entry
+                result = await art_manager.submit_entry(
+                    challenge_id=active_challenge.get("challenge_id"),
+                    user_id=message.author.id,
+                    image_url=image_url,
+                    message_id=referenced_message.id
+                )
+                
+                # Delete the processing message
+                await processing_msg.delete()
+                
+                if result.get("success"):
+                    # Import the embed creator
+                    from views.art_challenge_view import ArtChallengeEmbed
+                    
+                    embed = ArtChallengeEmbed.create_submission_result_embed(result, message.author)
+                    await message.reply(embed=embed)
+                    
+                    # Award points to user's main leaderboard if verified
+                    if result.get("verified") and result.get("points_awarded", 0) > 0:
+                        points = result.get("points_awarded", 0)
+                        await self.bot.leaderboard_manager.add_points(
+                            user_id=message.author.id,
+                            user_name=message.author.display_name,
+                            points=points,
+                            point_type="art_challenge",
+                            reason=f"Art challenge completion"
+                        )
+                        logger.info(f"Awarded {points} art challenge points to {message.author.display_name}")
+                else:
+                    await message.reply(f"❌ {result.get('error', 'Failed to submit entry')}", delete_after=15)
+                    
+            except Exception as e:
+                logger.error(f"Error processing art submission: {e}")
+                await processing_msg.delete()
+                await message.reply("❌ An error occurred while processing your submission.", delete_after=10)
+                
+        except discord.NotFound:
+            await message.reply("❌ Could not find the referenced message.", delete_after=10)
+        except Exception as e:
+            logger.error(f"Error handling art challenge submission: {e}")
+            await message.reply("❌ An error occurred while processing your submission.", delete_after=10)

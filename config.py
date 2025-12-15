@@ -103,6 +103,19 @@ class Config:
     # Warning log channel (can be configured with /setlogchannel)
     WARNING_LOG_CHANNEL_ID: Optional[int] = None  # Will be set dynamically
     
+    # Art Challenge System Configuration
+    ART_CHALLENGE_CHANNELS = [
+        1282209034916855809,  # Same as IMAGE_REACTION_CHANNELS
+        1378693276206370969
+    ]
+    ART_CHALLENGE_CHECK_INTERVAL = 30  # Check every 30 minutes for new challenge drops
+    ART_CHALLENGE_DURATION_HOURS = 1  # Each challenge lasts 1 hour
+    ART_CHALLENGE_BASE_REWARD = 50  # Base points for completing a challenge
+    
+    # Serika.art API Configuration  
+    SERIKA_ART_KEY = os.getenv('SERIKA_ART_KEY')
+    SERIKA_ART_URL_BASE = os.getenv('SERIKA_ART_URL_BASE', 'https://serika.art/api/v1')
+    
     @classmethod
     def validate(cls):
         """Validate that all required environment variables are set"""
@@ -119,7 +132,8 @@ class Config:
             ('OPENAI_KEY', cls.OPENAI_KEY),
             ('GOOGLE_NL_API_KEY', cls.GOOGLE_NL_API_KEY),
             ('GEMINI_API_KEY', cls.GEMINI_API_KEY),
-            ('YOUTUBE_API_KEY', cls.YOUTUBE_API_KEY)
+            ('YOUTUBE_API_KEY', cls.YOUTUBE_API_KEY),
+            ('SERIKA_ART_KEY', cls.SERIKA_ART_KEY)
         ]
         
         missing_vars = [var_name for var_name, var_value in required_vars if not var_value]
