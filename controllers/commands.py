@@ -5670,17 +5670,24 @@ class CommandsController:
                     rating=rating
                 )
                 
+                # Helper to send response (handles both slash and text commands)
+                async def send_response(content, **kwargs):
+                    if ctx.interaction:
+                        await ctx.interaction.followup.send(content, **kwargs)
+                    else:
+                        await ctx.send(content)
+                
                 if not challenge_data:
-                    await ctx.followup.send("❌ Failed to create challenge. Please try again.")
+                    await send_response("❌ Failed to create challenge. Please try again.")
                     return
                 
                 # Post the challenge
                 message = await art_view_manager.post_challenge(ctx.channel, challenge_data)
                 
                 if message:
-                    await ctx.followup.send(f"✅ Art challenge dropped! (Rating: {rating})", ephemeral=True)
+                    await send_response(f"✅ Art challenge dropped! (Rating: {rating})", ephemeral=True)
                 else:
-                    await ctx.followup.send("❌ Failed to post challenge.")
+                    await send_response("❌ Failed to post challenge.")
                 
             except Exception as e:
                 logger.error(f"Error in forcechallenge command: {e}")
