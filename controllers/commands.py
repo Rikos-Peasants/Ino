@@ -5644,7 +5644,7 @@ class CommandsController:
             Parameters
             ----------
             challenge_type : str, optional
-                Type of challenge: 'remake' or 'tags'. Random if not specified.
+                Type of challenge: 'remake', 'tags', or 'mixed'. Random if not specified.
             """
             try:
                 art_manager = getattr(self.bot, 'art_challenge_manager', None)
@@ -5661,8 +5661,8 @@ class CommandsController:
                     return
                 
                 # Validate challenge type
-                if challenge_type and challenge_type.lower() not in ['remake', 'tags']:
-                    await ctx.send("❌ Invalid challenge type. Use 'remake' or 'tags'.", ephemeral=True)
+                if challenge_type and challenge_type.lower() not in ['remake', 'tags', 'mixed', 'edit']:
+                    await ctx.send("❌ Invalid challenge type. Use 'remake', 'tags', 'mixed', or 'edit'.", ephemeral=True)
                     return
                 
                 await ctx.defer()

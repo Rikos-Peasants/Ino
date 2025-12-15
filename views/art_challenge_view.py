@@ -50,6 +50,72 @@ class ArtChallengeEmbed:
                     value=", ".join(ref_tags[:10]) if ref_tags else "No tags",
                     inline=False
                 )
+        
+        elif challenge_type == "mixed":
+            # Mixed challenge - combine two images
+            embed = discord.Embed(
+                title=challenge_data.get("challenge_title", "🔀 Mix These Images!"),
+                description=challenge_data.get("challenge_description", "Combine elements from BOTH images!"),
+                color=discord.Color.from_rgb(0, 191, 255)  # Deep sky blue
+            )
+            
+            # For mixed challenges, we need to show both images
+            # Primary image as embed image
+            reference_url_1 = challenge_data.get("reference_image_url")
+            reference_url_2 = challenge_data.get("reference_image_url_2")
+            
+            if reference_url_1:
+                embed.set_image(url=reference_url_1)
+            
+            # Add second image URL in a field (Discord only allows one embed image)
+            if reference_url_2:
+                embed.add_field(
+                    name="🖼️ Second Image",
+                    value=f"[Click to view]({reference_url_2})",
+                    inline=False
+                )
+            
+            # Combined tags from both images
+            ref_tags_1 = challenge_data.get("reference_tags", [])
+            ref_tags_2 = challenge_data.get("reference_tags_2", [])
+            all_tags = list(set(ref_tags_1[:5] + ref_tags_2[:5]))  # Combine unique tags
+            if all_tags:
+                embed.add_field(
+                    name="📌 Combined Reference Tags",
+                    value=", ".join(all_tags[:10]) if all_tags else "No tags",
+                    inline=False
+                )
+        
+        elif challenge_type == "edit":
+            # Edit challenge - modify image and add an item
+            embed = discord.Embed(
+                title=challenge_data.get("challenge_title", "✏️ Edit This Image!"),
+                description=challenge_data.get("challenge_description", "Edit the image and add the required item!"),
+                color=discord.Color.from_rgb(50, 205, 50)  # Lime green
+            )
+            
+            # Set the reference image
+            reference_url = challenge_data.get("reference_image_url")
+            if reference_url:
+                embed.set_image(url=reference_url)
+            
+            # Show the required item to add
+            required_item = challenge_data.get("required_item", "something creative")
+            embed.add_field(
+                name="✨ Item to Add",
+                value=f"**{required_item}**",
+                inline=False
+            )
+            
+            # Add reference tags
+            ref_tags = challenge_data.get("reference_tags", [])
+            if ref_tags:
+                embed.add_field(
+                    name="📌 Reference Tags",
+                    value=", ".join(ref_tags[:10]) if ref_tags else "No tags",
+                    inline=False
+                )
+        
         else:
             # Tag-based challenge
             required_tags = challenge_data.get("required_tags", [])

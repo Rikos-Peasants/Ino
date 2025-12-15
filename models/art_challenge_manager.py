@@ -23,6 +23,8 @@ class ArtChallengeManager:
     # Challenge types
     CHALLENGE_TYPE_REMAKE = "remake"
     CHALLENGE_TYPE_TAGS = "tags"
+    CHALLENGE_TYPE_MIXED = "mixed"
+    CHALLENGE_TYPE_EDIT = "edit"
     
     # Challenge states
     STATE_ACTIVE = "active"
@@ -195,6 +197,71 @@ class ArtChallengeManager:
     
     # ==================== GEMINI AI VERIFICATION ====================
     
+    async def _generate_edit_item(self, image_url: str) -> Optional[str]:
+        """Use Gemini AI to decide what item should be added to an image for edit challenge"""
+        if not self.gemini_api_key:
+            logger.error("Gemini API key not configured for edit item generation")
+            return None
+        
+        try:
+            # Download the image
+            image_bytes = await self.download_image_bytes(image_url)
+            if not image_bytes:
+                return None
+            
+            # Initialize Gemini client
+            client = genai.Client(api_key=self.gemini_api_key)
+            
+            prompt = """Look at this image and suggest ONE creative item/object that would be fun and interesting to add to it.
+
+The item should:
+- Be something that would complement or contrast interestingly with the image
+- Be specific enough to be recognizable (e.g., "a glowing lantern" not just "light")
+- Be achievable to draw/edit in (not too complex)
+- Be fun and creative
+
+Respond with ONLY the item name in lowercase, nothing else. Examples:
+- a tiny dragon
+- floating bubbles
+- a mysterious black cat
+- sparkles and stars
+- a treasure chest
+- a magic portal"""
+
+            parts = [
+                types.Part.from_bytes(mime_type="image/jpeg", data=image_bytes),
+                types.Part.from_text(text=prompt)
+            ]
+            
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=parts
+                )
+            ]
+            
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0.9  # Higher temperature for more creative suggestions
+                )
+            )
+            
+            item = response.text.strip().lower()
+            # Clean up the response
+            if item.startswith("- "):
+                item = item[2:]
+            if len(item) > 50:  # Too long, probably got extra text
+                return None
+            
+            logger.info(f"AI suggested edit item: {item}")
+            return item
+            
+        except Exception as e:
+            logger.error(f"Error generating edit item: {e}")
+            return None
+    
     async def verify_submission(self, challenge_data: Dict, submission_image_url: str) -> Dict:
         """Verify a submission using Gemini AI"""
         if not self.gemini_api_key:
@@ -234,6 +301,69 @@ Please verify if this submission meets the challenge requirements.
                     types.Part.from_text(text="SUBMISSION (artist's remake):"),
                     types.Part.from_text(text=verification_prompt)
                 ]
+            
+            elif challenge_type == self.CHALLENGE_TYPE_MIXED:
+                # For mixed challenges, we need BOTH reference images
+                reference_url_1 = challenge_data.get("reference_image_url")
+                reference_url_2 = challenge_data.get("reference_image_url_2")
+                
+                reference_bytes_1 = await self.download_image_bytes(reference_url_1)
+                reference_bytes_2 = await self.download_image_bytes(reference_url_2)
+                
+                if not reference_bytes_1 or not reference_bytes_2:
+                    return {"verified": False, "reasoning": "Could not download reference images", "confidence": 0}
+                
+                verification_prompt = f"""
+Challenge Type: MIXED
+Task: Verify if the submitted image creatively combines elements from BOTH reference images.
+
+Reference Image 1 and Reference Image 2 are the two images that participants were asked to mix together.
+The submission should contain elements from BOTH images creatively combined into one artwork.
+
+Please verify if this submission successfully mixes elements from both reference images.
+"""
+                parts = [
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_1),
+                    types.Part.from_text(text="REFERENCE IMAGE 1 (first image to mix):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_2),
+                    types.Part.from_text(text="REFERENCE IMAGE 2 (second image to mix):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
+                    types.Part.from_text(text="SUBMISSION (artist's mixed artwork):"),
+                    types.Part.from_text(text=verification_prompt)
+                ]
+            
+            elif challenge_type == self.CHALLENGE_TYPE_EDIT:
+                # For edit challenges, check if the required item was added
+                reference_url = challenge_data.get("reference_image_url")
+                required_item = challenge_data.get("required_item", "something new")
+                reference_bytes = await self.download_image_bytes(reference_url)
+                
+                if not reference_bytes:
+                    return {"verified": False, "reasoning": "Could not download reference image", "confidence": 0}
+                
+                verification_prompt = f"""
+Challenge Type: EDIT
+Required Item to Add: {required_item}
+Task: Verify if the submitted image is an edited version of the reference with "{required_item}" added to it.
+
+The reference image shows the original that participants were asked to modify.
+The submission should be the same image (or a recreation of it) with "{required_item}" added.
+
+Check if:
+1. The submission is based on/similar to the reference image
+2. The required item "{required_item}" has been added to the image
+3. The item is clearly visible and recognizable
+
+Please verify if this submission meets the challenge requirements.
+"""
+                parts = [
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
+                    types.Part.from_text(text="REFERENCE IMAGE (original to edit):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
+                    types.Part.from_text(text=f"SUBMISSION (should have '{required_item}' added):"),
+                    types.Part.from_text(text=verification_prompt)
+                ]
+            
             else:
                 # Tag-based challenge
                 required_tags = challenge_data.get("required_tags", [])
@@ -383,7 +513,7 @@ Please verify if this submission includes all the required elements.
         Args:
             channel_id: The channel to create the challenge in
             guild_id: The guild ID
-            challenge_type: 'remake' or 'tags', random if None
+            challenge_type: 'remake', 'tags', 'mixed', or 'edit', random if None
             rating: Image rating - 'safe' for SFW, 'questionable' for NSFW channels
         """
         if not self._ensure_connected():
@@ -392,8 +522,8 @@ Please verify if this submission includes all the required elements.
         
         # Determine challenge type if not specified
         if challenge_type is None:
-            # 50/50 chance for remake vs tags
-            challenge_type = random.choice([self.CHALLENGE_TYPE_REMAKE, self.CHALLENGE_TYPE_TAGS])
+            # Random choice between all four types
+            challenge_type = random.choice([self.CHALLENGE_TYPE_REMAKE, self.CHALLENGE_TYPE_TAGS, self.CHALLENGE_TYPE_MIXED, self.CHALLENGE_TYPE_EDIT])
         
         challenge_data = {
             "channel_id": channel_id,
@@ -406,7 +536,7 @@ Please verify if this submission includes all the required elements.
             "message_id": None,  # Will be set after posting
             "submissions_count": 0,
             "verified_count": 0,
-            "reward_points": 50  # Base reward for completing challenge
+            "reward_points": 50 if challenge_type not in [self.CHALLENGE_TYPE_MIXED, self.CHALLENGE_TYPE_EDIT] else 75  # Mixed/Edit are harder, more points
         }
         
         try:
@@ -423,6 +553,57 @@ Please verify if this submission includes all the required elements.
                 challenge_data["reference_tags"] = [t.get("name") for t in image_data.get("tags", [])]
                 challenge_data["challenge_title"] = "🎨 Remake This Image!"
                 challenge_data["challenge_description"] = "Create your own artistic interpretation of this image! Any style is welcome - digital, traditional, sketch, anime, realistic - just capture the essence!"
+            
+            elif challenge_type == self.CHALLENGE_TYPE_MIXED:
+                # Get TWO random images for mixed challenge
+                images = await self.get_random_image(ratings=rating, count=2, no_ai=True)
+                if not images or len(images) < 2:
+                    # Try getting them separately if count=2 doesn't work
+                    image1 = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+                    image2 = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+                    if not image1 or not image2:
+                        logger.error(f"Failed to get random images for mixed challenge (rating: {rating})")
+                        return None
+                    images = [image1[0] if isinstance(image1, list) else image1, 
+                              image2[0] if isinstance(image2, list) else image2]
+                
+                image1_data = images[0] if isinstance(images, list) else images
+                image2_data = images[1] if isinstance(images, list) and len(images) > 1 else images
+                
+                challenge_data["reference_image_url"] = image1_data.get("url") or image1_data.get("thumbnail_url")
+                challenge_data["reference_image_url_2"] = image2_data.get("url") or image2_data.get("thumbnail_url")
+                challenge_data["reference_image_id"] = image1_data.get("id")
+                challenge_data["reference_image_id_2"] = image2_data.get("id")
+                challenge_data["reference_tags"] = [t.get("name") for t in image1_data.get("tags", [])]
+                challenge_data["reference_tags_2"] = [t.get("name") for t in image2_data.get("tags", [])]
+                challenge_data["challenge_title"] = "🔀 Mix These Images!"
+                challenge_data["challenge_description"] = "Combine elements from BOTH images into one creative artwork! Merge characters, settings, styles, or concepts - be creative with how you blend them together!"
+            
+            elif challenge_type == self.CHALLENGE_TYPE_EDIT:
+                # Get a random image and have AI pick an item to add
+                images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+                if not images or len(images) == 0:
+                    logger.error(f"Failed to get random image for edit challenge (rating: {rating})")
+                    return None
+                
+                image_data = images[0] if isinstance(images, list) else images
+                reference_url = image_data.get("url") or image_data.get("thumbnail_url")
+                
+                # Use AI to decide what item should be added
+                item_to_add = await self._generate_edit_item(reference_url)
+                if not item_to_add:
+                    # Fallback items if AI fails
+                    fallback_items = ["a glowing crystal", "a mysterious cat", "floating bubbles", "a rainbow", 
+                                     "a tiny dragon", "sparkles", "a magic wand", "a cute ghost", "fairy lights",
+                                     "a treasure chest", "butterflies", "a crown", "a sword", "flowers"]
+                    item_to_add = random.choice(fallback_items)
+                
+                challenge_data["reference_image_url"] = reference_url
+                challenge_data["reference_image_id"] = image_data.get("id")
+                challenge_data["reference_tags"] = [t.get("name") for t in image_data.get("tags", [])]
+                challenge_data["required_item"] = item_to_add
+                challenge_data["challenge_title"] = "✏️ Edit This Image!"
+                challenge_data["challenge_description"] = f"Take this image and add **{item_to_add}** to it! Edit, draw over, or recreate it with the new element added."
                 
             else:  # Tag-based challenge
                 # Get random tags for the challenge
