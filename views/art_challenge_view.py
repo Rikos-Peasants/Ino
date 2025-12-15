@@ -102,7 +102,7 @@ class ArtChallengeEmbed:
             )
             embed.add_field(
                 name="🏆 Points Earned",
-                value=f"**+{points}** points",
+                value=f"**+{points}** general points\n**+{points}** art challenge points",
                 inline=True
             )
         else:

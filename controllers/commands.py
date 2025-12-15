@@ -5683,6 +5683,7 @@ class CommandsController:
                 await ctx.send("❌ An error occurred.", ephemeral=True)
         
         @self.bot.hybrid_command(name="artsubmit", description="Submit artwork to the current challenge")
+        @app_commands.describe(image="The image to submit to the challenge")
         @public_command
         async def art_submit_command(ctx, image: Optional[discord.Attachment] = None):
             """Submit artwork to the current art challenge
@@ -5705,27 +5706,34 @@ class CommandsController:
                     await ctx.send("❌ No active art challenge in this channel.", ephemeral=True)
                     return
                 
-                # Get image URL
+                # Get image URL - handle both slash commands and text commands
                 image_url = None
+                valid_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
                 
-                # Check attachment from command
-                if image and any(image.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
-                    image_url = image.url
+                # Check attachment from slash command parameter first
+                if image:
+                    if any(image.filename.lower().endswith(ext) for ext in valid_extensions):
+                        image_url = image.url
+                    elif image.content_type and image.content_type.startswith('image/'):
+                        image_url = image.url
                 
-                # Check message attachments
-                if not image_url and ctx.message.attachments:
+                # Check message attachments (for text command R!artsubmit)
+                if not image_url and ctx.message and ctx.message.attachments:
                     for attachment in ctx.message.attachments:
-                        if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                        if any(attachment.filename.lower().endswith(ext) for ext in valid_extensions):
+                            image_url = attachment.url
+                            break
+                        elif attachment.content_type and attachment.content_type.startswith('image/'):
                             image_url = attachment.url
                             break
                 
-                # Check for reference/reply
-                if not image_url and ctx.message.reference:
+                # Check for reference/reply (text command)
+                if not image_url and ctx.message and ctx.message.reference:
                     try:
                         ref_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
                         if ref_msg.author.id == ctx.author.id:
                             for attachment in ref_msg.attachments:
-                                if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                                if any(attachment.filename.lower().endswith(ext) for ext in valid_extensions):
                                     image_url = attachment.url
                                     break
                     except:
@@ -5735,8 +5743,8 @@ class CommandsController:
                     await ctx.send(
                         "❌ **No image found!**\n"
                         "Please either:\n"
-                        "• Attach an image to this command\n"
-                        "• Reply to your posted artwork with `/artsubmit`",
+                        "• Use `/artsubmit` and attach an image\n"
+                        "• Reply to your posted artwork with `!submit`",
                         ephemeral=True
                     )
                     return
@@ -5756,7 +5764,7 @@ class CommandsController:
                     embed = ArtChallengeEmbed.create_submission_result_embed(result, ctx.author)
                     await ctx.followup.send(embed=embed)
                     
-                    # Award points if verified
+                    # Award general points if verified (art challenge leaderboard is updated in submit_entry)
                     if result.get("verified") and result.get("points_awarded", 0) > 0:
                         points = result.get("points_awarded", 0)
                         leaderboard = self.get_leaderboard_manager()
@@ -5768,10 +5776,17 @@ class CommandsController:
                                 point_type="art_challenge",
                                 reason="Art challenge completion"
                             )
+                            logger.info(f"Awarded {points} general points to {ctx.author.display_name} for art challenge")
                 else:
                     await ctx.followup.send(f"❌ {result.get('error', 'Failed to submit entry')}", ephemeral=True)
                 
             except Exception as e:
                 logger.error(f"Error in artsubmit command: {e}")
-                await ctx.send("❌ An error occurred.", ephemeral=True)
+                if ctx.interaction and not ctx.interaction.response.is_done():
+                    await ctx.send("❌ An error occurred.", ephemeral=True)
+                else:
+                    try:
+                        await ctx.followup.send("❌ An error occurred.", ephemeral=True)
+                    except:
+                        pass
                 
