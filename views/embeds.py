@@ -1155,7 +1155,13 @@ class EmbedViews:
         """Create an embed for checking InoRep with expanded relationship tiers"""
         
         # Expanded relationship tiers based on rep score (47 total tiers!)
-        if rep >= 5000:
+        # Special Riko tier - exclusive to one user
+        if rep >= 1000000000 and user.id == 1415740507748958328:
+            color = 0xFFFFFF  # Pure white
+            status = "Riko Herself"
+            message = "Ofcourse she gets kinda irritated at you, but deep down she appreciates your company."
+            relationship = "Riko"
+        elif rep >= 5000:
             color = 0xFFFFFF  # Pure white
             status = "⚡ Ino's Cosmic Entity"
             message = "YOU ARE A GOD! Your bond with Ino transcends reality itself. Legends will be told of your devotion!"
