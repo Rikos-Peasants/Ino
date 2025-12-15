@@ -1,9 +1,11 @@
 import discord
 from discord.ui import View, Button, Modal, TextInput
 from datetime import datetime, timedelta
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, List
 import logging
 import asyncio
+import aiohttp
+import io
 
 if TYPE_CHECKING:
     from models.art_challenge_manager import ArtChallengeManager
@@ -567,9 +569,53 @@ class ArtChallengeViewManager:
             second_embed = challenge_data.pop("_second_embed", None)
             embeds = [embed, second_embed] if second_embed else [embed]
             
+            # Check if NSFW channel - if so, upload images as spoilered files
+            rating = challenge_data.get("rating", "safe")
+            files: List[discord.File] = []
+            
+            if rating == "questionable":
+                # NSFW channel - download images and upload as spoilers
+                # Remove images from embeds since we'll upload them separately
+                image_urls = []
+                
+                # Collect image URLs from challenge data
+                if challenge_data.get("reference_image_url"):
+                    image_urls.append(("reference_1.jpg", challenge_data.get("reference_image_url")))
+                if challenge_data.get("reference_image_url_2"):
+                    image_urls.append(("reference_2.jpg", challenge_data.get("reference_image_url_2")))
+                
+                # Download and create spoilered files
+                async with aiohttp.ClientSession() as session:
+                    for filename, url in image_urls:
+                        try:
+                            async with session.get(url, timeout=30) as response:
+                                if response.status == 200:
+                                    image_data = await response.read()
+                                    # Create spoilered file
+                                    file = discord.File(
+                                        io.BytesIO(image_data),
+                                        filename=f"SPOILER_{filename}"
+                                    )
+                                    files.append(file)
+                        except Exception as e:
+                            logger.error(f"Error downloading image for spoiler: {e}")
+                
+                # Clear images from embeds for NSFW
+                for emb in embeds:
+                    if emb:
+                        emb._image = None
+                        # Add note about spoilered images
+                        if not any(f.name == "\u26a0\ufe0f Note" for f in (emb.fields or [])):
+                            emb.add_field(
+                                name="\u26a0\ufe0f Note",
+                                value="Reference images are spoilered below",
+                                inline=False
+                            )
+            
             message = await channel.send(
-                content="🚨 **NEW ART CHALLENGE!** 🚨",
+                content="\ud83d\udea8 **NEW ART CHALLENGE!** \ud83d\udea8",
                 embeds=embeds,
+                files=files if files else None,
                 view=view
             )
             
