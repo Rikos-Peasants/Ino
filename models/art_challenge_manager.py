@@ -309,6 +309,46 @@ Please verify if this submission includes all the required elements.
     
     # ==================== CHALLENGE MANAGEMENT ====================
     
+    def get_todays_channel(self) -> Tuple[int, str]:
+        """Get which channel should have challenges today and the appropriate rating.
+        
+        Alternates between SFW and NSFW channels based on the day of year.
+        
+        Returns:
+            Tuple of (channel_id, rating) where rating is 'safe' or 'questionable'
+        """
+        from config import Config
+        
+        day_of_year = datetime.now().timetuple().tm_yday
+        
+        # Alternate between channels based on day
+        # Even days = SFW channel, Odd days = NSFW channel
+        if day_of_year % 2 == 0:
+            channel_id = getattr(Config, 'ART_CHALLENGE_CHANNEL_SFW', Config.ART_CHALLENGE_CHANNELS[0])
+            rating = "safe"
+        else:
+            channel_id = getattr(Config, 'ART_CHALLENGE_CHANNEL_NSFW', Config.ART_CHALLENGE_CHANNELS[1] if len(Config.ART_CHALLENGE_CHANNELS) > 1 else Config.ART_CHALLENGE_CHANNELS[0])
+            rating = "questionable"
+        
+        logger.debug(f"Today's challenge channel: {channel_id} (rating: {rating}, day {day_of_year})")
+        return channel_id, rating
+    
+    def get_channel_rating(self, channel_id: int) -> str:
+        """Get the appropriate rating for a specific channel.
+        
+        Args:
+            channel_id: The channel ID to check
+            
+        Returns:
+            'safe' for SFW channels, 'questionable' for NSFW channels
+        """
+        from config import Config
+        
+        nsfw_channel = getattr(Config, 'ART_CHALLENGE_CHANNEL_NSFW', None)
+        if nsfw_channel and channel_id == nsfw_channel:
+            return "questionable"
+        return "safe"
+    
     def should_drop_challenge(self) -> bool:
         """Determine if a challenge should drop now (pseudo-random based on time)"""
         now = datetime.now()
@@ -336,8 +376,16 @@ Please verify if this submission includes all the required elements.
         return should_drop
     
     async def create_challenge(self, channel_id: int, guild_id: int, 
-                                challenge_type: Optional[str] = None) -> Optional[Dict]:
-        """Create a new art challenge"""
+                                challenge_type: Optional[str] = None,
+                                rating: str = "safe") -> Optional[Dict]:
+        """Create a new art challenge
+        
+        Args:
+            channel_id: The channel to create the challenge in
+            guild_id: The guild ID
+            challenge_type: 'remake' or 'tags', random if None
+            rating: Image rating - 'safe' for SFW, 'questionable' for NSFW channels
+        """
         if not self._ensure_connected():
             logger.error("Database not connected")
             return None
@@ -351,6 +399,7 @@ Please verify if this submission includes all the required elements.
             "channel_id": channel_id,
             "guild_id": guild_id,
             "challenge_type": challenge_type,
+            "rating": rating,  # Store the rating used
             "state": self.STATE_ACTIVE,
             "created_at": datetime.utcnow(),
             "end_time": datetime.utcnow() + timedelta(hours=1),  # 1 hour duration
@@ -362,10 +411,10 @@ Please verify if this submission includes all the required elements.
         
         try:
             if challenge_type == self.CHALLENGE_TYPE_REMAKE:
-                # Get a random image for remake challenge
-                images = await self.get_random_image(ratings="safe", count=1, no_ai=True)
+                # Get a random image for remake challenge with appropriate rating
+                images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
                 if not images or len(images) == 0:
-                    logger.error("Failed to get random image for remake challenge")
+                    logger.error(f"Failed to get random image for remake challenge (rating: {rating})")
                     return None
                 
                 image_data = images[0] if isinstance(images, list) else images

@@ -5659,11 +5659,15 @@ class CommandsController:
                 
                 await ctx.defer()
                 
-                # Create the challenge
+                # Get the appropriate rating for this channel
+                rating = art_manager.get_channel_rating(ctx.channel.id)
+                
+                # Create the challenge with appropriate rating
                 challenge_data = await art_manager.create_challenge(
                     channel_id=ctx.channel.id,
                     guild_id=ctx.guild.id,
-                    challenge_type=challenge_type.lower() if challenge_type else None
+                    challenge_type=challenge_type.lower() if challenge_type else None,
+                    rating=rating
                 )
                 
                 if not challenge_data:
@@ -5674,7 +5678,7 @@ class CommandsController:
                 message = await art_view_manager.post_challenge(ctx.channel, challenge_data)
                 
                 if message:
-                    await ctx.followup.send("✅ Art challenge dropped!", ephemeral=True)
+                    await ctx.followup.send(f"✅ Art challenge dropped! (Rating: {rating})", ephemeral=True)
                 else:
                     await ctx.followup.send("❌ Failed to post challenge.")
                 

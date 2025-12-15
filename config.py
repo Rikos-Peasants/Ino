@@ -104,9 +104,13 @@ class Config:
     WARNING_LOG_CHANNEL_ID: Optional[int] = None  # Will be set dynamically
     
     # Art Challenge System Configuration
+    # SFW channel gets "safe" rated images only
+    ART_CHALLENGE_CHANNEL_SFW = 1282209034916855809
+    # NSFW channel gets "questionable" rated images (not explicit)
+    ART_CHALLENGE_CHANNEL_NSFW = 1378693276206370969
     ART_CHALLENGE_CHANNELS = [
-        1282209034916855809,  # Same as IMAGE_REACTION_CHANNELS
-        1378693276206370969
+        ART_CHALLENGE_CHANNEL_SFW,
+        ART_CHALLENGE_CHANNEL_NSFW
     ]
     ART_CHALLENGE_CHECK_INTERVAL = 30  # Check every 30 minutes for new challenge drops
     ART_CHALLENGE_DURATION_HOURS = 1  # Each challenge lasts 1 hour
