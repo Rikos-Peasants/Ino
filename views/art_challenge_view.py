@@ -55,20 +55,11 @@ class ArtChallengeEmbed:
         
         elif challenge_type == "mixed":
             # Mixed challenge - combine two images
-            # We'll return a list of embeds to show both images
             embed = discord.Embed(
                 title=challenge_data.get("challenge_title", "🔀 Mix These Images!"),
                 description=challenge_data.get("challenge_description", "Combine elements from BOTH images!"),
                 color=discord.Color.from_rgb(0, 191, 255)  # Deep sky blue
             )
-            
-            reference_url_1 = challenge_data.get("reference_image_url")
-            reference_url_2 = challenge_data.get("reference_image_url_2")
-            
-            # First image in main embed
-            if reference_url_1:
-                embed.add_field(name="🖼️ Image 1", value="⬇️", inline=True)
-                embed.set_image(url=reference_url_1)
             
             # Combined tags from both images
             ref_tags_1 = challenge_data.get("reference_tags", [])
@@ -81,15 +72,8 @@ class ArtChallengeEmbed:
                     inline=False
                 )
             
-            # Create second embed for second image
-            if reference_url_2:
-                embed2 = discord.Embed(
-                    title="🖼️ Image 2",
-                    color=discord.Color.from_rgb(0, 191, 255)
-                )
-                embed2.set_image(url=reference_url_2)
-                # Store second embed in challenge_data for post_challenge to use
-                challenge_data["_second_embed"] = embed2
+            # Mark that this needs image files uploaded
+            challenge_data["_needs_image_files"] = True
         
         elif challenge_type == "edit":
             # Edit challenge - modify image and add an item
@@ -565,52 +549,61 @@ class ArtChallengeViewManager:
             embed = ArtChallengeEmbed.create_challenge_embed(challenge_data)
             view = self.create_challenge_view(challenge_data.get("challenge_id"))
             
-            # Check if there's a second embed (for mixed challenges)
-            second_embed = challenge_data.pop("_second_embed", None)
-            embeds = [embed, second_embed] if second_embed else [embed]
+            # Check for flags set by embed creation
+            needs_image_files = challenge_data.pop("_needs_image_files", False)
+            embeds = [embed]
             
-            # Check if NSFW channel - if so, upload images as spoilered files
+            # Check if NSFW channel or mixed challenge - upload images as files
             rating = challenge_data.get("rating", "safe")
+            is_nsfw = rating == "questionable"
+            challenge_type = challenge_data.get("challenge_type")
             files: List[discord.File] = []
             
-            if rating == "questionable":
-                # NSFW channel - download images and upload as spoilers
-                # Remove images from embeds since we'll upload them separately
+            # Determine if we need to upload images as files
+            should_upload_files = is_nsfw or needs_image_files
+            
+            if should_upload_files:
+                # Collect image URLs from challenge data
                 image_urls = []
                 
-                # Collect image URLs from challenge data
                 if challenge_data.get("reference_image_url"):
-                    image_urls.append(("reference_1.jpg", challenge_data.get("reference_image_url")))
+                    image_urls.append(("image_1.jpg", challenge_data.get("reference_image_url")))
                 if challenge_data.get("reference_image_url_2"):
-                    image_urls.append(("reference_2.jpg", challenge_data.get("reference_image_url_2")))
+                    image_urls.append(("image_2.jpg", challenge_data.get("reference_image_url_2")))
                 
-                # Download and create spoilered files
+                # Download and create files
                 async with aiohttp.ClientSession() as session:
                     for filename, url in image_urls:
                         try:
                             async with session.get(url, timeout=30) as response:
                                 if response.status == 200:
                                     image_data = await response.read()
-                                    # Create spoilered file
+                                    # Spoiler for NSFW, regular for SFW
+                                    final_filename = f"SPOILER_{filename}" if is_nsfw else filename
                                     file = discord.File(
                                         io.BytesIO(image_data),
-                                        filename=f"SPOILER_{filename}"
+                                        filename=final_filename
                                     )
                                     files.append(file)
                         except Exception as e:
-                            logger.error(f"Error downloading image for spoiler: {e}")
+                            logger.error(f"Error downloading image: {e}")
                 
-                # Clear images from embeds for NSFW
-                for emb in embeds:
-                    if emb:
-                        emb._image = None
-                        # Add note about spoilered images
-                        if not any(f.name == "\u26a0\ufe0f Note" for f in (emb.fields or [])):
-                            emb.add_field(
-                                name="\u26a0\ufe0f Note",
-                                value="Reference images are spoilered below",
-                                inline=False
-                            )
+                # Clear images from embeds since we're uploading separately
+                embed._image = None
+                
+                # Add note about images
+                if is_nsfw:
+                    embed.add_field(
+                        name="\u26a0\ufe0f Note",
+                        value="Reference images are spoilered above \u2b06\ufe0f",
+                        inline=False
+                    )
+                elif needs_image_files:
+                    embed.add_field(
+                        name="\ud83d\uddbc\ufe0f Reference Images",
+                        value="See the images above \u2b06\ufe0f",
+                        inline=False
+                    )
             
             message = await channel.send(
                 content="\ud83d\udea8 **NEW ART CHALLENGE!** \ud83d\udea8",
