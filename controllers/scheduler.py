@@ -672,7 +672,7 @@ class SchedulerController:
     
     # ==================== ART CHALLENGE TASKS ====================
     
-    @tasks.loop(minutes=30)  # Check every 30 minutes
+    @tasks.loop(minutes=15)  # Check every 15 minutes for more frequent challenges
     async def check_art_challenges(self):
         """Check for art challenge drops and handle expired challenges"""
         try:

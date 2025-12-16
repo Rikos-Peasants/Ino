@@ -480,13 +480,18 @@ Please verify if this submission includes all the required elements.
         return "safe"
     
     def should_drop_challenge(self) -> bool:
-        """Determine if a challenge should drop now (pseudo-random based on time)"""
+        """Determine if a challenge should drop now (pseudo-random based on time)
+        
+        Target: 2-24 challenges per day (average ~8-12)
+        With 15-minute checks = 96 checks per day
+        Base probability ~10% = ~10 challenges per day average
+        """
         now = datetime.now()
         hour = now.hour
         day = now.weekday()
         
-        # Base probability: 15% per check (if checking every 30 minutes = ~8 challenges per day average)
-        base_probability = 0.15
+        # Base probability: 10% per check (96 checks/day * 10% = ~10 challenges/day average)
+        base_probability = 0.10
         
         # Apply time-based weights
         hour_weight = self.hour_weights.get(hour, 1.0)
@@ -495,8 +500,11 @@ Please verify if this submission includes all the required elements.
         # Final probability
         final_probability = base_probability * hour_weight * day_weight
         
-        # Cap at 40% max probability
-        final_probability = min(final_probability, 0.4)
+        # Cap at 25% max probability (ensures max ~24 per day)
+        final_probability = min(final_probability, 0.25)
+        
+        # Minimum 2% to ensure at least some drops even during low-activity times
+        final_probability = max(final_probability, 0.02)
         
         roll = random.random()
         should_drop = roll < final_probability
