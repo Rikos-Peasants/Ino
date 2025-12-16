@@ -754,6 +754,171 @@ Please verify if this submission includes all the required elements.
             logger.error(f"Error ending challenge: {e}")
             return False
     
+    async def select_best_submission(self, challenge_id: str, challenge_data: dict) -> Optional[Dict]:
+        """Use AI to select the best submission from all verified entries
+        
+        Returns the winning submission dict with user_id, image_url, and reasoning
+        """
+        if not self._ensure_connected():
+            return None
+        
+        # Get all verified submissions
+        submissions = self.get_challenge_submissions(challenge_id)
+        verified_submissions = [s for s in submissions if s.get("verified")]
+        
+        if len(verified_submissions) == 0:
+            return None
+        
+        if len(verified_submissions) == 1:
+            # Only one verified submission - they win by default
+            winner = verified_submissions[0]
+            return {
+                "user_id": winner.get("user_id"),
+                "image_url": winner.get("image_url"),
+                "reasoning": "Only verified submission - winner by default!"
+            }
+        
+        try:
+            # Download all submission images
+            submission_data = []
+            async with aiohttp.ClientSession() as session:
+                for sub in verified_submissions[:10]:  # Limit to 10 to avoid token limits
+                    try:
+                        async with session.get(sub.get("image_url")) as resp:
+                            if resp.status == 200:
+                                image_bytes = await resp.read()
+                                submission_data.append({
+                                    "user_id": sub.get("user_id"),
+                                    "image_url": sub.get("image_url"),
+                                    "image_bytes": image_bytes
+                                })
+                    except Exception as e:
+                        logger.warning(f"Failed to download submission image: {e}")
+                        continue
+            
+            if len(submission_data) < 1:
+                return None
+            
+            if len(submission_data) == 1:
+                return {
+                    "user_id": submission_data[0]["user_id"],
+                    "image_url": submission_data[0]["image_url"],
+                    "reasoning": "Only downloadable submission - winner by default!"
+                }
+            
+            # Build the prompt for AI judging
+            challenge_type = challenge_data.get("challenge_type")
+            
+            if challenge_type == self.CHALLENGE_TYPE_REMAKE:
+                context = f"This was a REMAKE challenge where artists recreated a reference image in their own style."
+            elif challenge_type == self.CHALLENGE_TYPE_EDIT:
+                required_item = challenge_data.get("required_item", "an item")
+                context = f"This was an EDIT challenge where artists added '{required_item}' to a reference image."
+            elif challenge_type == self.CHALLENGE_TYPE_MIXED:
+                context = f"This was a MIXED challenge combining elements from two reference images."
+            else:
+                tags = challenge_data.get("required_tags", [])
+                context = f"This was a TAG challenge requiring these elements: {', '.join(tags)}."
+            
+            judging_prompt = f"""You are judging an art challenge competition.
+
+{context}
+
+You are shown {len(submission_data)} verified submissions. Please select the BEST one based on:
+1. Creativity and originality
+2. Artistic quality and effort
+3. How well it meets the challenge requirements
+4. Overall appeal and execution
+
+Respond in JSON format:
+{{
+    "winner_index": <0-based index of the winning submission>,
+    "reasoning": "<brief explanation of why this submission won>"
+}}
+
+The submissions are numbered 0 to {len(submission_data) - 1}."""
+            
+            # Build parts with all submission images
+            parts = []
+            for i, sub in enumerate(submission_data):
+                parts.append(types.Part.from_text(text=f"SUBMISSION #{i}:"))
+                parts.append(types.Part.from_bytes(mime_type="image/jpeg", data=sub["image_bytes"]))
+            
+            parts.append(types.Part.from_text(text=judging_prompt))
+            
+            # Initialize Gemini client
+            client = genai.Client(api_key=self.gemini_api_key)
+            
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=parts
+                )
+            ]
+            
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0.5
+                )
+            )
+            
+            response_text = response.text.strip()
+            
+            # Parse the response
+            try:
+                if "```json" in response_text:
+                    response_text = response_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in response_text:
+                    response_text = response_text.split("```")[1].split("```")[0].strip()
+                
+                result = json.loads(response_text)
+                winner_index = result.get("winner_index", 0)
+                
+                if 0 <= winner_index < len(submission_data):
+                    winner = submission_data[winner_index]
+                    return {
+                        "user_id": winner["user_id"],
+                        "image_url": winner["image_url"],
+                        "reasoning": result.get("reasoning", "Selected as the best submission!")
+                    }
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse winner selection JSON: {response_text[:200]}")
+            
+            # Fallback: pick first submission
+            return {
+                "user_id": submission_data[0]["user_id"],
+                "image_url": submission_data[0]["image_url"],
+                "reasoning": "Selected as winner!"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error selecting best submission: {e}")
+            # Fallback to first verified submission
+            if verified_submissions:
+                return {
+                    "user_id": verified_submissions[0].get("user_id"),
+                    "image_url": verified_submissions[0].get("image_url"),
+                    "reasoning": "Selected as winner!"
+                }
+            return None
+    
+    def award_winner_bonus(self, user_id: int, bonus_points: int = 100):
+        """Award bonus points to the challenge winner's stats"""
+        if not self._ensure_connected():
+            return
+        
+        try:
+            self.challenge_stats_collection.update_one(
+                {"user_id": user_id},
+                {"$inc": {"total_points": bonus_points, "challenge_wins": 1}},
+                upsert=True
+            )
+            logger.info(f"Awarded {bonus_points} bonus points to winner {user_id}")
+        except Exception as e:
+            logger.error(f"Error awarding winner bonus: {e}")
+    
     # ==================== SUBMISSION MANAGEMENT ====================
     
     async def submit_entry(self, challenge_id: str, user_id: int, 

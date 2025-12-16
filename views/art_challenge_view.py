@@ -263,7 +263,7 @@ class ArtChallengeEmbed:
         return embed
     
     @staticmethod
-    def create_challenge_ended_embed(challenge_data: dict, submissions: list) -> discord.Embed:
+    def create_challenge_ended_embed(challenge_data: dict, submissions: list, winner_data: dict = None) -> discord.Embed:
         """Create an embed for when a challenge ends"""
         challenge_type = challenge_data.get("challenge_type")
         verified_count = len([s for s in submissions if s.get("verified")])
@@ -279,6 +279,19 @@ class ArtChallengeEmbed:
             embed.add_field(
                 name="📸 Challenge Type",
                 value="Remake Challenge",
+                inline=True
+            )
+        elif challenge_type == "edit":
+            required_item = challenge_data.get("required_item", "item")
+            embed.add_field(
+                name="✏️ Challenge Type",
+                value=f"Edit Challenge (add: {required_item})",
+                inline=True
+            )
+        elif challenge_type == "mixed":
+            embed.add_field(
+                name="🔀 Challenge Type",
+                value="Mixed Challenge",
                 inline=True
             )
         else:
@@ -301,21 +314,41 @@ class ArtChallengeEmbed:
             inline=True
         )
         
-        # Add winners if any
+        # Add AI-selected winner if any
+        if winner_data:
+            winner_text = f"🏆 <@{winner_data.get('user_id')}> (+100 bonus points!)\n"
+            reasoning = winner_data.get('reasoning', '')
+            if reasoning:
+                winner_text += f"*{reasoning}*"
+            
+            embed.add_field(
+                name="👑 Challenge Winner",
+                value=winner_text,
+                inline=False
+            )
+            
+            # Set winner's submission as thumbnail
+            winner_image = winner_data.get("image_url")
+            if winner_image:
+                embed.set_thumbnail(url=winner_image)
+        
+        # Add all verified participants
         if verified_count > 0:
             verified_submissions = [s for s in submissions if s.get("verified")]
-            # Sort by submission time (first to verify wins)
             verified_submissions.sort(key=lambda x: x.get("submitted_at", datetime.max))
             
-            winners_text = ""
-            for i, sub in enumerate(verified_submissions[:3], 1):
-                medal = ["🥇", "🥈", "🥉"][i-1]
-                winners_text += f"{medal} <@{sub.get('user_id')}>\n"
+            # List all verified participants (excluding winner)
+            winner_id = winner_data.get("user_id") if winner_data else None
+            participants = [s for s in verified_submissions if s.get("user_id") != winner_id]
             
-            if winners_text:
+            if participants:
+                participants_text = ", ".join([f"<@{s.get('user_id')}>" for s in participants[:10]])
+                if len(participants) > 10:
+                    participants_text += f" +{len(participants) - 10} more"
+                
                 embed.add_field(
-                    name="🏆 First Verified Submissions",
-                    value=winners_text,
+                    name="✨ Verified Participants",
+                    value=participants_text,
                     inline=False
                 )
         
@@ -668,13 +701,40 @@ class ArtChallengeViewManager:
             return None
     
     async def end_challenge(self, channel: discord.TextChannel, challenge_data: dict):
-        """Post the challenge ended message"""
+        """Post the challenge ended message and select winner"""
         try:
             submissions = []
-            if self.art_manager:
-                submissions = self.art_manager.get_challenge_submissions(challenge_data.get("challenge_id"))
+            winner_data = None
             
-            embed = ArtChallengeEmbed.create_challenge_ended_embed(challenge_data, submissions)
+            if self.art_manager:
+                challenge_id = challenge_data.get("challenge_id")
+                submissions = self.art_manager.get_challenge_submissions(challenge_id)
+                
+                # Select the best submission using AI
+                winner_data = await self.art_manager.select_best_submission(challenge_id, challenge_data)
+                
+                if winner_data:
+                    # Award bonus points to winner
+                    winner_id = winner_data.get("user_id")
+                    self.art_manager.award_winner_bonus(winner_id, 100)
+                    
+                    # Also award to main leaderboard
+                    try:
+                        from models.mongo_leaderboard_manager import MongoLeaderboardManager
+                        leaderboard = MongoLeaderboardManager()
+                        winner_member = channel.guild.get_member(winner_id)
+                        if winner_member:
+                            await leaderboard.add_points(
+                                user_id=winner_id,
+                                user_name=winner_member.display_name,
+                                points=100,
+                                point_type="art_challenge_winner",
+                                reason="Art challenge winner bonus"
+                            )
+                    except Exception as e:
+                        logger.error(f"Error awarding winner leaderboard points: {e}")
+            
+            embed = ArtChallengeEmbed.create_challenge_ended_embed(challenge_data, submissions, winner_data)
             await channel.send(embed=embed)
             
         except Exception as e:
