@@ -724,7 +724,13 @@ Please verify if this submission includes all the required elements.
     
     async def submit_entry(self, challenge_id: str, user_id: int, 
                            image_url: str, message_id: int) -> Dict:
-        """Submit an entry to a challenge"""
+        """Submit an entry to a challenge
+        
+        Users can submit multiple times:
+        - If they haven't had a verified submission yet, they can earn points
+        - Once verified, further submissions don't award points
+        - Failed submissions can be retried
+        """
         if not self._ensure_connected():
             return {"success": False, "error": "Database not connected"}
         
@@ -739,13 +745,22 @@ Please verify if this submission includes all the required elements.
         if datetime.utcnow() > challenge.get("end_time"):
             return {"success": False, "error": "Time's up! This challenge has expired"}
         
-        # Check if user already submitted
-        existing = self.submissions_collection.find_one({
+        # Check if user has already had a VERIFIED submission (they already got points)
+        existing_verified = self.submissions_collection.find_one({
+            "challenge_id": challenge_id,
+            "user_id": user_id,
+            "verified": True
+        })
+        
+        # Count user's total submissions to this challenge
+        submission_count = self.submissions_collection.count_documents({
             "challenge_id": challenge_id,
             "user_id": user_id
         })
-        if existing:
-            return {"success": False, "error": "You've already submitted to this challenge!"}
+        
+        # Allow resubmission but track it
+        is_resubmission = submission_count > 0
+        already_verified = existing_verified is not None
         
         try:
             # Verify the submission with AI
@@ -753,6 +768,12 @@ Please verify if this submission includes all the required elements.
             
             # Determine if verified (confidence >= 0.6)
             is_verified = verification_result.get("verified", False) and verification_result.get("confidence", 0) >= 0.6
+            
+            # Only award points if:
+            # 1. This submission is verified AND
+            # 2. User hasn't already received points (no previous verified submission)
+            should_award_points = is_verified and not already_verified
+            points_awarded = challenge.get("reward_points", 50) if should_award_points else 0
             
             submission_data = {
                 "challenge_id": challenge_id,
@@ -762,7 +783,9 @@ Please verify if this submission includes all the required elements.
                 "submitted_at": datetime.utcnow(),
                 "verified": is_verified,
                 "verification_result": verification_result,
-                "points_awarded": challenge.get("reward_points", 50) if is_verified else 0
+                "points_awarded": points_awarded,
+                "submission_number": submission_count + 1,
+                "is_resubmission": is_resubmission
             }
             
             self.submissions_collection.insert_one(submission_data)
@@ -770,7 +793,8 @@ Please verify if this submission includes all the required elements.
             # Update challenge stats
             from bson import ObjectId
             update_fields = {"$inc": {"submissions_count": 1}}
-            if is_verified:
+            if is_verified and not already_verified:
+                # Only increment verified count if this is their first verified submission
                 update_fields["$inc"]["verified_count"] = 1
             
             self.challenges_collection.update_one(
@@ -778,14 +802,17 @@ Please verify if this submission includes all the required elements.
                 update_fields
             )
             
-            # Update user stats
-            self._update_user_stats(user_id, is_verified, submission_data.get("points_awarded", 0))
+            # Update user stats (only count points if awarded)
+            self._update_user_stats(user_id, is_verified and not already_verified, points_awarded)
             
             return {
                 "success": True,
                 "verified": is_verified,
                 "verification_result": verification_result,
-                "points_awarded": submission_data.get("points_awarded", 0)
+                "points_awarded": points_awarded,
+                "is_resubmission": is_resubmission,
+                "already_verified": already_verified,
+                "submission_number": submission_count + 1
             }
             
         except Exception as e:

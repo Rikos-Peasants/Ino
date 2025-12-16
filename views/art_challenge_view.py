@@ -151,23 +151,65 @@ class ArtChallengeEmbed:
         verified = result.get("verified", False)
         verification = result.get("verification_result", {})
         points = result.get("points_awarded", 0)
+        is_resubmission = result.get("is_resubmission", False)
+        already_verified = result.get("already_verified", False)
+        submission_number = result.get("submission_number", 1)
         
         if verified:
-            embed = discord.Embed(
-                title="✅ Submission Verified!",
-                description=f"Congratulations {user.mention}! Your artwork passed verification!",
-                color=discord.Color.green()
-            )
-            embed.add_field(
-                name="🏆 Points Earned",
-                value=f"**+{points}** general points\n**+{points}** art challenge points",
-                inline=True
-            )
+            if already_verified:
+                # They already got points before, this is just a flex
+                embed = discord.Embed(
+                    title="✅ Submission Verified! (No Points)",
+                    description=f"{user.mention}, your artwork passed verification!\n\n*You already received points for this challenge.*",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name="ℹ️ Note",
+                    value="You can only earn points once per challenge.",
+                    inline=False
+                )
+            else:
+                embed = discord.Embed(
+                    title="✅ Submission Verified!",
+                    description=f"Congratulations {user.mention}! Your artwork passed verification!",
+                    color=discord.Color.green()
+                )
+                embed.add_field(
+                    name="🏆 Points Earned",
+                    value=f"**+{points}** general points\n**+{points}** art challenge points",
+                    inline=True
+                )
+                if is_resubmission:
+                    embed.add_field(
+                        name="🔄 Retry Success!",
+                        value=f"Nice! You got it on attempt #{submission_number}!",
+                        inline=True
+                    )
         else:
             embed = discord.Embed(
                 title="❌ Verification Failed",
                 description=f"Sorry {user.mention}, your submission didn't meet the challenge requirements.",
                 color=discord.Color.red()
+            )
+            if not already_verified:
+                embed.add_field(
+                    name="💡 Tip",
+                    value="You can try again! Submit another image to retry.",
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="ℹ️ Note",
+                    value="You already earned points for this challenge, so no worries!",
+                    inline=False
+                )
+        
+        # Show submission number if it's a resubmission
+        if submission_number > 1:
+            embed.add_field(
+                name="🔢 Attempt",
+                value=f"#{submission_number}",
+                inline=True
             )
         
         # Add confidence score
