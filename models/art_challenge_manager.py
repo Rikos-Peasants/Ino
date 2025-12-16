@@ -919,6 +919,27 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
         except Exception as e:
             logger.error(f"Error awarding winner bonus: {e}")
     
+    def get_user_submission(self, challenge_id: str, user_id: int) -> Optional[Dict]:
+        """Get a user's submission to a specific challenge (most recent)
+        
+        Returns the submission dict with all verification results
+        """
+        if not self._ensure_connected():
+            return None
+        
+        try:
+            submission = self.submissions_collection.find_one(
+                {
+                    "challenge_id": challenge_id,
+                    "user_id": user_id
+                },
+                sort=[("submitted_at", DESCENDING)]
+            )
+            return submission
+        except Exception as e:
+            logger.error(f"Error getting user submission: {e}")
+            return None
+    
     # ==================== SUBMISSION MANAGEMENT ====================
     
     async def submit_entry(self, challenge_id: str, user_id: int, 

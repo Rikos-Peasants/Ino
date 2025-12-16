@@ -2514,9 +2514,10 @@ class EventsController:
     # ==================== ART CHALLENGE SUBMISSION ====================
     
     async def _handle_art_challenge_submission(self, message: discord.Message):
-        """Handle art challenge submissions via !submit command"""
-        # Check if this is a !submit command
-        if not message.content.lower().strip() == '!submit':
+        """Handle art challenge submissions via !submit or !check command"""
+        # Check if this is a !submit or !check command
+        command = message.content.lower().strip()
+        if command not in ('!submit', '!check'):
             return
         
         # Check if message is in an art challenge channel
@@ -2578,6 +2579,25 @@ class EventsController:
                 await message.reply("❌ The referenced message doesn't contain an image.", delete_after=10)
                 return
             
+            # Handle !check command - just lookup existing submission
+            if command == '!check':
+                # Look for existing submission to this challenge
+                existing_submission = art_manager.get_user_submission(
+                    challenge_id=active_challenge.get("challenge_id"),
+                    user_id=message.author.id
+                )
+                
+                if not existing_submission:
+                    await message.reply("❌ No submission found for this challenge. Use `!submit` to submit your artwork!", delete_after=10)
+                    return
+                
+                # Show the existing verification result
+                from views.art_challenge_view import ArtChallengeEmbed
+                embed = ArtChallengeEmbed.create_submission_result_embed(existing_submission, message.author)
+                await message.reply(embed=embed, delete_after=60)
+                return
+            
+            # Handle !submit command - verify new submission
             # Send a processing message
             processing_msg = await message.reply("🔄 **Verifying your submission...** This may take a moment.")
             
