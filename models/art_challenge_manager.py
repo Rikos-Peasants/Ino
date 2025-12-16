@@ -182,64 +182,39 @@ class ArtChallengeManager:
         "bad anatomy", "bad hands", "bad feet", "bad proportions", "error",
         "jpeg artifacts", "compression artifacts", "blurry", "out of frame",
         # Too abstract/meta
-        "what", "everyone", "no humans", "nobody", "solo focus",
-        "third-party edit", "edit", "photoshop", "stitched",
+        "what", "everyone", "solo focus", "third-party edit", "edit", "photoshop", "stitched",
         # Impossible to verify without knowing character
         "character name", "series name", "artist request",
+        # Other problematic tags
+        "unknown", "unfinished", "wip", "sketch", "lineart", "monochrome",
+        "traditional media", "photo", "real life", "3d", "animated", "video",
+        "sound", "audio", "has audio",
     }
     
-    # Curated list of achievable, drawable tags for challenges
-    GOOD_CHALLENGE_TAGS = [
-        # Actions/Poses
-        "standing", "sitting", "running", "jumping", "walking", "lying", "kneeling",
-        "fighting stance", "action pose", "dynamic pose", "relaxed", "sleeping",
-        "reading", "eating", "drinking", "dancing", "singing", "playing instrument",
-        "waving", "pointing", "hugging", "holding hands", "stretching",
-        # Expressions
-        "smile", "grin", "smirk", "frown", "crying", "laughing", "blushing",
-        "angry", "surprised", "confused", "happy", "sad", "embarrassed", "shy",
-        "determined", "scared", "excited", "peaceful", "sleepy",
-        # Settings/Backgrounds
-        "outdoors", "indoors", "beach", "forest", "city", "school", "bedroom",
-        "kitchen", "garden", "park", "rooftop", "underwater", "space", "sky",
-        "sunset", "sunrise", "night", "day", "rain", "snow", "clouds",
-        "mountains", "ocean", "river", "castle", "ruins", "cafe",
-        # Objects/Items
-        "sword", "gun", "bow", "staff", "wand", "shield", "book", "phone",
-        "umbrella", "bag", "hat", "glasses", "mask", "crown", "flower",
-        "food", "cake", "tea", "coffee", "fruit", "candy", "ice cream",
-        "ball", "balloon", "gift", "letter", "camera", "microphone",
-        # Clothing styles
-        "dress", "uniform", "armor", "casual clothes", "formal wear",
-        "swimsuit", "kimono", "hoodie", "jacket", "skirt", "shorts",
-        # Animals/Creatures
-        "cat", "dog", "bird", "rabbit", "fox", "wolf", "dragon", "butterfly",
-        "fish", "horse", "deer", "owl", "snake", "phoenix", "unicorn",
-        # Art styles/Themes
-        "fantasy", "sci-fi", "cute", "cool", "dark", "bright", "colorful",
-        "monochrome", "pastel", "neon", "vintage", "futuristic", "magical",
-        "romantic", "action", "peaceful", "dramatic", "mysterious", "ethereal",
-        # Weather/Atmosphere
-        "sunny", "cloudy", "rainy", "snowy", "foggy", "stormy", "windy",
-        "moonlight", "starry sky", "aurora", "rainbow",
-        # Composition elements
-        "solo", "duo", "group", "portrait", "full body", "upper body",
-        "close-up", "from behind", "from side", "looking at viewer",
-    ]
-    
     async def get_random_tags(self, count: int = 3, tag_type: str = "general") -> Optional[List[str]]:
-        """Get random tags from curated list for tag-based challenges
+        """Get random tags from serika.art for tag-based challenges"""
+        params = {
+            "limit": 200,  # Get more to have enough after filtering
+            "type": tag_type,
+            "sort": "count",
+            "min_count": 50  # Only popular tags
+        }
         
-        Uses a curated list of achievable, drawable tags instead of API tags
-        to avoid impossible challenges like 'official alternate costume'
-        """
-        # Use curated tags for better challenge quality
-        try:
-            selected = random.sample(self.GOOD_CHALLENGE_TAGS, min(count, len(self.GOOD_CHALLENGE_TAGS)))
-            return selected
-        except Exception as e:
-            logger.error(f"Error selecting random tags: {e}")
-            return None
+        tags_data = await self._serika_request("/tags", params)
+        if tags_data and isinstance(tags_data, list):
+            # Filter out excluded/problematic tags
+            filtered_tags = [
+                tag.get("name") for tag in tags_data 
+                if tag.get("name") and tag.get("name").lower() not in self.EXCLUDED_TAGS
+                and not any(excluded in tag.get("name", "").lower() for excluded in self.EXCLUDED_TAGS)
+            ]
+            
+            if len(filtered_tags) >= count:
+                selected = random.sample(filtered_tags, count)
+                return selected
+        
+        # Fallback if API fails or not enough tags
+        return None
     
     async def download_image_bytes(self, url: str) -> Optional[bytes]:
         """Download image from URL and return bytes"""
