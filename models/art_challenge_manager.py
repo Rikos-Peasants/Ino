@@ -166,21 +166,80 @@ class ArtChallengeManager:
         
         return await self._serika_request("/random", params)
     
+    # Tags that are too specific, meta, or impossible to draw without context
+    EXCLUDED_TAGS = {
+        # Meta/copyright tags
+        "official alternate costume", "official alternate hairstyle", "official alternate hair length",
+        "alternate costume", "alternate hairstyle", "alternate hair color", "alternate eye color",
+        "borrowed character", "crossover", "parody", "copyright request", "character request",
+        "tagme", "commentary", "translated", "translation request", "check translation",
+        "image sample", "sample", "watermark", "web address", "artist name", "signature",
+        "dated", "revision", "variant set", "image set", "manga", "comic", "4koma",
+        # Too specific character references
+        "cosplay", "seiyuu connection", "voice actor connection", "real life insert",
+        # Technical/quality tags
+        "highres", "absurdres", "incredibly absurdres", "huge filesize", "lowres",
+        "bad anatomy", "bad hands", "bad feet", "bad proportions", "error",
+        "jpeg artifacts", "compression artifacts", "blurry", "out of frame",
+        # Too abstract/meta
+        "what", "everyone", "no humans", "nobody", "solo focus",
+        "third-party edit", "edit", "photoshop", "stitched",
+        # Impossible to verify without knowing character
+        "character name", "series name", "artist request",
+    }
+    
+    # Curated list of achievable, drawable tags for challenges
+    GOOD_CHALLENGE_TAGS = [
+        # Actions/Poses
+        "standing", "sitting", "running", "jumping", "walking", "lying", "kneeling",
+        "fighting stance", "action pose", "dynamic pose", "relaxed", "sleeping",
+        "reading", "eating", "drinking", "dancing", "singing", "playing instrument",
+        "waving", "pointing", "hugging", "holding hands", "stretching",
+        # Expressions
+        "smile", "grin", "smirk", "frown", "crying", "laughing", "blushing",
+        "angry", "surprised", "confused", "happy", "sad", "embarrassed", "shy",
+        "determined", "scared", "excited", "peaceful", "sleepy",
+        # Settings/Backgrounds
+        "outdoors", "indoors", "beach", "forest", "city", "school", "bedroom",
+        "kitchen", "garden", "park", "rooftop", "underwater", "space", "sky",
+        "sunset", "sunrise", "night", "day", "rain", "snow", "clouds",
+        "mountains", "ocean", "river", "castle", "ruins", "cafe",
+        # Objects/Items
+        "sword", "gun", "bow", "staff", "wand", "shield", "book", "phone",
+        "umbrella", "bag", "hat", "glasses", "mask", "crown", "flower",
+        "food", "cake", "tea", "coffee", "fruit", "candy", "ice cream",
+        "ball", "balloon", "gift", "letter", "camera", "microphone",
+        # Clothing styles
+        "dress", "uniform", "armor", "casual clothes", "formal wear",
+        "swimsuit", "kimono", "hoodie", "jacket", "skirt", "shorts",
+        # Animals/Creatures
+        "cat", "dog", "bird", "rabbit", "fox", "wolf", "dragon", "butterfly",
+        "fish", "horse", "deer", "owl", "snake", "phoenix", "unicorn",
+        # Art styles/Themes
+        "fantasy", "sci-fi", "cute", "cool", "dark", "bright", "colorful",
+        "monochrome", "pastel", "neon", "vintage", "futuristic", "magical",
+        "romantic", "action", "peaceful", "dramatic", "mysterious", "ethereal",
+        # Weather/Atmosphere
+        "sunny", "cloudy", "rainy", "snowy", "foggy", "stormy", "windy",
+        "moonlight", "starry sky", "aurora", "rainbow",
+        # Composition elements
+        "solo", "duo", "group", "portrait", "full body", "upper body",
+        "close-up", "from behind", "from side", "looking at viewer",
+    ]
+    
     async def get_random_tags(self, count: int = 3, tag_type: str = "general") -> Optional[List[str]]:
-        """Get random tags from serika.art for tag-based challenges"""
-        params = {
-            "limit": 100,
-            "type": tag_type,
-            "sort": "count",
-            "min_count": 50  # Only popular tags
-        }
+        """Get random tags from curated list for tag-based challenges
         
-        tags_data = await self._serika_request("/tags", params)
-        if tags_data and isinstance(tags_data, list):
-            # Randomly select from the popular tags
-            selected = random.sample(tags_data, min(count, len(tags_data)))
-            return [tag.get("name") for tag in selected if tag.get("name")]
-        return None
+        Uses a curated list of achievable, drawable tags instead of API tags
+        to avoid impossible challenges like 'official alternate costume'
+        """
+        # Use curated tags for better challenge quality
+        try:
+            selected = random.sample(self.GOOD_CHALLENGE_TAGS, min(count, len(self.GOOD_CHALLENGE_TAGS)))
+            return selected
+        except Exception as e:
+            logger.error(f"Error selecting random tags: {e}")
+            return None
     
     async def download_image_bytes(self, url: str) -> Optional[bytes]:
         """Download image from URL and return bytes"""
