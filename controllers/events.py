@@ -10,7 +10,7 @@ from config import Config
 import logging
 import asyncio
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -535,14 +535,43 @@ class EventsController:
             await self._apply_text_spam_inorep_penalty(message)
     
     async def _check_for_chat_reminder(self, message: discord.Message):
-        """Check if the last 10 messages are text messages and send a chat reminder"""
+        """Check if the last messages are text messages and send a chat reminder.
+        
+        Targets users with negative/lower InoRep more aggressively.
+        For negative InoRep users: 1/3 chance of 1 min timeout, 1/100 chance of 10 min timeout.
+        """
         try:
-            # Get the last 10 messages from the channel
+            # Get the user's InoRep to determine targeting
+            user_inorep = 0
+            if hasattr(self.bot.leaderboard_manager, 'inorep_manager') and self.bot.leaderboard_manager.inorep_manager:
+                user_inorep = await self.bot.leaderboard_manager.inorep_manager.get_user_rep(
+                    str(message.author.id), 
+                    str(message.guild.id)
+                )
+            
+            # Determine threshold based on InoRep
+            # Negative InoRep: stricter (trigger at 8 messages)
+            # Low InoRep (0-50): moderate (trigger at 12 messages)
+            # Normal InoRep (51-299): lenient (trigger at 18 messages)
+            # High InoRep (300+): immune - never get the warning
+            if user_inorep >= 300:
+                return  # High rep users are immune from image channel warnings
+            elif user_inorep < 0:
+                text_threshold = 8
+                history_limit = 12
+            elif user_inorep <= 50:
+                text_threshold = 12
+                history_limit = 16
+            else:
+                text_threshold = 18
+                history_limit = 22
+            
+            # Get recent messages from the channel
             messages = []
-            async for msg in message.channel.history(limit=10):
+            async for msg in message.channel.history(limit=history_limit):
                 messages.append(msg)
             
-            # Check if all 10 messages are text messages (no images)
+            # Check consecutive text messages (no images)
             text_message_count = 0
             for msg in messages:
                 # Skip bot messages
@@ -570,40 +599,97 @@ class EventsController:
                 else:
                     break  # Found an image or empty message, reset count
             
-            # If we have 5 consecutive text messages, send a reminder
-            if text_message_count >= 5:
-                # Check if we recently sent a reminder (to avoid spam)
-                recent_bot_messages = []
-                async for msg in message.channel.history(limit=20):
-                    if msg.author == self.bot.user:
-                        recent_bot_messages.append(msg)
+            # If we haven't reached threshold, skip reminder
+            if text_message_count < text_threshold:
+                return
+            
+            # Check if we recently sent a reminder (to avoid spam)
+            recent_bot_messages = []
+            async for msg in message.channel.history(limit=30):
+                if msg.author == self.bot.user:
+                    recent_bot_messages.append(msg)
+            
+            # Check if we already sent a chat reminder in the last 30 messages
+            for bot_msg in recent_bot_messages:
+                # Check content or embed title/footer for reminder indicators
+                if bot_msg.content and any(keyword in bot_msg.content.lower() for keyword in [
+                    "this isn't a chat channel",
+                    "wrong channel",
+                    "image channel",
+                    "save the chat",
+                    "this isn't exactly the channel to chat"
+                ]):
+                    return  # Already sent a reminder recently
                 
-                # Check if we already sent a chat reminder in the last 20 messages
-                for bot_msg in recent_bot_messages:
-                    # Check content or embed title/footer for reminder indicators
-                    if bot_msg.content and any(keyword in bot_msg.content.lower() for keyword in [
-                        "this isn't a chat channel",
-                        "wrong channel",
-                        "image channel",
-                        "save the chat",
-                        "this isn't exactly the channel to chat"
-                    ]):
-                        return  # Already sent a reminder recently
+                # Check embeds for chat reminder
+                if bot_msg.embeds:
+                    for embed in bot_msg.embeds:
+                        if embed.footer and embed.footer.text and "Image Channel Reminder" in embed.footer.text:
+                            return  # Already sent a reminder recently
+            
+            # Format chat channel mentions
+            chat_mentions = []
+            for channel_id in Config.CHAT_CHANNELS:
+                chat_mentions.append(f"<#{channel_id}>")
+            
+            chat_channels_text = " or ".join(chat_mentions)
+            
+            # For negative InoRep users, apply timeout chances
+            timeout_applied = False
+            timeout_duration = None
+            
+            if user_inorep < 0:
+                # 1/100 chance for 10 minute timeout (check this first since it's rarer)
+                if random.randint(1, 100) == 1:
+                    timeout_duration = timedelta(minutes=10)
+                    timeout_applied = True
+                    logger.info(f"Rolling 10 min timeout for {message.author.display_name} (InoRep: {user_inorep})")
+                # 1/3 chance for 1 minute timeout
+                elif random.randint(1, 3) == 1:
+                    timeout_duration = timedelta(minutes=1)
+                    timeout_applied = True
+                    logger.info(f"Rolling 1 min timeout for {message.author.display_name} (InoRep: {user_inorep})")
+                
+                # Apply timeout if selected
+                if timeout_applied and timeout_duration:
+                    try:
+                        await message.author.timeout(
+                            timeout_duration,
+                            reason=f"Excessive chatting in image channel (InoRep: {user_inorep})"
+                        )
+                        logger.info(f"Timed out {message.author.display_name} for {timeout_duration} (InoRep: {user_inorep})")
+                    except discord.Forbidden:
+                        logger.warning(f"Missing permission to timeout {message.author.display_name}")
+                        timeout_applied = False
+                    except Exception as e:
+                        logger.error(f"Error timing out user: {e}")
+                        timeout_applied = False
+            
+            # Multiple message variations for variety - kuudere shrine maiden style
+            # Add harsher variations for negative InoRep users
+            if user_inorep < 0:
+                reminder_variations = [
+                    f"...You again? This channel is for images only.\nYou've been warned before. Go to {chat_channels_text}.",
                     
-                    # Check embeds for chat reminder
-                    if bot_msg.embeds:
-                        for embed in bot_msg.embeds:
-                            if embed.footer and "Image Channel Reminder" in embed.footer.text:
-                                return  # Already sent a reminder recently
+                    f"I've noticed you have a habit of ignoring the rules.\nThis is an image channel. {chat_channels_text} exists for a reason.",
+                    
+                    f"Your reputation precedes you... and it's not good.\nImages here. Chat there: {chat_channels_text}.\nI won't be patient forever.",
+                    
+                    f"...Troublemaker.\nThis channel is for images only.\nMove to {chat_channels_text} before I lose my patience.",
+                    
+                    f"I see you haven't learned yet.\nThis. Is. An. Image. Channel.\n{chat_channels_text} is where you should be chatting.",
+                ]
                 
-                # Format chat channel mentions
-                chat_mentions = []
-                for channel_id in Config.CHAT_CHANNELS:
-                    chat_mentions.append(f"<#{channel_id}>")
-                
-                chat_channels_text = " or ".join(chat_mentions)
-                
-                # Multiple message variations for variety - kuudere shrine maiden style
+                if timeout_applied:
+                    timeout_mins = int(timeout_duration.total_seconds() / 60)
+                    reminder_variations = [
+                        f"...That's enough.\nYou've been timed out for {timeout_mins} minute{'s' if timeout_mins > 1 else ''}.\nMaybe now you'll learn to use {chat_channels_text} for chatting.",
+                        
+                        f"Consider this a lesson.\n{timeout_mins} minute timeout for repeatedly ignoring the rules.\nThis channel is for images. {chat_channels_text} is for chat.",
+                        
+                        f"I warned you.\n{timeout_mins} minute{'s' if timeout_mins > 1 else ''} of silence. Reflect on your choices.\nNext time, use {chat_channels_text}.",
+                    ]
+            else:
                 reminder_variations = [
                     f"This channel is for images only.\nConversations belong in {chat_channels_text}.\nPlease relocate there.",
                     
@@ -617,30 +703,38 @@ class EventsController:
                     
                     f"...This isn't the place for idle chatter.\nImages belong here, your words belong in {chat_channels_text}.\nPlease comply."
                 ]
-                
-                reminder_description = random.choice(reminder_variations)
-                
-                # Create embed with Ino's annoyed image
-                embed = discord.Embed(
-                    description=reminder_description,
-                    color=0xE8E8E8  # Light gray/white color for shrine maiden aesthetic
-                )
-                embed.set_image(url="https://i.ibb.co/B2W5WQ2Y/ef4f7402-aa4b-4440-9ae9-ef1415824688.png")
-                embed.set_footer(text="Image Channel Reminder • This message will be deleted in 60 seconds")
-                
-                # Send the reminder and delete after 60 seconds
-                reminder_msg = await message.channel.send(embed=embed)
-                logger.info(f"Sent chat reminder in #{message.channel.name} after {text_message_count} consecutive text messages")
-                
-                # Delete after 60 seconds
-                await asyncio.sleep(60)
-                try:
-                    await reminder_msg.delete()
-                    logger.info(f"Deleted chat reminder in #{message.channel.name}")
-                except discord.NotFound:
-                    pass  # Message already deleted
-                except discord.Forbidden:
-                    logger.warning(f"Missing permission to delete chat reminder in #{message.channel.name}")
+            
+            reminder_description = random.choice(reminder_variations)
+            
+            # Create embed with Ino's annoyed image
+            embed = discord.Embed(
+                description=reminder_description,
+                color=0x8B0000 if user_inorep < 0 else 0xE8E8E8  # Dark red for negative InoRep, light gray otherwise
+            )
+            embed.set_image(url="https://i.ibb.co/B2W5WQ2Y/ef4f7402-aa4b-4440-9ae9-ef1415824688.png")
+            
+            footer_text = "Image Channel Reminder • This message will be deleted in 60 seconds"
+            if user_inorep < 0:
+                footer_text = f"Image Channel Reminder • InoRep: {user_inorep} • This message will be deleted in 60 seconds"
+            
+            embed.set_footer(text=footer_text)
+            
+            # Send the reminder and delete after 60 seconds
+            reminder_msg = await message.channel.send(
+                content=f"{message.author.mention}" if user_inorep < 0 else None,
+                embed=embed
+            )
+            logger.info(f"Sent chat reminder in #{message.channel.name} after {text_message_count} consecutive text messages (user InoRep: {user_inorep})")
+            
+            # Delete after 60 seconds
+            await asyncio.sleep(60)
+            try:
+                await reminder_msg.delete()
+                logger.info(f"Deleted chat reminder in #{message.channel.name}")
+            except discord.NotFound:
+                pass  # Message already deleted
+            except discord.Forbidden:
+                logger.warning(f"Missing permission to delete chat reminder in #{message.channel.name}")
                 
         except Exception as e:
             logger.error(f"Error checking for chat reminder: {e}")
