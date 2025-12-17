@@ -1008,7 +1008,12 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 "is_resubmission": is_resubmission
             }
             
-            self.submissions_collection.insert_one(submission_data)
+            # Use upsert to handle resubmissions - replaces existing submission
+            self.submissions_collection.update_one(
+                {"challenge_id": challenge_id, "user_id": user_id},
+                {"$set": submission_data},
+                upsert=True
+            )
             
             # Update challenge stats
             from bson import ObjectId
