@@ -154,6 +154,34 @@ class ArtChallengeEmbed:
         is_resubmission = result.get("is_resubmission", False)
         already_verified = result.get("already_verified", False)
         submission_number = result.get("submission_number", 1)
+        is_duplicate = result.get("is_duplicate", False) or verification.get("is_duplicate", False)
+        
+        # Check for duplicate/cheating attempt first
+        if is_duplicate:
+            similarity = verification.get("similarity_score", 1.0)
+            embed = discord.Embed(
+                title="🚫 Duplicate Detected!",
+                description=f"{user.mention}, you submitted the same image as the reference!\n\n**This is not allowed!** You must create your own artwork.",
+                color=discord.Color.dark_red()
+            )
+            embed.add_field(
+                name="⚠️ Penalty Applied",
+                value=f"**{points}** points",
+                inline=True
+            )
+            embed.add_field(
+                name="📊 Similarity",
+                value=f"{similarity:.0%} match",
+                inline=True
+            )
+            embed.add_field(
+                name="💡 What to do",
+                value="Create your own artistic interpretation! Any style is welcome - digital, traditional, sketch, anime, realistic - just make it YOUR artwork!",
+                inline=False
+            )
+            embed.set_footer(text="⚠️ Re-uploading the reference image is considered cheating")
+            embed.timestamp = datetime.utcnow()
+            return embed
         
         if verified:
             if already_verified:

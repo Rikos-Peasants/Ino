@@ -229,6 +229,118 @@ class ArtChallengeManager:
             logger.error(f"Error downloading image: {e}")
             return None
     
+    def _compute_image_hash(self, image_bytes: bytes) -> Optional[str]:
+        """Compute a perceptual hash for an image to detect duplicates.
+        
+        Uses average hash (aHash) for fast comparison.
+        Returns a hex string hash or None if computation fails.
+        """
+        try:
+            from PIL import Image
+            import io
+            import hashlib
+            
+            # Open and convert to grayscale
+            img = Image.open(io.BytesIO(image_bytes)).convert('L')
+            
+            # Resize to 16x16 for perceptual hash (more precision than 8x8)
+            img = img.resize((16, 16), Image.Resampling.LANCZOS)
+            
+            # Get pixel data
+            pixels = list(img.getdata())
+            
+            # Compute average
+            avg = sum(pixels) / len(pixels)
+            
+            # Create binary hash based on average
+            bits = ''.join('1' if pixel > avg else '0' for pixel in pixels)
+            
+            # Convert to hex
+            hash_value = hex(int(bits, 2))[2:].zfill(64)  # 256 bits = 64 hex chars
+            
+            return hash_value
+        except Exception as e:
+            logger.warning(f"Failed to compute image hash: {e}")
+            return None
+    
+    def _compute_exact_hash(self, image_bytes: bytes) -> str:
+        """Compute MD5 hash for exact duplicate detection"""
+        import hashlib
+        return hashlib.md5(image_bytes).hexdigest()
+    
+    def _compare_image_hashes(self, hash1: str, hash2: str) -> float:
+        """Compare two perceptual hashes and return similarity (0.0-1.0).
+        
+        Uses Hamming distance - lower distance = more similar.
+        Returns 1.0 for identical, 0.0 for completely different.
+        """
+        if not hash1 or not hash2 or len(hash1) != len(hash2):
+            return 0.0
+        
+        try:
+            # Convert hex to binary
+            bin1 = bin(int(hash1, 16))[2:].zfill(256)
+            bin2 = bin(int(hash2, 16))[2:].zfill(256)
+            
+            # Calculate Hamming distance
+            hamming_distance = sum(c1 != c2 for c1, c2 in zip(bin1, bin2))
+            
+            # Convert to similarity (256 bits total)
+            similarity = 1.0 - (hamming_distance / 256.0)
+            
+            return similarity
+        except Exception as e:
+            logger.warning(f"Failed to compare hashes: {e}")
+            return 0.0
+    
+    async def check_image_similarity(self, reference_url: str, submission_url: str) -> dict:
+        """Check if submission is too similar to reference image (potential reupload).
+        
+        Returns:
+            dict with 'is_duplicate', 'similarity_score', 'is_exact_match'
+        """
+        try:
+            # Download both images
+            reference_bytes = await self.download_image_bytes(reference_url)
+            submission_bytes = await self.download_image_bytes(submission_url)
+            
+            if not reference_bytes or not submission_bytes:
+                return {"is_duplicate": False, "similarity_score": 0.0, "is_exact_match": False}
+            
+            # Check for exact match first (MD5)
+            ref_exact_hash = self._compute_exact_hash(reference_bytes)
+            sub_exact_hash = self._compute_exact_hash(submission_bytes)
+            
+            if ref_exact_hash == sub_exact_hash:
+                logger.warning(f"Exact duplicate detected! Same MD5 hash.")
+                return {"is_duplicate": True, "similarity_score": 1.0, "is_exact_match": True}
+            
+            # Compute perceptual hashes
+            ref_phash = self._compute_image_hash(reference_bytes)
+            sub_phash = self._compute_image_hash(submission_bytes)
+            
+            if not ref_phash or not sub_phash:
+                return {"is_duplicate": False, "similarity_score": 0.0, "is_exact_match": False}
+            
+            # Compare hashes
+            similarity = self._compare_image_hashes(ref_phash, sub_phash)
+            
+            # Threshold: 95% similarity is considered a duplicate/reupload
+            is_duplicate = similarity >= 0.95
+            
+            if is_duplicate:
+                logger.warning(f"Near-duplicate detected! Similarity: {similarity:.2%}")
+            
+            return {
+                "is_duplicate": is_duplicate,
+                "similarity_score": similarity,
+                "is_exact_match": False
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking image similarity: {e}")
+            return {"is_duplicate": False, "similarity_score": 0.0, "is_exact_match": False}
+    
     # ==================== GEMINI AI VERIFICATION ====================
     
     async def _generate_edit_item(self, image_url: str) -> Optional[str]:
@@ -310,6 +422,27 @@ Respond with ONLY the item name in lowercase, nothing else. Examples:
             
             # Prepare the verification prompt based on challenge type
             challenge_type = challenge_data.get("challenge_type")
+            
+            # For remake and edit challenges, check if user just re-uploaded the reference image
+            if challenge_type in [self.CHALLENGE_TYPE_REMAKE, self.CHALLENGE_TYPE_EDIT]:
+                reference_url = challenge_data.get("reference_image_url")
+                if reference_url:
+                    similarity_check = await self.check_image_similarity(reference_url, submission_image_url)
+                    if similarity_check.get("is_duplicate"):
+                        similarity_score = similarity_check.get("similarity_score", 1.0)
+                        is_exact = similarity_check.get("is_exact_match", False)
+                        
+                        return {
+                            "verified": False,
+                            "confidence": 1.0,  # High confidence this is a duplicate
+                            "reasoning": f"This submission appears to be the same as the reference image (similarity: {similarity_score:.0%}). Please create your own artwork instead of re-uploading the original!",
+                            "matched_elements": [],
+                            "missing_elements": ["Original artwork", "Creative interpretation"],
+                            "quality_notes": "Duplicate/reupload detected",
+                            "is_duplicate": True,
+                            "is_exact_match": is_exact,
+                            "similarity_score": similarity_score
+                        }
             
             if challenge_type == self.CHALLENGE_TYPE_REMAKE:
                 # For remake challenges, we need the reference image too
@@ -986,14 +1119,23 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             # Verify the submission with AI
             verification_result = await self.verify_submission(challenge, image_url)
             
+            # Check if this is a duplicate/reupload (cheating attempt)
+            is_duplicate = verification_result.get("is_duplicate", False)
+            
             # Determine if verified (confidence >= 0.6)
             is_verified = verification_result.get("verified", False) and verification_result.get("confidence", 0) >= 0.6
             
-            # Only award points if:
-            # 1. This submission is verified AND
-            # 2. User hasn't already received points (no previous verified submission)
-            should_award_points = is_verified and not already_verified
-            points_awarded = challenge.get("reward_points", 50) if should_award_points else 0
+            # Points logic:
+            # - If duplicate: -20 points penalty
+            # - If verified and not already verified: +reward_points
+            # - Otherwise: 0 points
+            if is_duplicate:
+                points_awarded = -20  # Penalty for re-uploading the original image
+                logger.warning(f"User {user_id} attempted to submit duplicate image. Applying -20 point penalty.")
+            elif is_verified and not already_verified:
+                points_awarded = challenge.get("reward_points", 50)
+            else:
+                points_awarded = 0
             
             submission_data = {
                 "challenge_id": challenge_id,
@@ -1005,7 +1147,8 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 "verification_result": verification_result,
                 "points_awarded": points_awarded,
                 "submission_number": submission_count + 1,
-                "is_resubmission": is_resubmission
+                "is_resubmission": is_resubmission,
+                "is_duplicate": is_duplicate
             }
             
             # Use upsert to handle resubmissions - replaces existing submission
@@ -1037,7 +1180,8 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 "points_awarded": points_awarded,
                 "is_resubmission": is_resubmission,
                 "already_verified": already_verified,
-                "submission_number": submission_count + 1
+                "submission_number": submission_count + 1,
+                "is_duplicate": is_duplicate
             }
             
         except Exception as e:
