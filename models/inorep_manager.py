@@ -55,14 +55,15 @@ class InoRepManager:
     async def add_rep(self, user_id: str, guild_id: str, user_name: str, amount: int, reason: str, moderator_id: str, moderator_name: str) -> bool:
         """Add reputation points to a user (can be negative for warnings)"""
         try:
-            # Check if the user is a moderator with mod_mode enabled
+            # Check if the user has mod_mode enabled (immunity from point reduction)
+            # When mod_mode=True, skip negative reputation changes (prevents depletion)
             user_data = self.inorep_collection.find_one({
                 "user_id": user_id,
                 "guild_id": guild_id
             })
 
             if amount < 0 and user_data and user_data.get('mod_mode', False):
-                logger.info(f"Skipped negative rep for {user_name} because mod_mode is enabled.")
+                logger.info(f"Skipped negative rep for {user_name} because mod_mode is enabled (immune from point reduction).")
                 return True # Pretend it was successful
 
             current_rep = await self.get_user_rep(user_id, guild_id)

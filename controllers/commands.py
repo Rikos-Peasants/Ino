@@ -5123,10 +5123,14 @@ class CommandsController:
             if ctx.invoked_subcommand is None:
                 await ctx.send("Run `/inorep settings modmode` to configure moderator point reduction settings.", ephemeral=True)
 
-        @inorep_settings_group.command(name='modmode', description='Toggle automatic point reduction for yourself')
+        @inorep_settings_group.command(name='modmode', description='Enable/disable immunity from automatic point reduction')
         @moderator_command
         async def inorep_modmode_cmd(ctx, enabled: bool):
-            """Enable or disable automatic InoRep point reduction for yourself when you say mean things to Ino"""
+            """Enable or disable immunity from automatic InoRep point reduction when you say mean things to Ino
+            
+            Args:
+                enabled: True = immune from point reduction (stops depletion), False = point reduction applies (continues depletion)
+            """
             try:
                 inorep_manager = self.get_leaderboard_manager().inorep_manager
                 if not inorep_manager:
@@ -5149,7 +5153,7 @@ class CommandsController:
                 success = await inorep_manager.set_mod_mode(user_id, guild_id, enabled)
 
                 if success:
-                    status_text = "enabled" if enabled else "disabled"
+                    status_text = "disabled" if enabled else "enabled"
                     await ctx.send(f"✅ Automatic point reduction has been **{status_text}** for you.", ephemeral=True)
                 else:
                     await ctx.send("❌ Failed to update your settings.", ephemeral=True)
