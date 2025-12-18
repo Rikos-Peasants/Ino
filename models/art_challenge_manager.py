@@ -321,14 +321,7 @@ class ArtChallengeManager:
                 logger.warning(f"Exact duplicate detected! Same MD5 hash.")
                 return {"is_duplicate": True, "similarity_score": 1.0, "is_exact_match": True}
             
-            # For EDIT challenges, only exact matches (100%) should be flagged as duplicates
-            # because users are expected to modify the reference image by adding elements
-            if challenge_type == self.CHALLENGE_TYPE_EDIT:
-                # Already checked for exact match above, so this is not a duplicate
-                return {"is_duplicate": False, "similarity_score": 0.0, "is_exact_match": False}
-            
-            # For REMAKE and other challenges, use perceptual hash to detect near-duplicates
-            # Compute perceptual hashes
+            # Compute perceptual hashes for similarity calculation
             ref_phash = self._compute_image_hash(reference_bytes)
             sub_phash = self._compute_image_hash(submission_bytes)
             
@@ -338,17 +331,32 @@ class ArtChallengeManager:
             # Compare hashes
             similarity = self._compare_image_hashes(ref_phash, sub_phash)
             
-            # Threshold: 95% similarity is considered a duplicate/reupload
-            is_duplicate = similarity >= 0.95
+            # For EDIT challenges, only exact matches (100%) should be flagged as duplicates
+            # because users are expected to modify the reference image by adding elements
+            if challenge_type == self.CHALLENGE_TYPE_EDIT:
+                # Already checked for exact match above, so this is not a duplicate
+                # Log similarity for debugging purposes
+                logger.info(f"Edit challenge similarity: {similarity:.2%} (not considered duplicate)")
+                return {"is_duplicate": False, "similarity_score": similarity, "is_exact_match": False}
             
-            if is_duplicate:
-                logger.warning(f"Near-duplicate detected! Similarity: {similarity:.2%}")
+            # For REMAKE challenges, use perceptual hash to detect near-duplicates
+            # since users should create entirely new artwork, not just edit the original
+            if challenge_type == self.CHALLENGE_TYPE_REMAKE:
+                # Threshold: 95% similarity is considered a duplicate/reupload
+                is_duplicate = similarity >= 0.95
+                
+                if is_duplicate:
+                    logger.warning(f"Near-duplicate detected! Similarity: {similarity:.2%}")
+                
+                return {
+                    "is_duplicate": is_duplicate,
+                    "similarity_score": similarity,
+                    "is_exact_match": False
+                }
             
-            return {
-                "is_duplicate": is_duplicate,
-                "similarity_score": similarity,
-                "is_exact_match": False
-            }
+            # For other challenge types (tags, mixed), don't perform similarity check
+            # as they don't have a single reference image to compare against
+            return {"is_duplicate": False, "similarity_score": similarity, "is_exact_match": False}
             
         except Exception as e:
             logger.error(f"Error checking image similarity: {e}")
