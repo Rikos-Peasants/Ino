@@ -334,7 +334,7 @@ class ArtChallengeManager:
             # For EDIT challenges, only exact matches (100%) should be flagged as duplicates
             # because users are expected to modify the reference image by adding elements
             if challenge_type == self.CHALLENGE_TYPE_EDIT:
-                # Already checked for exact match above, so this is not a duplicate
+                # No exact match was found (would have returned above), so perceptual similarity doesn't matter
                 # Log similarity for debugging purposes
                 logger.info(f"Edit challenge similarity: {similarity:.2%} (not considered duplicate)")
                 return {"is_duplicate": False, "similarity_score": similarity, "is_exact_match": False}
@@ -354,8 +354,10 @@ class ArtChallengeManager:
                     "is_exact_match": False
                 }
             
-            # For other challenge types (tags, mixed), don't perform similarity check
-            # as they don't have a single reference image to compare against
+            # For other challenge types (tags, mixed), don't flag duplicates based on similarity
+            # as they don't have a single reference image to compare against in a meaningful way
+            # Similarity score is still returned for informational purposes
+            logger.debug(f"Other challenge type ({challenge_type}): similarity {similarity:.2%} (not used for duplicate check)")
             return {"is_duplicate": False, "similarity_score": similarity, "is_exact_match": False}
             
         except Exception as e:
