@@ -462,10 +462,10 @@ The submission is the artist's interpretation.
 Please verify if this submission meets the challenge requirements.
 """
                 parts = [
-                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
                     types.Part.from_text(text="REFERENCE IMAGE (to be remade):"),
-                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
                     types.Part.from_text(text="SUBMISSION (artist's remake):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
                     types.Part.from_text(text=verification_prompt)
                 ]
             
@@ -490,12 +490,12 @@ The submission should contain elements from BOTH images creatively combined into
 Please verify if this submission successfully mixes elements from both reference images.
 """
                 parts = [
-                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_1),
                     types.Part.from_text(text="REFERENCE IMAGE 1 (first image to mix):"),
-                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_2),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_1),
                     types.Part.from_text(text="REFERENCE IMAGE 2 (second image to mix):"),
-                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_2),
                     types.Part.from_text(text="SUBMISSION (artist's mixed artwork):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
                     types.Part.from_text(text=verification_prompt)
                 ]
             
@@ -524,10 +524,10 @@ Check if:
 Please verify if this submission meets the challenge requirements.
 """
                 parts = [
-                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
                     types.Part.from_text(text="REFERENCE IMAGE (original to edit):"),
-                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
                     types.Part.from_text(text=f"SUBMISSION (should have '{required_item}' added):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
                     types.Part.from_text(text=verification_prompt)
                 ]
             
