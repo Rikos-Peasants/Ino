@@ -542,8 +542,8 @@ Task: Verify if the submitted image contains ALL of these required tags/elements
 Please verify if this submission includes all the required elements.
 """
                 parts = [
-                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
                     types.Part.from_text(text="SUBMISSION IMAGE:"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
                     types.Part.from_text(text=verification_prompt)
                 ]
             
