@@ -293,8 +293,14 @@ class ArtChallengeManager:
             logger.warning(f"Failed to compare hashes: {e}")
             return 0.0
     
-    async def check_image_similarity(self, reference_url: str, submission_url: str) -> dict:
+    async def check_image_similarity(self, reference_url: str, submission_url: str, challenge_type: Optional[str] = None) -> dict:
         """Check if submission is too similar to reference image (potential reupload).
+        
+        Args:
+            reference_url: URL of the reference image
+            submission_url: URL of the submitted image
+            challenge_type: Type of challenge (edit, remake, etc.). For edit challenges,
+                          only exact matches (100%) are considered duplicates.
         
         Returns:
             dict with 'is_duplicate', 'similarity_score', 'is_exact_match'
@@ -315,6 +321,13 @@ class ArtChallengeManager:
                 logger.warning(f"Exact duplicate detected! Same MD5 hash.")
                 return {"is_duplicate": True, "similarity_score": 1.0, "is_exact_match": True}
             
+            # For EDIT challenges, only exact matches (100%) should be flagged as duplicates
+            # because users are expected to modify the reference image by adding elements
+            if challenge_type == self.CHALLENGE_TYPE_EDIT:
+                # Already checked for exact match above, so this is not a duplicate
+                return {"is_duplicate": False, "similarity_score": 0.0, "is_exact_match": False}
+            
+            # For REMAKE and other challenges, use perceptual hash to detect near-duplicates
             # Compute perceptual hashes
             ref_phash = self._compute_image_hash(reference_bytes)
             sub_phash = self._compute_image_hash(submission_bytes)
@@ -427,7 +440,7 @@ Respond with ONLY the item name in lowercase, nothing else. Examples:
             if challenge_type in [self.CHALLENGE_TYPE_REMAKE, self.CHALLENGE_TYPE_EDIT]:
                 reference_url = challenge_data.get("reference_image_url")
                 if reference_url:
-                    similarity_check = await self.check_image_similarity(reference_url, submission_image_url)
+                    similarity_check = await self.check_image_similarity(reference_url, submission_image_url, challenge_type)
                     if similarity_check.get("is_duplicate"):
                         similarity_score = similarity_check.get("similarity_score", 1.0)
                         is_exact = similarity_check.get("is_exact_match", False)
