@@ -366,6 +366,25 @@ class ArtChallengeManager:
     
     # ==================== GEMINI AI VERIFICATION ====================
     
+    def _get_recent_edit_items(self, limit: int = 20) -> List[str]:
+        """Get the most recent edit items used in challenges to avoid repetition"""
+        if not self._ensure_connected():
+            return []
+        
+        try:
+            recent_challenges = list(self.challenges_collection.find(
+                {
+                    "challenge_type": self.CHALLENGE_TYPE_EDIT,
+                    "required_item": {"$exists": True}
+                },
+                {"required_item": 1}
+            ).sort("created_at", DESCENDING).limit(limit))
+            
+            return [c.get("required_item") for c in recent_challenges if c.get("required_item")]
+        except Exception as e:
+            logger.error(f"Error getting recent edit items: {e}")
+            return []
+    
     async def _generate_edit_item(self, image_url: str) -> Optional[str]:
         """Use Gemini AI to decide what item should be added to an image for edit challenge"""
         if not self.gemini_api_key:
@@ -378,24 +397,39 @@ class ArtChallengeManager:
             if not image_bytes:
                 return None
             
+            # Get recently used items to avoid repetition
+            recent_items = self._get_recent_edit_items(20)
+            recent_items_text = ""
+            if recent_items:
+                recent_items_text = f"""
+
+⚠️ IMPORTANT - DO NOT SUGGEST ANY OF THESE RECENTLY USED ITEMS (or similar variations):
+{chr(10).join(f'- {item}' for item in recent_items)}
+
+You MUST suggest something COMPLETELY DIFFERENT from the above list. Be creative and unique!"""
+            
             # Initialize Gemini client
             client = genai.Client(api_key=self.gemini_api_key)
             
-            prompt = """Look at this image and suggest ONE creative item/object that would be fun and interesting to add to it.
+            prompt = f"""Analyze this image carefully and suggest ONE unique, creative item/object that would be fun and interesting to add to it.
 
-The item should:
-- Be something that would complement or contrast interestingly with the image
-- Be specific enough to be recognizable (e.g., "a glowing lantern" not just "light")
-- Be achievable to draw/edit in (not too complex)
-- Be fun and creative
+REQUIREMENTS:
+- The item MUST complement or interestingly contrast with the image's theme, mood, colors, or subject
+- Be SPECIFIC and DESCRIPTIVE (e.g., "a glowing paper lantern" not just "a lantern", "a sleepy orange cat" not just "a cat")
+- The item should be achievable for artists to draw/edit (not overly complex)
+- Think OUTSIDE THE BOX - avoid generic suggestions like "sparkles", "butterflies", or "rainbow"
+- Consider the image's atmosphere: dark images might benefit from something luminous, peaceful scenes might need something whimsical
+- Match the art style if possible (anime style? add anime-style items, realistic? add realistic items)
+{recent_items_text}
 
-Respond with ONLY the item name in lowercase, nothing else. Examples:
-- a tiny dragon
-- floating bubbles
-- a mysterious black cat
-- sparkles and stars
-- a treasure chest
-- a magic portal"""
+THINK CREATIVELY! Consider:
+- Unexpected but fitting objects (a vintage gramophone, a paper boat, a compass rose)
+- Creatures that match the mood (a moth drawn to light, a curious axolotl, a sleepy sloth)
+- Atmospheric elements (falling autumn leaves, floating cherry blossoms, drifting dandelion seeds)
+- Story-telling items (a half-written letter, an old pocket watch, a mysterious key)
+- Whimsical additions (a tiny house on a mushroom, a jar of captured starlight, a door leading nowhere)
+
+Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Nothing else."""
 
             parts = [
                 types.Part.from_bytes(mime_type="image/jpeg", data=image_bytes),
@@ -413,7 +447,7 @@ Respond with ONLY the item name in lowercase, nothing else. Examples:
                 model="gemini-2.0-flash-exp",
                 contents=contents,
                 config=types.GenerateContentConfig(
-                    temperature=0.9  # Higher temperature for more creative suggestions
+                    temperature=1.2  # Higher temperature for more creative and varied suggestions
                 )
             )
             
@@ -421,7 +455,14 @@ Respond with ONLY the item name in lowercase, nothing else. Examples:
             # Clean up the response
             if item.startswith("- "):
                 item = item[2:]
-            if len(item) > 50:  # Too long, probably got extra text
+            # Remove quotes if present
+            item = item.strip('"\'')
+            if len(item) > 60:  # Too long, probably got extra text
+                return None
+            
+            # Check if the AI ignored our instructions and suggested a recent item anyway
+            if item in recent_items:
+                logger.warning(f"AI suggested recent item '{item}', rejecting")
                 return None
             
             logger.info(f"AI suggested edit item: {item}")
@@ -790,10 +831,50 @@ Please verify if this submission includes all the required elements.
                 # Use AI to decide what item should be added
                 item_to_add = await self._generate_edit_item(reference_url)
                 if not item_to_add:
-                    # Fallback items if AI fails
-                    fallback_items = ["a glowing crystal", "a mysterious cat", "floating bubbles", "a rainbow", 
-                                     "a tiny dragon", "sparkles", "a magic wand", "a cute ghost", "fairy lights",
-                                     "a treasure chest", "butterflies", "a crown", "a sword", "flowers"]
+                    # Fallback items if AI fails - extensive list for variety
+                    fallback_items = [
+                        # Magical/Fantasy
+                        "a glowing crystal", "a tiny dragon", "a magic wand", "a floating spell book",
+                        "a phoenix feather", "a wizard hat", "an enchanted mirror", "a fairy",
+                        "a unicorn horn", "glowing runes", "a potion bottle", "a magic portal",
+                        "a will-o-wisp", "a mystical orb", "an ancient tome", "a magical staff",
+                        
+                        # Animals/Creatures
+                        "a mysterious cat", "a cute ghost", "butterflies", "a sleeping fox",
+                        "a wise owl", "a colorful parrot", "a jellyfish", "a koi fish",
+                        "a hummingbird", "a playful puppy", "a curious rabbit", "a majestic deer",
+                        "a friendly frog", "a ladybug", "a seahorse", "a baby penguin",
+                        
+                        # Nature
+                        "floating bubbles", "a rainbow", "flowers", "cherry blossoms",
+                        "autumn leaves", "a crescent moon", "shooting stars", "clouds",
+                        "a sunflower", "vines and ivy", "mushrooms", "a waterfall",
+                        "snowflakes", "fireflies", "a lightning bolt", "a blooming rose",
+                        
+                        # Objects/Items
+                        "fairy lights", "a treasure chest", "a crown", "a sword",
+                        "sparkles", "a lantern", "a compass", "an hourglass",
+                        "a key", "a music note", "a paper airplane", "a hot air balloon",
+                        "a vintage camera", "a telescope", "a clock", "a dreamcatcher",
+                        "a snow globe", "wind chimes", "a message in a bottle", "a locket",
+                        
+                        # Food/Drinks
+                        "a cup of tea", "a slice of cake", "a jar of honey", "floating fruit",
+                        "a popsicle", "a lollipop", "a cookie", "a cupcake",
+                        
+                        # Whimsical/Abstract
+                        "a speech bubble", "floating hearts", "musical notes", "geometric shapes",
+                        "confetti", "ribbons", "a paper crane", "a pinwheel",
+                        "soap bubbles", "a kite", "balloons", "a prism with light",
+                        
+                        # Sci-Fi/Tech
+                        "a hologram", "a robot companion", "a UFO", "floating crystals",
+                        "a jetpack", "a laser beam", "a satellite", "a space helmet",
+                        
+                        # Seasonal/Holiday
+                        "a pumpkin", "a candy cane", "a wrapped gift", "a jack-o-lantern",
+                        "a four-leaf clover", "an easter egg", "a heart-shaped balloon", "a party hat"
+                    ]
                     item_to_add = random.choice(fallback_items)
                 
                 challenge_data["reference_image_url"] = reference_url

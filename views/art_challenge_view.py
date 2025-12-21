@@ -589,10 +589,13 @@ class ArtChallengeView(View):
             )
             return
         
+        # Defer the response to prevent interaction timeout during database query
+        await interaction.response.defer(ephemeral=True)
+        
         stats = self.art_manager.get_user_challenge_stats(interaction.user.id)
         
         if not stats:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "📊 You haven't participated in any art challenges yet!\n"
                 "Submit your first artwork to get started!",
                 ephemeral=True
@@ -600,7 +603,7 @@ class ArtChallengeView(View):
             return
         
         embed = ArtChallengeEmbed.create_stats_embed(interaction.user, stats)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
     
     @discord.ui.button(
         label="Leaderboard",
@@ -617,9 +620,12 @@ class ArtChallengeView(View):
             )
             return
         
+        # Defer the response to prevent interaction timeout during database query
+        await interaction.response.defer(ephemeral=True)
+        
         leaderboard = self.art_manager.get_challenge_leaderboard(10)
         embed = ArtChallengeEmbed.create_leaderboard_embed(leaderboard, interaction.client)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 class ArtChallengeViewManager:
