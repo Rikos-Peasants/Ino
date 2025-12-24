@@ -350,9 +350,17 @@ class EventsController:
                     sticker = discord.utils.get(message.guild.stickers, id=sticker_id)
                 
                 if sticker:
-                    # Send the sticker as a reply to the member join message
-                    await message.reply(stickers=[sticker])
-                    logger.info(f"Sent welcome sticker for member join message in #{getattr(message.channel, 'name', 'DM')}")
+                    # Check if it's Christmas time (Dec 24-26)
+                    now = datetime.now()
+                    is_christmas = now.month == 12 and now.day in [24, 25, 26]
+                    
+                    # Send the sticker with optional Christmas message
+                    if is_christmas:
+                        await message.reply(content="Merry Christmas! 🎄", stickers=[sticker])
+                        logger.info(f"Sent welcome sticker with Christmas message for member join in #{getattr(message.channel, 'name', 'DM')}")
+                    else:
+                        await message.reply(stickers=[sticker])
+                        logger.info(f"Sent welcome sticker for member join message in #{getattr(message.channel, 'name', 'DM')}")
                 else:
                     logger.warning(f"Could not find guild sticker with ID {sticker_id}")
                     

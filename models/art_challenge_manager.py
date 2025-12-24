@@ -86,6 +86,11 @@ class ArtChallengeManager:
             logger.error(f"Failed to load system-art.txt: {e}")
             return "You are an art verification assistant. Verify if submissions meet challenge requirements. Respond in JSON format with 'verified' (bool) and 'reasoning' (string)."
     
+    def _is_christmas_time(self) -> bool:
+        """Check if current date is during Christmas time (Dec 24-26)"""
+        now = datetime.now()
+        return now.month == 12 and now.day in [24, 25, 26]
+    
     def _connect(self):
         """Connect to MongoDB"""
         try:
@@ -408,6 +413,21 @@ class ArtChallengeManager:
 
 You MUST suggest something COMPLETELY DIFFERENT from the above list. Be creative and unique!"""
             
+            # Check if it's Christmas time
+            is_christmas = self._is_christmas_time()
+            christmas_text = ""
+            if is_christmas:
+                christmas_text = """
+
+🎄 CHRISTMAS SPECIAL 🎄
+It's Christmas time! Your suggestion MUST be Christmas-themed. Consider:
+- Christmas decorations (ornaments, wreaths, garlands, bells)
+- Winter elements (snowflakes, icicles, snow)
+- Holiday characters (Santa, reindeer, snowman, elves)
+- Festive items (presents, candy canes, gingerbread, mistletoe)
+- Holiday atmosphere (twinkling lights, stars, candles)
+Make it festive and seasonal!"""
+            
             # Initialize Gemini client
             client = genai.Client(api_key=self.gemini_api_key)
             
@@ -420,6 +440,7 @@ REQUIREMENTS:
 - Think OUTSIDE THE BOX - avoid generic suggestions like "sparkles", "butterflies", or "rainbow"
 - Consider the image's atmosphere: dark images might benefit from something luminous, peaceful scenes might need something whimsical
 - Match the art style if possible (anime style? add anime-style items, realistic? add realistic items)
+{christmas_text}
 {recent_items_text}
 
 THINK CREATIVELY! Consider:
@@ -781,10 +802,17 @@ Please verify if this submission includes all the required elements.
         try:
             if challenge_type == self.CHALLENGE_TYPE_REMAKE:
                 # Get a random image for remake challenge with appropriate rating
-                images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+                is_christmas = self._is_christmas_time()
+                christmas_tags = "christmas, santa, snow, winter, holiday, festive" if is_christmas else None
+                
+                images = await self.get_random_image(ratings=rating, count=1, no_ai=True, tags=christmas_tags)
                 if not images or len(images) == 0:
-                    logger.error(f"Failed to get random image for remake challenge (rating: {rating})")
-                    return None
+                    # Try without Christmas tags if none found
+                    if is_christmas:
+                        images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+                    if not images or len(images) == 0:
+                        logger.error(f"Failed to get random image for remake challenge (rating: {rating})")
+                        return None
                 
                 image_data = images[0] if isinstance(images, list) else images
                 challenge_data["reference_image_url"] = image_data.get("url") or image_data.get("thumbnail_url")
@@ -795,16 +823,23 @@ Please verify if this submission includes all the required elements.
             
             elif challenge_type == self.CHALLENGE_TYPE_MIXED:
                 # Get TWO random images for mixed challenge
-                images = await self.get_random_image(ratings=rating, count=2, no_ai=True)
+                is_christmas = self._is_christmas_time()
+                christmas_tags = "christmas, santa, snow, winter, holiday, festive" if is_christmas else None
+                
+                images = await self.get_random_image(ratings=rating, count=2, no_ai=True, tags=christmas_tags)
                 if not images or len(images) < 2:
+                    # Try without Christmas tags if not enough found
+                    if is_christmas:
+                        images = await self.get_random_image(ratings=rating, count=2, no_ai=True)
                     # Try getting them separately if count=2 doesn't work
-                    image1 = await self.get_random_image(ratings=rating, count=1, no_ai=True)
-                    image2 = await self.get_random_image(ratings=rating, count=1, no_ai=True)
-                    if not image1 or not image2:
-                        logger.error(f"Failed to get random images for mixed challenge (rating: {rating})")
-                        return None
-                    images = [image1[0] if isinstance(image1, list) else image1, 
-                              image2[0] if isinstance(image2, list) else image2]
+                    if not images or len(images) < 2:
+                        image1 = await self.get_random_image(ratings=rating, count=1, no_ai=True, tags=christmas_tags if is_christmas else None)
+                        image2 = await self.get_random_image(ratings=rating, count=1, no_ai=True, tags=christmas_tags if is_christmas else None)
+                        if not image1 or not image2:
+                            logger.error(f"Failed to get random images for mixed challenge (rating: {rating})")
+                            return None
+                        images = [image1[0] if isinstance(image1, list) else image1, 
+                                  image2[0] if isinstance(image2, list) else image2]
                 
                 image1_data = images[0] if isinstance(images, list) else images
                 image2_data = images[1] if isinstance(images, list) and len(images) > 1 else images
@@ -820,10 +855,17 @@ Please verify if this submission includes all the required elements.
             
             elif challenge_type == self.CHALLENGE_TYPE_EDIT:
                 # Get a random image and have AI pick an item to add
-                images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+                is_christmas = self._is_christmas_time()
+                christmas_tags = "christmas, santa, snow, winter, holiday, festive" if is_christmas else None
+                
+                images = await self.get_random_image(ratings=rating, count=1, no_ai=True, tags=christmas_tags)
                 if not images or len(images) == 0:
-                    logger.error(f"Failed to get random image for edit challenge (rating: {rating})")
-                    return None
+                    # Try without Christmas tags if none found
+                    if is_christmas:
+                        images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+                    if not images or len(images) == 0:
+                        logger.error(f"Failed to get random image for edit challenge (rating: {rating})")
+                        return None
                 
                 image_data = images[0] if isinstance(images, list) else images
                 reference_url = image_data.get("url") or image_data.get("thumbnail_url")
@@ -831,50 +873,80 @@ Please verify if this submission includes all the required elements.
                 # Use AI to decide what item should be added
                 item_to_add = await self._generate_edit_item(reference_url)
                 if not item_to_add:
-                    # Fallback items if AI fails - extensive list for variety
-                    fallback_items = [
-                        # Magical/Fantasy
-                        "a glowing crystal", "a tiny dragon", "a magic wand", "a floating spell book",
-                        "a phoenix feather", "a wizard hat", "an enchanted mirror", "a fairy",
-                        "a unicorn horn", "glowing runes", "a potion bottle", "a magic portal",
-                        "a will-o-wisp", "a mystical orb", "an ancient tome", "a magical staff",
-                        
-                        # Animals/Creatures
-                        "a mysterious cat", "a cute ghost", "butterflies", "a sleeping fox",
-                        "a wise owl", "a colorful parrot", "a jellyfish", "a koi fish",
-                        "a hummingbird", "a playful puppy", "a curious rabbit", "a majestic deer",
-                        "a friendly frog", "a ladybug", "a seahorse", "a baby penguin",
-                        
-                        # Nature
-                        "floating bubbles", "a rainbow", "flowers", "cherry blossoms",
-                        "autumn leaves", "a crescent moon", "shooting stars", "clouds",
-                        "a sunflower", "vines and ivy", "mushrooms", "a waterfall",
-                        "snowflakes", "fireflies", "a lightning bolt", "a blooming rose",
-                        
-                        # Objects/Items
-                        "fairy lights", "a treasure chest", "a crown", "a sword",
-                        "sparkles", "a lantern", "a compass", "an hourglass",
-                        "a key", "a music note", "a paper airplane", "a hot air balloon",
-                        "a vintage camera", "a telescope", "a clock", "a dreamcatcher",
-                        "a snow globe", "wind chimes", "a message in a bottle", "a locket",
-                        
-                        # Food/Drinks
-                        "a cup of tea", "a slice of cake", "a jar of honey", "floating fruit",
-                        "a popsicle", "a lollipop", "a cookie", "a cupcake",
-                        
-                        # Whimsical/Abstract
-                        "a speech bubble", "floating hearts", "musical notes", "geometric shapes",
-                        "confetti", "ribbons", "a paper crane", "a pinwheel",
-                        "soap bubbles", "a kite", "balloons", "a prism with light",
-                        
-                        # Sci-Fi/Tech
-                        "a hologram", "a robot companion", "a UFO", "floating crystals",
-                        "a jetpack", "a laser beam", "a satellite", "a space helmet",
-                        
-                        # Seasonal/Holiday
-                        "a pumpkin", "a candy cane", "a wrapped gift", "a jack-o-lantern",
-                        "a four-leaf clover", "an easter egg", "a heart-shaped balloon", "a party hat"
-                    ]
+                    # Fallback items if AI fails
+                    is_christmas = self._is_christmas_time()
+                    
+                    if is_christmas:
+                        # Christmas-themed fallback items
+                        fallback_items = [
+                            # Christmas decorations
+                            "a sparkling christmas ornament", "a festive wreath", "a string of twinkling lights",
+                            "a glowing star", "a christmas bell", "colorful baubles", "a golden angel",
+                            "a festive garland", "a christmas stocking", "a poinsettia flower",
+                            
+                            # Winter/Snow
+                            "gentle snowflakes", "a glowing snowflake", "icicles", "a snow crystal",
+                            "fluffy snow", "a snowy window", "frosted glass", "winter frost",
+                            
+                            # Holiday characters
+                            "santa's hat", "reindeer antlers", "a cheerful snowman", "a tiny elf",
+                            "santa's sleigh", "rudolph's nose", "a snow angel", "frosty the snowman",
+                            
+                            # Festive items
+                            "wrapped presents", "a candy cane", "gingerbread cookies", "hot cocoa",
+                            "mistletoe", "a christmas tree", "holiday cookies", "festive ribbons",
+                            "a gift box", "peppermint treats", "holiday candles", "mulled wine",
+                            
+                            # Magical/Atmospheric
+                            "magical christmas sparkles", "aurora borealis", "a shooting star",
+                            "festive magic", "holiday spirit", "twinkling stardust", "winter magic",
+                            "a christmas wish", "seasonal joy", "yuletide cheer"
+                        ]
+                    else:
+                        # Regular fallback items
+                        fallback_items = [
+                            # Magical/Fantasy
+                            "a glowing crystal", "a tiny dragon", "a magic wand", "a floating spell book",
+                            "a phoenix feather", "a wizard hat", "an enchanted mirror", "a fairy",
+                            "a unicorn horn", "glowing runes", "a potion bottle", "a magic portal",
+                            "a will-o-wisp", "a mystical orb", "an ancient tome", "a magical staff",
+                            
+                            # Animals/Creatures
+                            "a mysterious cat", "a cute ghost", "butterflies", "a sleeping fox",
+                            "a wise owl", "a colorful parrot", "a jellyfish", "a koi fish",
+                            "a hummingbird", "a playful puppy", "a curious rabbit", "a majestic deer",
+                            "a friendly frog", "a ladybug", "a seahorse", "a baby penguin",
+                            
+                            # Nature
+                            "floating bubbles", "a rainbow", "flowers", "cherry blossoms",
+                            "autumn leaves", "a crescent moon", "shooting stars", "clouds",
+                            "a sunflower", "vines and ivy", "mushrooms", "a waterfall",
+                            "snowflakes", "fireflies", "a lightning bolt", "a blooming rose",
+                            
+                            # Objects/Items
+                            "fairy lights", "a treasure chest", "a crown", "a sword",
+                            "sparkles", "a lantern", "a compass", "an hourglass",
+                            "a key", "a music note", "a paper airplane", "a hot air balloon",
+                            "a vintage camera", "a telescope", "a clock", "a dreamcatcher",
+                            "a snow globe", "wind chimes", "a message in a bottle", "a locket",
+                            
+                            # Food/Drinks
+                            "a cup of tea", "a slice of cake", "a jar of honey", "floating fruit",
+                            "a popsicle", "a lollipop", "a cookie", "a cupcake",
+                            
+                            # Whimsical/Abstract
+                            "a speech bubble", "floating hearts", "musical notes", "geometric shapes",
+                            "confetti", "ribbons", "a paper crane", "a pinwheel",
+                            "soap bubbles", "a kite", "balloons", "a prism with light",
+                            
+                            # Sci-Fi/Tech
+                            "a hologram", "a robot companion", "a UFO", "floating crystals",
+                            "a jetpack", "a laser beam", "a satellite", "a space helmet",
+                            
+                            # Seasonal/Holiday
+                            "a pumpkin", "a candy cane", "a wrapped gift", "a jack-o-lantern",
+                            "a four-leaf clover", "an easter egg", "a heart-shaped balloon", "a party hat"
+                        ]
                     item_to_add = random.choice(fallback_items)
                 
                 challenge_data["reference_image_url"] = reference_url
@@ -886,12 +958,27 @@ Please verify if this submission includes all the required elements.
                 
             else:  # Tag-based challenge
                 # Get random tags for the challenge
-                tags = await self.get_random_tags(count=3, tag_type="general")
-                if not tags or len(tags) < 2:
-                    # Fallback tags if API fails
-                    fallback_tags = ["nature", "character", "fantasy", "sci-fi", "cute", "dark", 
-                                    "colorful", "minimalist", "portrait", "landscape", "action", "peaceful"]
-                    tags = random.sample(fallback_tags, 3)
+                is_christmas = self._is_christmas_time()
+                
+                if is_christmas:
+                    # Christmas-themed tags
+                    christmas_tags = [
+                        "christmas", "santa", "snowman", "reindeer", "christmas tree",
+                        "ornament", "snow", "winter", "gift", "candy cane",
+                        "wreath", "bells", "star", "angel", "holly",
+                        "mistletoe", "gingerbread", "lights", "festive", "holiday",
+                        "elf", "sleigh", "stocking", "fireplace", "cozy",
+                        "hot cocoa", "snowflake", "ice", "winter wonderland", "yuletide"
+                    ]
+                    tags = random.sample(christmas_tags, min(3, len(christmas_tags)))
+                else:
+                    # Regular tags from API
+                    tags = await self.get_random_tags(count=3, tag_type="general")
+                    if not tags or len(tags) < 2:
+                        # Fallback tags if API fails
+                        fallback_tags = ["nature", "character", "fantasy", "sci-fi", "cute", "dark", 
+                                        "colorful", "minimalist", "portrait", "landscape", "action", "peaceful"]
+                        tags = random.sample(fallback_tags, 3)
                 
                 challenge_data["required_tags"] = tags
                 challenge_data["challenge_title"] = "🏷️ Tag Challenge!"
