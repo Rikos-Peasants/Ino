@@ -672,27 +672,23 @@ class SchedulerController:
     
     # ==================== ART CHALLENGE TASKS ====================
     
-    @tasks.loop(minutes=15)  # Check every 15 minutes for more frequent challenges
+    @tasks.loop(minutes=1)  # Check every minute for precise timing
     async def check_art_challenges(self):
-        """Check for art challenge drops and handle expired challenges"""
+        """Check for art challenge drops at specific times and handle expired challenges"""
         try:
-            logger.debug("Running art challenge check...")
-            
             # Get the art challenge manager
             art_manager = getattr(self.bot, 'art_challenge_manager', None)
             art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
             
             if not art_manager or not art_view_manager:
-                logger.debug("Art challenge managers not initialized")
                 return
             
             # Get the guild
             guild = self.bot.get_guild(Config.GUILD_ID)
             if not guild:
-                logger.error("Could not find guild for art challenges")
                 return
             
-            # First, handle any expired challenges
+            # 1. First, handle any expired challenges
             expired_challenges = art_manager.get_expired_challenges()
             for challenge in expired_challenges:
                 try:
@@ -700,52 +696,56 @@ class SchedulerController:
                     channel = guild.get_channel(channel_id)
                     
                     if channel:
-                        # Post the challenge ended message
                         await art_view_manager.end_challenge(channel, challenge)
                         logger.info(f"🏁 Ended art challenge in #{channel.name}")
                     
-                    # Mark challenge as ended in database
                     art_manager.end_challenge(challenge.get("challenge_id"))
                     
                 except Exception as e:
                     logger.error(f"Error ending challenge {challenge.get('challenge_id')}: {e}")
             
-            # Now check if we should drop a new challenge
-            # Get today's designated channel and rating (alternates daily between SFW/NSFW)
-            todays_channel_id, todays_rating = art_manager.get_todays_channel()
+            # 2. Check if it's time to start a NEW challenge
+            if not art_manager.is_challenge_start_time():
+                return  # Not a start time, skip
             
-            try:
-                channel = guild.get_channel(todays_channel_id)
-                if not channel:
-                    logger.error(f"Today's art challenge channel {todays_channel_id} not found")
-                    return
-                
-                # Check if there's already an active challenge in this channel
-                active = art_manager.get_active_challenge(todays_channel_id)
-                if active:
-                    logger.debug(f"Already active challenge in #{channel.name}")
-                    return
-                
-                # Use the weighted random check to decide if we drop a challenge
-                if art_manager.should_drop_challenge():
-                    # Create and post a new challenge with appropriate rating
-                    challenge_data = await art_manager.create_challenge(
-                        channel_id=todays_channel_id,
-                        guild_id=guild.id,
-                        rating=todays_rating
-                    )
-                    
-                    if challenge_data:
-                        message = await art_view_manager.post_challenge(channel, challenge_data)
-                        if message:
-                            logger.info(f"🎨 Dropped new art challenge in #{channel.name} (rating: {todays_rating})")
-                        else:
-                            logger.error(f"Failed to post challenge message in #{channel.name}")
-                    else:
-                        logger.error(f"Failed to create challenge for #{channel.name}")
-                
-            except Exception as e:
-                logger.error(f"Error checking channel {todays_channel_id} for art challenge: {e}")
+            logger.info("🎨 Challenge start time detected! Checking for new challenge drops...")
+            
+            # Get the current window info
+            window_info = art_manager.get_current_challenge_window()
+            
+            if not window_info:
+                logger.warning("No challenge window active at start time (this shouldn't happen)")
+                return
+            
+            start_hour, end_hour, channel_type, rating, channel_id = window_info
+            
+            channel = guild.get_channel(channel_id)
+            if not channel:
+                logger.error(f"Challenge channel {channel_id} not found")
+                return
+            
+            # Check if there's already an active challenge in THIS channel
+            active = art_manager.get_active_challenge(channel_id)
+            if active:
+                logger.info(f"⏭️ Already active challenge in #{channel.name}, skipping")
+                return
+            
+            # Create and post new challenge
+            logger.info(f"🎨 Creating new {channel_type.upper()} challenge (rating: {rating})")
+            challenge_data = await art_manager.create_challenge(
+                channel_id=channel_id,
+                guild_id=guild.id,
+                rating=rating
+            )
+            
+            if challenge_data:
+                message = await art_view_manager.post_challenge(channel, challenge_data)
+                if message:
+                    logger.info(f"✅ Started {channel_type.upper()} challenge in #{channel.name} at {start_hour:02d}:00 UTC (ends at {end_hour:02d}:00 UTC)")
+                else:
+                    logger.error(f"Failed to post challenge message in #{channel.name}")
+            else:
+                logger.error(f"Failed to create challenge for #{channel.name}")
         
         except Exception as e:
             logger.error(f"Error in art challenge task: {e}")

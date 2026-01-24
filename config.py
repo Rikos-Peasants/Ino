@@ -112,9 +112,10 @@ class Config:
         ART_CHALLENGE_CHANNEL_SFW,
         ART_CHALLENGE_CHANNEL_NSFW
     ]
-    ART_CHALLENGE_CHECK_INTERVAL = 30  # Check every 30 minutes for new challenge drops
-    ART_CHALLENGE_DURATION_HOURS = 1  # Each challenge lasts 1 hour
+    ART_CHALLENGE_DURATION_HOURS = 4  # Each challenge lasts 4 hours
     ART_CHALLENGE_BASE_REWARD = 50  # Base points for completing a challenge
+    # Art Challenge Schedule (UTC times when challenges START)
+    ART_CHALLENGE_START_TIMES = [2, 8, 14, 20]  # 02:00, 08:00, 14:00, 20:00 UTC
     
     # Serika.art API Configuration  
     SERIKA_ART_KEY = os.getenv('SERIKA_ART_KEY')

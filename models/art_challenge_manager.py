@@ -50,30 +50,6 @@ class ArtChallengeManager:
         # Load art verification prompt
         self.art_system_prompt = self._load_system_prompt()
         
-        # Challenge scheduling weights (pseudo-random)
-        # Hour of day -> weight multiplier (higher = more likely)
-        self.hour_weights = {
-            # Peak hours (more challenges)
-            12: 1.5, 13: 1.5, 14: 1.5,  # Noon
-            18: 2.0, 19: 2.0, 20: 2.0, 21: 2.0,  # Evening peak
-            22: 1.5, 23: 1.5,  # Late night
-            # Off-peak hours (fewer challenges)
-            0: 0.5, 1: 0.3, 2: 0.2, 3: 0.2, 4: 0.2, 5: 0.3,  # Night
-            6: 0.5, 7: 0.7, 8: 0.8, 9: 0.9, 10: 1.0, 11: 1.2,  # Morning
-            15: 1.0, 16: 1.0, 17: 1.2  # Afternoon
-        }
-        
-        # Day of week weights (0=Monday, 6=Sunday)
-        self.day_weights = {
-            0: 0.8,  # Monday
-            1: 0.9,  # Tuesday  
-            2: 1.0,  # Wednesday
-            3: 1.0,  # Thursday
-            4: 1.3,  # Friday
-            5: 1.5,  # Saturday
-            6: 1.4   # Sunday
-        }
-        
         self._connect()
     
     def _load_system_prompt(self) -> str:
@@ -691,29 +667,64 @@ Please verify if this submission includes all the required elements.
     
     # ==================== CHALLENGE MANAGEMENT ====================
     
-    def get_todays_channel(self) -> Tuple[int, str]:
-        """Get which channel should have challenges today and the appropriate rating.
-        
-        Alternates between SFW and NSFW channels based on the day of year.
+    def get_current_challenge_window(self) -> Optional[Tuple[int, int, str, str, int]]:
+        """Get current challenge time window based on UTC hour.
         
         Returns:
-            Tuple of (channel_id, rating) where rating is 'safe' or 'questionable'
+            Tuple of (start_hour, end_hour, channel_type) or None if not in a window
+            
+        Windows:
+            02:00-06:00 UTC = SFW (safe)
+            08:00-12:00 UTC = NSFW (questionable)
+            14:00-18:00 UTC = SFW (safe)
+            20:00-00:00 UTC = NSFW (questionable) [spans midnight]
         """
         from config import Config
+        from datetime import datetime
         
-        day_of_year = datetime.now().timetuple().tm_yday
+        now = datetime.utcnow()
+        hour = now.hour
         
-        # Alternate between channels based on day
-        # Even days = SFW channel, Odd days = NSFW channel
-        if day_of_year % 2 == 0:
-            channel_id = getattr(Config, 'ART_CHALLENGE_CHANNEL_SFW', Config.ART_CHALLENGE_CHANNELS[0])
-            rating = "safe"
-        else:
-            channel_id = getattr(Config, 'ART_CHALLENGE_CHANNEL_NSFW', Config.ART_CHALLENGE_CHANNELS[1] if len(Config.ART_CHALLENGE_CHANNELS) > 1 else Config.ART_CHALLENGE_CHANNELS[0])
-            rating = "questionable"
+        # Define windows: (start_hour, end_hour, channel_type, rating)
+        windows = [
+            (2, 6, "sfw", "safe", Config.ART_CHALLENGE_CHANNEL_SFW),
+            (8, 12, "nsfw", "questionable", Config.ART_CHALLENGE_CHANNEL_NSFW),
+            (14, 18, "sfw", "safe", Config.ART_CHALLENGE_CHANNEL_SFW),
+            (20, 24, "nsfw", "questionable", Config.ART_CHALLENGE_CHANNEL_NSFW),  # 20:00-23:59
+        ]
         
-        logger.debug(f"Today's challenge channel: {channel_id} (rating: {rating}, day {day_of_year})")
-        return channel_id, rating
+        # Special case for 00:00-02:00 (part of 20:00-00:00 window)
+        if 0 <= hour < 2:
+            return (20, 24, "nsfw", "questionable", Config.ART_CHALLENGE_CHANNEL_NSFW)
+        
+        # Check which window we're in
+        for start, end, channel_type, rating, channel_id in windows:
+            if start <= hour < end:
+                return (start, end, channel_type, rating, channel_id)
+        
+        return None
+
+    def is_challenge_start_time(self) -> bool:
+        """Check if current time is exactly a challenge start time.
+        
+        Returns True at: 02:00, 08:00, 14:00, 20:00 UTC
+        (with ±2 minute tolerance for scheduler delay)
+        """
+        from datetime import datetime
+        
+        now = datetime.utcnow()
+        hour = now.hour
+        minute = now.minute
+        
+        # Challenge start hours
+        start_hours = [2, 8, 14, 20]
+        
+        # Check if we're within 2 minutes of a start time
+        if hour in start_hours and minute <= 2:
+            logger.info(f"✅ Challenge start time detected: {hour:02d}:{minute:02d} UTC")
+            return True
+        
+        return False
     
     def get_channel_rating(self, channel_id: int) -> str:
         """Get the appropriate rating for a specific channel.
@@ -730,40 +741,6 @@ Please verify if this submission includes all the required elements.
         if nsfw_channel and channel_id == nsfw_channel:
             return "questionable"
         return "safe"
-    
-    def should_drop_challenge(self) -> bool:
-        """Determine if a challenge should drop now (pseudo-random based on time)
-        
-        Target: 2-24 challenges per day (average ~8-12)
-        With 15-minute checks = 96 checks per day
-        Base probability ~10% = ~10 challenges per day average
-        """
-        now = datetime.now()
-        hour = now.hour
-        day = now.weekday()
-        
-        # Base probability: 10% per check (96 checks/day * 10% = ~10 challenges/day average)
-        base_probability = 0.10
-        
-        # Apply time-based weights
-        hour_weight = self.hour_weights.get(hour, 1.0)
-        day_weight = self.day_weights.get(day, 1.0)
-        
-        # Final probability
-        final_probability = base_probability * hour_weight * day_weight
-        
-        # Cap at 25% max probability (ensures max ~24 per day)
-        final_probability = min(final_probability, 0.25)
-        
-        # Minimum 2% to ensure at least some drops even during low-activity times
-        final_probability = max(final_probability, 0.02)
-        
-        roll = random.random()
-        should_drop = roll < final_probability
-        
-        logger.debug(f"Challenge drop check: hour={hour}, day={day}, prob={final_probability:.2%}, roll={roll:.2f}, drop={should_drop}")
-        
-        return should_drop
     
     async def create_challenge(self, channel_id: int, guild_id: int, 
                                 challenge_type: Optional[str] = None,
@@ -792,7 +769,7 @@ Please verify if this submission includes all the required elements.
             "rating": rating,  # Store the rating used
             "state": self.STATE_ACTIVE,
             "created_at": datetime.utcnow(),
-            "end_time": datetime.utcnow() + timedelta(hours=1),  # 1 hour duration
+            "end_time": datetime.utcnow() + timedelta(hours=4),  # 4 hour duration
             "message_id": None,  # Will be set after posting
             "submissions_count": 0,
             "verified_count": 0,
