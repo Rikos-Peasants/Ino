@@ -112,7 +112,6 @@ class Config:
         ART_CHALLENGE_CHANNEL_SFW,
         ART_CHALLENGE_CHANNEL_NSFW
     ]
-    ART_CHALLENGE_CHECK_INTERVAL = 30  # Check every 30 minutes for new challenge drops
     ART_CHALLENGE_DURATION_HOURS = 4  # Each challenge lasts 4 hours
     ART_CHALLENGE_BASE_REWARD = 50  # Base points for completing a challenge
     # Art Challenge Schedule (UTC times when challenges START)
