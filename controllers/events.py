@@ -337,37 +337,29 @@ class EventsController:
         return processed_data
     
     async def _handle_member_join_message(self, message: discord.Message):
-        """Handle Discord system messages for member joins and reply with sticker"""
+        """Handle Discord system messages for member joins and reply with Ino Hello image"""
         try:
             # Check if this is a system message for member join
             if message.type == discord.MessageType.new_member:
-                # Get the sticker by ID from the guild
-                sticker_id = 1391462726781505536
+                # Ino Hello image URL (replacing unavailable sticker)
+                ino_hello_image = "https://media.discordapp.net/stickers/1391462726781505536.png?size=160"
                 
-                # Try to get the sticker from the guild first
-                sticker = None
-                if message.guild:
-                    sticker = discord.utils.get(message.guild.stickers, id=sticker_id)
+                # Check if it's Christmas time (Dec 24-26)
+                now = datetime.now()
+                is_christmas = now.month == 12 and now.day in [24, 25, 26]
                 
-                if sticker:
-                    # Check if it's Christmas time (Dec 24-26)
-                    now = datetime.now()
-                    is_christmas = now.month == 12 and now.day in [24, 25, 26]
-                    
-                    # Send the sticker with optional Christmas message
-                    if is_christmas:
-                        await message.reply(content="Merry Christmas! 🎄", stickers=[sticker])
-                        logger.info(f"Sent welcome sticker with Christmas message for member join in #{getattr(message.channel, 'name', 'DM')}")
-                    else:
-                        await message.reply(stickers=[sticker])
-                        logger.info(f"Sent welcome sticker for member join message in #{getattr(message.channel, 'name', 'DM')}")
+                # Send the image with optional Christmas message
+                if is_christmas:
+                    await message.reply(content=f"Merry Christmas! 🎄\n{ino_hello_image}")
+                    logger.info(f"Sent welcome image with Christmas message for member join in #{getattr(message.channel, 'name', 'DM')}")
                 else:
-                    logger.warning(f"Could not find guild sticker with ID {sticker_id}")
-                    
+                    await message.reply(content=ino_hello_image)
+                    logger.info(f"Sent welcome image for member join message in #{getattr(message.channel, 'name', 'DM')}")
+        
         except discord.Forbidden:
-            logger.error("Missing permission to send sticker messages for member joins")
+            logger.error("Missing permission to send messages for member joins")
         except discord.HTTPException as e:
-            logger.error(f"HTTP error sending sticker for member join message: {e}")
+            logger.error(f"HTTP error sending image for member join message: {e}")
         except Exception as e:
             logger.error(f"Error handling member join message: {e}")
     
