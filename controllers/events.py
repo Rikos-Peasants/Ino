@@ -342,7 +342,7 @@ class EventsController:
             # Check if this is a system message for member join
             if message.type == discord.MessageType.new_member:
                 # Get the sticker by ID from the guild
-                sticker_id = 1391462726781505536
+                sticker_id = 1465803405367705620
                 
                 # Try to get the sticker from the guild first
                 sticker = None
