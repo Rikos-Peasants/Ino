@@ -341,33 +341,40 @@ class EventsController:
         try:
             # Check if this is a system message for member join
             if message.type == discord.MessageType.new_member:
-                # Sticker is from a different server, fetch it directly by ID
-                sticker_id = 1465803405367705620
+                sticker_id = 1391462726781505536
+                sticker_image_url = "https://media.discordapp.net/stickers/1391462726781505536.webp?size=160&quality=lossless"
                 
-                # Fetch the sticker directly from Discord API (works cross-server)
+                # Check if it's Christmas time (Dec 24-26)
+                now = datetime.now()
+                is_christmas = now.month == 12 and now.day in [24, 25, 26]
+                christmas_msg = "Merry Christmas! 🎄" if is_christmas else None
+                
+                # Try to send the sticker first
+                sticker_sent = False
                 try:
                     sticker = await self.bot.fetch_sticker(sticker_id)
-                except discord.NotFound:
-                    sticker = None
-                    logger.warning(f"Could not find sticker with ID {sticker_id}")
+                    if sticker:
+                        if christmas_msg:
+                            await message.reply(content=christmas_msg, stickers=[sticker])
+                        else:
+                            await message.reply(stickers=[sticker])
+                        sticker_sent = True
+                        logger.info(f"Sent welcome sticker for member join in #{getattr(message.channel, 'name', 'DM')}")
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException) as e:
+                    logger.warning(f"Could not send sticker (ID {sticker_id}), falling back to image: {e}")
                 
-                if sticker:
-                    # Check if it's Christmas time (Dec 24-26)
-                    now = datetime.now()
-                    is_christmas = now.month == 12 and now.day in [24, 25, 26]
-                    
-                    # Send the sticker with optional Christmas message
-                    if is_christmas:
-                        await message.reply(content="Merry Christmas! 🎄", stickers=[sticker])
-                        logger.info(f"Sent welcome sticker with Christmas message for member join in #{getattr(message.channel, 'name', 'DM')}")
+                # Fallback to image URL if sticker failed
+                if not sticker_sent:
+                    if christmas_msg:
+                        await message.reply(content=f"{christmas_msg}\n{sticker_image_url}")
                     else:
-                        await message.reply(stickers=[sticker])
-                        logger.info(f"Sent welcome sticker for member join message in #{getattr(message.channel, 'name', 'DM')}")
+                        await message.reply(content=sticker_image_url)
+                    logger.info(f"Sent welcome sticker image for member join in #{getattr(message.channel, 'name', 'DM')}")
                     
         except discord.Forbidden as e:
-            logger.error(f"Missing permission to send sticker messages for member joins: {e}")
+            logger.error(f"Missing permission to send messages for member joins: {e}")
         except discord.HTTPException as e:
-            logger.error(f"HTTP error sending sticker for member join message: {e}")
+            logger.error(f"HTTP error sending welcome for member join: {e}")
         except Exception as e:
             logger.error(f"Error handling member join message: {e}")
     
