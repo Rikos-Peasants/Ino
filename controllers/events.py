@@ -341,15 +341,15 @@ class EventsController:
         try:
             # Check if this is a system message for member join
             if message.type == discord.MessageType.new_member:
-                # Sticker is from a different server, fetch it from there
+                # Sticker is from a different server, fetch it directly by ID
                 sticker_id = 1465803405367705620
-                sticker_source_guild_id = 1161608848428236902
                 
-                # Try to get the sticker from the source guild
-                sticker = None
-                source_guild = self.bot.get_guild(sticker_source_guild_id)
-                if source_guild:
-                    sticker = discord.utils.get(source_guild.stickers, id=sticker_id)
+                # Fetch the sticker directly from Discord API (works cross-server)
+                try:
+                    sticker = await self.bot.fetch_sticker(sticker_id)
+                except discord.NotFound:
+                    sticker = None
+                    logger.warning(f"Could not find sticker with ID {sticker_id}")
                 
                 if sticker:
                     # Check if it's Christmas time (Dec 24-26)
@@ -363,11 +363,9 @@ class EventsController:
                     else:
                         await message.reply(stickers=[sticker])
                         logger.info(f"Sent welcome sticker for member join message in #{getattr(message.channel, 'name', 'DM')}")
-                else:
-                    logger.warning(f"Could not find guild sticker with ID {sticker_id}")
                     
-        except discord.Forbidden:
-            logger.error("Missing permission to send sticker messages for member joins")
+        except discord.Forbidden as e:
+            logger.error(f"Missing permission to send sticker messages for member joins: {e}")
         except discord.HTTPException as e:
             logger.error(f"HTTP error sending sticker for member join message: {e}")
         except Exception as e:
