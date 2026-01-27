@@ -341,13 +341,15 @@ class EventsController:
         try:
             # Check if this is a system message for member join
             if message.type == discord.MessageType.new_member:
-                # Get the sticker by ID from the guild
+                # Sticker is from a different server, fetch it from there
                 sticker_id = 1465803405367705620
+                sticker_source_guild_id = 1161608848428236902
                 
-                # Try to get the sticker from the guild first
+                # Try to get the sticker from the source guild
                 sticker = None
-                if message.guild:
-                    sticker = discord.utils.get(message.guild.stickers, id=sticker_id)
+                source_guild = self.bot.get_guild(sticker_source_guild_id)
+                if source_guild:
+                    sticker = discord.utils.get(source_guild.stickers, id=sticker_id)
                 
                 if sticker:
                     # Check if it's Christmas time (Dec 24-26)
