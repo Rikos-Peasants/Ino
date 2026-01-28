@@ -1,202 +1,406 @@
-# Riko Discord Bot
+# 🦊 Ino - Riko's Shrine Guardian Bot
 
-A professional Discord bot built with discord.py using MVC architecture that prevents users with a specific banned role from accessing restricted roles. Features image voting leaderboards with MongoDB storage.
+<div align="center">
 
-## Features
+![Discord.py](https://img.shields.io/badge/discord.py-2.3.0+-blue?logo=discord&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10+-yellow?logo=python&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-4.0+-green?logo=mongodb&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-purple)
 
-- **Role Management**: Automatically prevents users with banned role from getting restricted role
-- **NSFWBAN System**: Ban users from NSFW content with persistent role reapplication on rejoin
-- **Image Voting System**: Automatic 👍👎 reactions on images with real-time leaderboard tracking
-- **MongoDB Integration**: Cloud-based data storage with real-time updates and backups
-- **Best Image Posts**: Weekly, monthly, and yearly best image announcements
-- **Leaderboard Commands**: View top users by image upvotes and personal statistics
-- **Access Control**: Sends embed notification when access is denied
-- **Hybrid Commands**: Support both text commands (`R!command`) and slash commands (`/command`)
-- **Uptime Command**: Check bot uptime with `R!uptime` or `/uptime`
-- **Cycling Status**: Funny status messages that cycle every 2 minutes
-- **Professional Architecture**: Clean MVC structure for easy maintenance and expansion
-- **Docker Support**: Easy deployment with Docker and Docker Compose
+**A feature-rich Discord bot with AI-powered content moderation, gamification, and community engagement features.**
 
-## Quick Start with Docker (Recommended)
+*Ino is a shrine spirit watching over the community while her friend Riko explores the digital realm.*
 
-1. **Prerequisites**
-   ```bash
-   # Install Docker and Docker Compose
-   sudo pacman -S docker docker-compose  # Arch Linux
-   # or
-   sudo apt install docker.io docker-compose  # Ubuntu/Debian
-   ```
+[Features](#-features) • [Quick Start](#-quick-start) • [Commands](#-commands) • [Configuration](#%EF%B8%8F-configuration) • [Architecture](#-architecture)
 
-2. **Configure Environment**
-   - Update the `.env` file with your configuration:
-   ```env
-   DISCORD_TOKEN=your_bot_token_here
-   GUILD_ID=your_guild_id
-   BANNED_ROLE_ID=your_banned_role_id
-   RESTRICTED_ROLE_ID=your_restricted_role_id
-   MONGO_URI=your_mongodb_connection_string
-   ```
+</div>
 
-3. **Start the Bot**
-   ```bash
-   ./docker-start.sh
-   ```
+---
 
-4. **Manage the Bot**
-   ```bash
-   # View logs
-   docker-compose logs -f
-   
-   # Stop the bot
-   docker-compose down
-   
-   # Restart the bot
-   docker-compose restart
-   
-   # Check status
-   docker-compose ps
-   ```
+## ✨ Features
 
-## Manual Setup (Alternative)
+### 🎮 Gamification & Engagement
+| Feature | Description |
+|---------|-------------|
+| **🏆 Quest System** | Daily quests with varying difficulties (easy/medium/hard) and categories (posting, voting, engagement) |
+| **🎖️ Achievements** | Unlockable achievements for milestones with point rewards |
+| **🔥 Streak System** | Track daily activity streaks with bonus rewards |
+| **📊 Leaderboards** | Comprehensive leaderboards for images, points, and achievements |
+| **⭐ Patreon Perks** | 1.5x point multiplier for Patreon supporters |
 
-1. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+### 🎨 Art Challenge System
+| Feature | Description |
+|---------|-------------|
+| **🖌️ AI Art Challenges** | Automated art challenges using the Serika.art API |
+| **🤖 AI Verification** | Gemini 2.5 Flash-powered submission verification |
+| **🏅 Challenge Types** | Remake, Tags, Mixed, and Edit challenges |
+| **📅 Scheduled Drops** | Challenges drop at 02:00, 08:00, 14:00, and 20:00 UTC |
+| **💰 Point Rewards** | Earn 50 base points per completed challenge |
 
-2. **Configure Environment**
-   - Update the `.env` file with your bot token, role IDs, and MongoDB URI
-   - Make sure your bot has the following permissions:
-     - Read Messages
-     - Send Messages
-     - Add Reactions
-     - Manage Roles
-     - Use Slash Commands
-     - Read Message History
+### 🖼️ Image Voting System
+| Feature | Description |
+|---------|-------------|
+| **👍👎 Auto-Reactions** | Automatic voting reactions on images in designated channels |
+| **📈 Real-time Tracking** | Instant vote tracking with MongoDB storage |
+| **🥇 Best Image Posts** | Automatic weekly, monthly, and yearly highlights |
+| **📷 Historical Scanning** | Processes 90 days of historical images on startup |
 
-3. **Run the Bot**
-   ```bash
-   python bot.py
-   ```
+### 🛡️ Moderation & Security
+| Feature | Description |
+|---------|-------------|
+| **🔒 NSFWBAN System** | Persistent NSFW content bans with automatic role reapplication |
+| **👁️ Content Moderation** | AI-powered content moderation using OpenAI and Google NL APIs |
+| **📝 Audit Logging** | Complete logging of all moderation actions |
+| **🚫 Role Management** | Automatic role restriction enforcement |
+| **💬 DM Notifications** | Users receive detailed ban/unban notifications |
 
-## MongoDB Setup
+### 📺 YouTube Integration
+| Feature | Description |
+|---------|-------------|
+| **🔔 Video Announcements** | Automatic notifications for new YouTube uploads |
+| **📱 Shorts Detection** | Separate role pings for YouTube Shorts (≤60 seconds) |
+| **🦊 AI Announcements** | Ino's personality-driven video announcements using Gemini AI |
+| **📡 RSS Monitoring** | Real-time YouTube channel monitoring |
 
-The bot uses MongoDB for storing leaderboard data. Configure your MongoDB connection in the `.env` file:
+### 🏛️ Community Features
+| Feature | Description |
+|---------|-------------|
+| **💬 Forum Support** | Auto-pings for staff forum threads with tag-based formatting |
+| **📋 Help System** | Automatic help role pings for project-related threads |
+| **🎭 Dynamic Status** | Rotating humorous status messages every 2 minutes |
+| **🎉 Welcome System** | Custom welcome messages for new members |
 
-```env
-MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/database
-```
+---
 
-### Migrating from JSON (if upgrading)
+## 🚀 Quick Start
 
-If you have existing JSON data, use the migration script:
+### Prerequisites
+
+- **Python 3.10+** or **Docker**
+- **MongoDB** database (local or cloud)
+- **Discord Bot Token** with required intents
+
+### Docker Deployment (Recommended)
 
 ```bash
-python migrate_to_mongo.py
+# Clone the repository
+git clone https://github.com/Rikos-Peasants/Ino.git
+cd Ino
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your configuration
+
+# Start the bot
+./docker-start.sh
+
+# Or use docker-compose directly
+docker-compose up -d
 ```
 
-## Commands
+### Manual Installation
 
-All commands support both text and slash formats:
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-| Command | Text Format | Slash Format | Description | Access |
-|---------|------------|--------------|-------------|--------|
-| Uptime | `R!uptime` | `/uptime` | Shows bot uptime | Everyone |
-| Leaderboard | `R!leaderboard` | `/leaderboard` | Shows image voting leaderboard | Everyone |
-| Stats | `R!stats [@user]` | `/stats [user]` | Shows user's image statistics | Everyone |
-| NSFWBAN | `R!nsfwban @user [reason]` | `/nsfwban user [reason]` | Ban user from NSFW content | Admins/Moderator Role/Owners |
-| NSFWUNBAN | `R!nsfwunban @user` | `/nsfwunban user` | Remove NSFW ban from user | Admins/Moderator Role/Owners |
-| Process Old | `R!processold` | `/processold` | Process historical images (past year) | Owners Only |
-| Best Week | `R!bestweek` | `/bestweek` | Manually post best image of week | Owners Only |
-| Best Month | `R!bestmonth` | `/bestmonth` | Manually post best image of month | Owners Only |
-| Best Year | `R!bestyear` | `/bestyear` | Manually post best image of year | Owners Only |
-| DB Status | `R!dbstatus` | `/dbstatus` | Check MongoDB connection status | Owners Only |
-| Test Owner | `R!testowner` | `/testowner` | Test bot owner permissions | Owners Only |
+# Configure environment
+cp .env.example .env
+# Edit .env with your configuration
 
-## NSFWBAN System
-
-- **Persistent Bans**: Users banned from NSFW content with role-based restrictions
-- **Automatic Reapplication**: NSFWBAN role is automatically reapplied when users rejoin the server
-- **Permission-Based Access**: Only users with the moderator role (ID: 1372477845997359244), administrators, or bot owners can use ban commands
-- **Database Tracking**: All bans are stored in MongoDB with reason, timestamp, and moderator information
-- **DM Notifications**: Users receive DM notifications when banned/unbanned with detailed information
-- **Audit Trail**: Complete logging of all NSFWBAN actions for moderation transparency
-
-## Image Voting System
-
-- **Automatic Reactions**: Bot adds 👍👎 to all images in configured channels
-- **Real-time Tracking**: Votes are tracked instantly in MongoDB
-- **Net Scoring**: Score = 👍 votes - 👎 votes
-- **Leaderboard**: Users ranked by total net score across all images
-- **Best Image Posts**: Automatic weekly (Sunday), monthly (1st), yearly (Jan 1st) posts
-- **Chat Reminder**: Automatically reminds users to move conversations to chat channels when 10 consecutive text messages are detected in image channels
-
-## Project Structure
-
-```
-├── bot.py                          # Main bot file
-├── config.py                       # Configuration management  
-├── requirements.txt                # Dependencies
-├── .env                           # Environment variables (includes MongoDB URI)
-├── migrate_to_mongo.py            # JSON to MongoDB migration script
-├── models/                        # Data models
-│   ├── __init__.py
-│   ├── mongo_leaderboard_manager.py  # MongoDB operations
-│   └── role_manager.py            # Role management logic
-├── views/                         # UI components
-│   ├── __init__.py
-│   └── embeds.py                  # Discord embeds
-└── controllers/                   # Business logic
-    ├── __init__.py
-    ├── commands.py                # Hybrid commands
-    ├── events.py                  # Discord events (includes image tracking)
-    └── scheduler.py               # Scheduled tasks for best image posts
+# Run the bot
+python bot.py
 ```
 
-## Troubleshooting
+### Docker Management Commands
 
-### "Unknown Integration" Error for Slash Commands
+```bash
+docker-compose logs -f      # View live logs
+docker-compose down         # Stop the bot
+docker-compose restart      # Restart the bot
+docker-compose ps           # Check status
+```
 
-If slash commands show "Unknown integration":
+---
 
-1. **Check Bot Permissions**: Ensure the bot has "Use Slash Commands" permission
-2. **Reinvite Bot**: Use this URL format to reinvite with proper permissions:
+## ⚙️ Configuration
+
+### Required Environment Variables
+
+```env
+# Discord Configuration
+DISCORD_TOKEN=your_bot_token_here
+GUILD_ID=your_guild_id
+COMMAND_PREFIX=R!
+
+# Role Configuration
+BANNED_ROLE_ID=your_banned_role_id
+RESTRICTED_ROLE_ID=your_restricted_role_id
+
+# Database
+MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/database
+```
+
+### Optional Environment Variables
+
+```env
+# AI Services
+GEMINI_API_KEY=your_gemini_api_key          # For AI announcements & art verification
+OPENAI_KEY=your_openai_key                   # Primary content moderation
+GOOGLE_NL_API_KEY=your_google_nl_key         # Secondary moderation check
+
+# YouTube Integration
+YOUTUBE_API_KEY=your_youtube_api_key         # YouTube Data API
+
+# Art Challenge System
+SERIKA_ART_KEY=your_serika_api_key           # Serika.art API access
+SERIKA_ART_URL_BASE=https://serika.art/api/v1
+
+# Patreon Integration
+PATREON_ROLE_ID=your_patreon_role_id         # Role for Patreon supporters
+```
+
+### Required Bot Permissions
+
+Enable these permissions when inviting the bot:
+- ✅ Read Messages/View Channels
+- ✅ Send Messages
+- ✅ Embed Links
+- ✅ Attach Files
+- ✅ Add Reactions
+- ✅ Manage Roles
+- ✅ Use Slash Commands
+- ✅ Read Message History
+- ✅ Manage Messages
+
+### Required Bot Intents
+
+Enable these intents in the Discord Developer Portal:
+- ✅ Server Members Intent
+- ✅ Message Content Intent
+
+---
+
+## 📋 Commands
+
+### Public Commands
+
+| Command | Description |
+|---------|-------------|
+| `/uptime` | Shows how long the bot has been running |
+| `/leaderboard` | View the image voting leaderboard |
+| `/stats [user]` | View your or another user's image statistics |
+| `/quests` | View your daily quests and progress |
+| `/achievements [user]` | View achievements and unlocked badges |
+| `/streak` | Check your daily activity streak |
+| `/patreon` | View Patreon information and supporter perks |
+
+### Moderation Commands
+
+| Command | Description | Access |
+|---------|-------------|--------|
+| `/nsfwban <user> [reason]` | Ban user from NSFW content | Moderators/Admins |
+| `/nsfwunban <user>` | Remove NSFW ban from user | Moderators/Admins |
+| `/warn <user> <reason>` | Issue a warning to a user | Moderators/Admins |
+| `/purge <amount>` | Delete messages in bulk | Admins |
+
+### Owner Commands
+
+| Command | Description |
+|---------|-------------|
+| `/processold` | Process historical images from the past year |
+| `/bestweek` | Manually post the best image of the week |
+| `/bestmonth` | Manually post the best image of the month |
+| `/bestyear` | Manually post the best image of the year |
+| `/dbstatus` | Check MongoDB connection status |
+| `/testowner` | Test bot owner permissions |
+| `/synccommands` | Force sync slash commands to Discord |
+
+### Art Challenge Commands
+
+| Command | Description | Access |
+|---------|-------------|--------|
+| `/artchallenge` | View current active art challenge | Everyone |
+| `/submit` | Submit artwork to the current challenge | Everyone |
+| `/challengestats` | View your art challenge statistics | Everyone |
+
+> **Note:** All commands support both text format (`R!command`) and slash format (`/command`)
+
+---
+
+## 🏗️ Architecture
+
+Ino follows the **Model-View-Controller (MVC)** pattern for clean separation of concerns:
+
+```
+Ino/
+├── 📄 bot.py                           # Main bot entry point & Discord client
+├── 📄 config.py                        # Environment configuration management
+├── 📄 sync_commands.py                 # Utility for syncing slash commands
+├── 📄 requirements.txt                 # Python dependencies
+├── 📄 docker-compose.yml               # Docker orchestration
+├── 📄 Dockerfile                       # Container build instructions
+├── 📄 docker-start.sh                  # Quick start script
+│
+├── 📁 models/                          # Data layer & business logic
+│   ├── 📄 mongo_leaderboard_manager.py # MongoDB operations for leaderboards
+│   ├── 📄 quest_manager.py             # Quest & achievement system
+│   ├── 📄 art_challenge_manager.py     # Art challenge logic & AI verification
+│   ├── 📄 youtube_monitor.py           # YouTube RSS monitoring & announcements
+│   ├── 📄 random_announcer.py          # AI-powered random announcements
+│   ├── 📄 role_manager.py              # Role management logic
+│   ├── 📄 moderation_manager.py        # Content moderation system
+│   ├── 📄 mod_offline_manager.py       # Offline moderation queue
+│   └── 📄 inorep_manager.py            # Reputation system
+│
+├── 📁 views/                           # Presentation layer
+│   ├── 📄 embeds.py                    # Discord embed templates
+│   ├── 📄 art_challenge_view.py        # Art challenge UI components
+│   ├── 📄 moderation_view.py           # Moderation UI components
+│   ├── 📄 forum_thread_view.py         # Forum thread UI
+│   ├── 📄 ask_staff_topic_view.py      # Staff request UI
+│   ├── 📄 combined_leaderboard_view.py # Leaderboard pagination
+│   └── 📄 paginated_achievements_view.py # Achievement browser
+│
+├── 📁 controllers/                     # Event handlers & command routing
+│   ├── 📄 commands.py                  # All bot commands (hybrid)
+│   ├── 📄 events.py                    # Discord event handlers
+│   ├── 📄 scheduler.py                 # Scheduled tasks (best images, challenges)
+│   └── 📄 security.py                  # Command permission decorators
+│
+├── 📄 system-prompt.txt                # Ino's personality for AI announcements
+└── 📄 system-art.txt                   # Art verification AI prompt
+```
+
+### Technology Stack
+
+| Component | Technology |
+|-----------|------------|
+| **Discord Library** | discord.py 2.3.0+ |
+| **Database** | MongoDB with PyMongo |
+| **AI Models** | Google Gemini 2.5 Flash |
+| **Content Moderation** | OpenAI API, Google Natural Language API |
+| **Art API** | Serika.art API |
+| **YouTube** | YouTube Data API v3, RSS feeds |
+| **Image Processing** | Pillow |
+| **HTTP Client** | aiohttp, requests |
+| **Containerization** | Docker, Docker Compose |
+
+---
+
+## 📡 API Integrations
+
+### Google Gemini AI
+Used for AI-powered features:
+- YouTube video announcements with Ino's personality
+- Art challenge submission verification
+- Random community announcements
+
+### Serika.art API
+Used for the art challenge system:
+- Fetching reference images for challenges
+- Challenge tag generation
+- Art content sourcing
+
+### YouTube Data API
+Used for video monitoring:
+- Channel activity monitoring
+- Video metadata retrieval
+- Shorts detection (≤60 seconds)
+
+### Content Moderation APIs
+Dual-layer content moderation:
+- **Primary**: OpenAI Moderation API
+- **Secondary**: Google Natural Language API
+
+---
+
+## 🐳 Docker Configuration
+
+### Resource Limits
+
+The Docker container is configured with:
+- **Memory Limit**: 512MB (256MB reserved)
+- **CPU Limit**: 0.5 cores (0.25 reserved)
+- **Auto-restart**: On failure (unless stopped manually)
+
+### Health Monitoring
+
+Built-in health checks run every 30 seconds:
+- Verifies Python process is running
+- Automatic container restart on failure
+- 3 retries before marking unhealthy
+
+### Logging
+
+Structured JSON logging with:
+- **Max file size**: 10MB per log file
+- **Max files**: 3 (rotating)
+- **Log location**: `./logs/` volume mount
+
+---
+
+## 🔧 Troubleshooting
+
+### Slash Commands Not Appearing
+
+1. **Wait for sync** - Global commands can take up to 1 hour to propagate
+2. **Check permissions** - Ensure bot has "Use Slash Commands" permission
+3. **Verify intents** - Enable required intents in Developer Portal
+4. **Re-invite bot** with proper scopes:
    ```
    https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&permissions=8&scope=bot%20applications.commands
    ```
-3. **Wait for Sync**: Commands may take up to 1 hour to appear globally
-4. **Check Logs**: Look for "Successfully synced X commands" in the logs
 
-### Command Registration Issues
+### MongoDB Connection Issues
 
-- Commands are registered as hybrid commands (both text and slash)
-- Text commands work immediately with `R!` prefix
-- Slash commands require Discord sync (may take time)
-- Check bot logs for sync status
+1. **Check URI format** - Ensure proper connection string
+2. **Verify network** - Check firewall/IP whitelist settings
+3. **Test credentials** - Verify username/password
+4. **Check cluster status** - Ensure MongoDB cluster is running
 
-## Funny Status Messages
+### Bot Not Responding
 
-The bot cycles through humorous status messages every 2 minutes, including:
-- "Watching over {users} Riko Simps"
-- "Listening to Rayen's New Proposals"
-- "Watching Angel be mad at Taishi"
-- "Listening to random people yap in DMs"
-- "Watching new messages & ideas pile up"
-- And many more hilarious statuses!
+1. **Check logs** - `docker-compose logs -f` or console output
+2. **Verify token** - Ensure Discord token is valid
+3. **Check guild ID** - Bot only responds in configured guild
+4. **Restart bot** - `docker-compose restart`
 
-## Configuration
+---
 
-The bot is configured for:
-- **Guild ID**: 1278117138909102170
-- **Banned Role ID**: 1378693499540471838 (users with this role cannot get restricted role)
-- **Restricted Role ID**: 1378691142819909853 (role that banned users cannot access)
-- **Text Command Prefix**: `R!` (e.g., `R!uptime`)
-- **Slash Commands**: Available as `/command` (e.g., `/uptime`)
+## 🎭 Ino's Personality
 
-## Docker Benefits
+Ino is a shrine spirit who has watched over the Fushimi Inari shrine for centuries. When her friend Riko became trapped in the digital realm as a fox spirit internet personality, Ino took on the role of announcing videos and watching over the community.
 
-- **Consistent Environment**: Same runtime across all systems
-- **Easy Deployment**: One command to start the bot
-- **Resource Management**: Built-in memory and CPU limits
-- **Health Monitoring**: Automatic restart if bot crashes
-- **Log Management**: Structured logging with rotation
+**Character Traits:**
+- 🧘 **Composed & Wise** - Centuries of shrine-keeping bring calm rationality
+- 💕 **Caring but Exasperated** - Genuinely cares, but sighs at the community's antics
+- 😏 **Gently Teasing** - A little playful ribbing to keep everyone motivated
+- 🛡️ **Protective** - Especially of Riko and the community's wellbeing
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please ensure:
+1. Code follows the existing MVC architecture
+2. New features include appropriate logging
+3. Database operations use the existing managers
+4. Commands use the hybrid command system
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+**Made with 💜 for the Riko community**
+
+*"Well, well... another update complete. Now, if you'll excuse me, I have a shrine to tend to."* - Ino
+
+</div>
