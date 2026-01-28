@@ -441,7 +441,7 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
             ]
             
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.5-flash",
                 contents=contents,
                 config=types.GenerateContentConfig(
                     temperature=1.2  # Higher temperature for more creative and varied suggestions
@@ -621,7 +621,7 @@ Please verify if this submission includes all the required elements.
             
             # Generate response
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.5-flash",
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=self.art_system_prompt,
@@ -1158,7 +1158,7 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             ]
             
             response = client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-2.5-flash",
                 contents=contents,
                 config=types.GenerateContentConfig(
                     temperature=0.5
