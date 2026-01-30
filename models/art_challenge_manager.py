@@ -448,7 +448,12 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
                 )
             )
             
-            item = response.text.strip().lower()
+            response_text = (response.text or "").strip()
+            if not response_text:
+                logger.warning("Gemini returned empty edit item response")
+                return None
+
+            item = response_text.lower()
             # Clean up the response
             if item.startswith("- "):
                 item = item[2:]
@@ -630,7 +635,16 @@ Please verify if this submission includes all the required elements.
             )
             
             # Parse the response
-            response_text = response.text.strip()
+            response_text = (response.text or "").strip()
+            if not response_text:
+                logger.warning("Gemini returned empty verification response")
+                return {
+                    "verified": False,
+                    "confidence": 0,
+                    "reasoning": "AI verification returned an empty response",
+                    "matched_elements": [],
+                    "missing_elements": []
+                }
             
             # Try to extract JSON from the response
             try:
@@ -1165,7 +1179,14 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 )
             )
             
-            response_text = response.text.strip()
+            response_text = (response.text or "").strip()
+            if not response_text:
+                logger.warning("Gemini returned empty winner selection response")
+                return {
+                    "user_id": submission_data[0]["user_id"],
+                    "image_url": submission_data[0]["image_url"],
+                    "reasoning": "Selected as winner! (AI returned no response)"
+                }
             
             # Parse the response
             try:
