@@ -1179,7 +1179,14 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 )
             )
             
-            response_text = response.text.strip()
+            response_text = (getattr(response, "text", None) or "").strip()
+            if not response_text:
+                logger.warning("Gemini returned empty winner selection response")
+                return {
+                    "user_id": submission_data[0]["user_id"],
+                    "image_url": submission_data[0]["image_url"],
+                    "reasoning": "Selected as winner! (AI returned no response)"
+                }
             
             # Parse the response
             try:
