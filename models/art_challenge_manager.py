@@ -464,32 +464,39 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
             max_retries = 3
             response_text = ""
             
-            for attempt in range(max_retries):
-                try:
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            temperature=1.2,  # Higher temperature for more creative and varied suggestions
-                            safety_settings=safety_settings
+            # Try different models if one fails - gemini-2.0-flash is more stable
+            models_to_try = ["gemini-2.0-flash", "gemini-2.5-flash"]
+            
+            for model_name in models_to_try:
+                if response_text:
+                    break  # Already got a response
+                    
+                for attempt in range(max_retries):
+                    try:
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                temperature=1.2,  # Higher temperature for more creative and varied suggestions
+                                safety_settings=safety_settings
+                            )
                         )
-                    )
-                    
-                    response_text = (response.text or "").strip()
-                    if response_text:
-                        break  # Success, exit retry loop
-                    
-                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: Gemini returned empty edit item response, retrying...")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(1)
                         
-                except Exception as retry_error:
-                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: Gemini API error: {retry_error}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(1)
+                        response_text = (response.text or "").strip()
+                        if response_text:
+                            break  # Success, exit retry loop
+                        
+                        logger.warning(f"{model_name} attempt {attempt + 1}/{max_retries}: Empty edit item response, retrying...")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1)
+                            
+                    except Exception as retry_error:
+                        logger.warning(f"{model_name} attempt {attempt + 1}/{max_retries}: API error: {retry_error}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1)
             
             if not response_text:
-                logger.warning(f"Gemini returned empty edit item response after {max_retries} attempts")
+                logger.warning(f"Gemini returned empty edit item response after trying all models")
                 return None
 
             item = response_text.lower()
@@ -688,54 +695,68 @@ Please verify if this submission includes all the required elements.
             response_text = ""
             last_error = None
             
-            for attempt in range(max_retries):
-                try:
-                    # Generate response
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            system_instruction=self.art_system_prompt,
-                            temperature=0.3,  # Lower temperature for more consistent verification
-                            safety_settings=safety_settings
+            # Try different models if one fails - gemini-2.0-flash is more stable
+            models_to_try = ["gemini-2.0-flash", "gemini-2.5-flash"]
+            
+            for model_name in models_to_try:
+                if response_text:
+                    break  # Already got a response
+                    
+                for attempt in range(max_retries):
+                    try:
+                        # Generate response - use proper system_instruction format per Google docs
+                        response = client.models.generate_content(
+                            model=model_name,
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=[
+                                    types.Part.from_text(text=self.art_system_prompt)
+                                ],
+                                temperature=0.3,  # Lower temperature for more consistent verification
+                                safety_settings=safety_settings
+                            )
                         )
-                    )
                     
-                    # Parse the response
-                    response_text = (response.text or "").strip()
-                    
-                    if response_text:
-                        break  # Success, exit retry loop
-                    
-                    # Log detailed info about empty response for debugging
-                    if hasattr(response, 'candidates') and response.candidates:
-                        for i, candidate in enumerate(response.candidates):
-                            finish_reason = getattr(candidate, 'finish_reason', 'unknown')
-                            logger.warning(f"Attempt {attempt + 1}: Candidate {i} finish_reason: {finish_reason}")
-                            if hasattr(candidate, 'safety_ratings'):
-                                logger.warning(f"Attempt {attempt + 1}: Safety ratings: {candidate.safety_ratings}")
-                    
-                    if hasattr(response, 'prompt_feedback'):
-                        logger.warning(f"Attempt {attempt + 1}: Prompt feedback: {response.prompt_feedback}")
-                    
-                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: Gemini returned empty verification response, retrying...")
-                    
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(1)  # Brief delay before retry
+                        # Parse the response
+                        response_text = (response.text or "").strip()
                         
-                except Exception as retry_error:
-                    last_error = retry_error
-                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: Gemini API error: {retry_error}")
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(1)
+                        if response_text:
+                            logger.info(f"Gemini verification successful with model {model_name}")
+                            break  # Success, exit retry loop
+                        
+                        # Log detailed info about empty response for debugging
+                        if hasattr(response, 'candidates') and response.candidates:
+                            for i, candidate in enumerate(response.candidates):
+                                finish_reason = getattr(candidate, 'finish_reason', 'unknown')
+                                logger.warning(f"{model_name} attempt {attempt + 1}: Candidate {i} finish_reason: {finish_reason}")
+                                if hasattr(candidate, 'safety_ratings'):
+                                    logger.warning(f"{model_name} attempt {attempt + 1}: Safety ratings: {candidate.safety_ratings}")
+                        
+                        if hasattr(response, 'prompt_feedback'):
+                            logger.warning(f"{model_name} attempt {attempt + 1}: Prompt feedback: {response.prompt_feedback}")
+                        
+                        logger.warning(f"{model_name} attempt {attempt + 1}/{max_retries}: Empty verification response, retrying...")
+                        
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1)  # Brief delay before retry
+                            
+                    except Exception as retry_error:
+                        last_error = retry_error
+                        logger.warning(f"{model_name} attempt {attempt + 1}/{max_retries}: API error: {retry_error}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1)
+                
+                # If we got a response, break out of model loop too
+                if response_text:
+                    break
             
             if not response_text:
                 error_detail = f" (last error: {last_error})" if last_error else ""
-                logger.warning(f"Gemini returned empty verification response after {max_retries} attempts{error_detail}")
+                logger.warning(f"Gemini returned empty verification response after trying all models{error_detail}")
                 return {
                     "verified": False,
                     "confidence": 0,
-                    "reasoning": f"AI verification returned an empty response after {max_retries} attempts. Please try again.",
+                    "reasoning": "AI verification is temporarily unavailable. Please try again later.",
                     "matched_elements": [],
                     "missing_elements": []
                 }
