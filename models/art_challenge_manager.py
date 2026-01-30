@@ -448,7 +448,7 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
                 )
             )
             
-            response_text = (response.text or "").strip()
+            response_text = (getattr(response, "text", None) or "").strip()
             if not response_text:
                 logger.warning("Gemini returned empty edit item response")
                 return None
@@ -635,7 +635,7 @@ Please verify if this submission includes all the required elements.
             )
             
             # Parse the response
-            response_text = (response.text or "").strip()
+            response_text = (getattr(response, "text", None) or "").strip()
             if not response_text:
                 logger.warning("Gemini returned empty verification response")
                 return {
@@ -1179,7 +1179,7 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 )
             )
             
-            response_text = (response.text or "").strip()
+            response_text = (getattr(response, "text", None) or "").strip()
             if not response_text:
                 logger.warning("Gemini returned empty winner selection response")
                 return {
