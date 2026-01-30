@@ -440,17 +440,56 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
                 )
             ]
             
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    temperature=1.2  # Higher temperature for more creative and varied suggestions
-                )
-            )
+            # Configure safety settings to prevent silent blocks
+            safety_settings = [
+                types.SafetySetting(
+                    category="HARM_CATEGORY_HARASSMENT",
+                    threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_HATE_SPEECH",
+                    threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                    threshold="BLOCK_NONE"
+                ),
+            ]
             
-            response_text = (response.text or "").strip()
+            # Retry logic for empty responses (known Gemini API issue)
+            max_retries = 3
+            response_text = ""
+            
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            temperature=1.2,  # Higher temperature for more creative and varied suggestions
+                            safety_settings=safety_settings
+                        )
+                    )
+                    
+                    response_text = (response.text or "").strip()
+                    if response_text:
+                        break  # Success, exit retry loop
+                    
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: Gemini returned empty edit item response, retrying...")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1)
+                        
+                except Exception as retry_error:
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: Gemini API error: {retry_error}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1)
+            
             if not response_text:
-                logger.warning("Gemini returned empty edit item response")
+                logger.warning(f"Gemini returned empty edit item response after {max_retries} attempts")
                 return None
 
             item = response_text.lower()
@@ -624,24 +663,79 @@ Please verify if this submission includes all the required elements.
                 )
             ]
             
-            # Generate response
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=self.art_system_prompt,
-                    temperature=0.3  # Lower temperature for more consistent verification
-                )
-            )
+            # Configure safety settings to prevent silent blocks
+            safety_settings = [
+                types.SafetySetting(
+                    category="HARM_CATEGORY_HARASSMENT",
+                    threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_HATE_SPEECH",
+                    threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    threshold="BLOCK_NONE"
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                    threshold="BLOCK_NONE"
+                ),
+            ]
             
-            # Parse the response
-            response_text = (response.text or "").strip()
+            # Retry logic for empty responses (known Gemini API issue)
+            max_retries = 3
+            response_text = ""
+            last_error = None
+            
+            for attempt in range(max_retries):
+                try:
+                    # Generate response
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=self.art_system_prompt,
+                            temperature=0.3,  # Lower temperature for more consistent verification
+                            safety_settings=safety_settings
+                        )
+                    )
+                    
+                    # Parse the response
+                    response_text = (response.text or "").strip()
+                    
+                    if response_text:
+                        break  # Success, exit retry loop
+                    
+                    # Log detailed info about empty response for debugging
+                    if hasattr(response, 'candidates') and response.candidates:
+                        for i, candidate in enumerate(response.candidates):
+                            finish_reason = getattr(candidate, 'finish_reason', 'unknown')
+                            logger.warning(f"Attempt {attempt + 1}: Candidate {i} finish_reason: {finish_reason}")
+                            if hasattr(candidate, 'safety_ratings'):
+                                logger.warning(f"Attempt {attempt + 1}: Safety ratings: {candidate.safety_ratings}")
+                    
+                    if hasattr(response, 'prompt_feedback'):
+                        logger.warning(f"Attempt {attempt + 1}: Prompt feedback: {response.prompt_feedback}")
+                    
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: Gemini returned empty verification response, retrying...")
+                    
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1)  # Brief delay before retry
+                        
+                except Exception as retry_error:
+                    last_error = retry_error
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries}: Gemini API error: {retry_error}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1)
+            
             if not response_text:
-                logger.warning("Gemini returned empty verification response")
+                error_detail = f" (last error: {last_error})" if last_error else ""
+                logger.warning(f"Gemini returned empty verification response after {max_retries} attempts{error_detail}")
                 return {
                     "verified": False,
                     "confidence": 0,
-                    "reasoning": "AI verification returned an empty response",
+                    "reasoning": f"AI verification returned an empty response after {max_retries} attempts. Please try again.",
                     "matched_elements": [],
                     "missing_elements": []
                 }
