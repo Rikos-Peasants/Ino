@@ -1,0 +1,129 @@
+{
+  "offensive_categories": {
+    "racial slur": [
+      "nigger",
+      "nigga",
+      "niga",
+      "niggas",
+      "niggers",
+      "niglet",
+      "nigg",
+      "nigguh",
+      "niggur",
+      "niggr",
+      "nignog",
+      "niqqa",
+      "nygga",
+      "nigg4",
+      "spic",
+      "kike",
+      "wetback",
+      "gook",
+      "chingchong",
+      "chink",
+      "coon"
+    ],
+    "n-word evasion": [
+      "ninja",
+      "ninjah",
+      "ni99a",
+      "niqqa"
+    ],
+    "homophobic slur": [
+      "faggot",
+      "fag",
+      "dyke"
+    ],
+    "transphobic slur": [
+      "tranny",
+      "troon"
+    ],
+    "ableist slur": [
+      "retard",
+      "retarded"
+    ],
+    "religious slur": [
+      "raghead"
+    ],
+    "offensive name (ice agent)": [
+      "iceagent",
+      "iceagents"
+    ],
+    "extremist reference": [
+      "terrorist",
+      "kkk",
+      "nazi",
+      "hitler",
+      "isis",
+      "alqaeda",
+      "alqaida",
+      "taliban",
+      "swastika"
+    ],
+    "extremist slogan": [
+      "heil"
+    ],
+    "suspicious political figure": [
+      "putin",
+      "trump"
+    ]
+  },
+  "offensive_regex_patterns": {
+    "racial slur": [
+      "n\\s*[\\W_]*[i1!|]\\s*[\\W_]*g\\s*[\\W_]*g\\s*[\\W_]*[e3]\\s*[\\W_]*r",
+      "n\\s*[\\W_]*[i1!|]\\s*[\\W_]*g\\s*[\\W_]*g\\s*[\\W_]*[a4@]",
+      "n\\s*[\\W_]*[i1!|]\\s*[\\W_]*[gq9]\\s*[\\W_]*[gq9]\\s*[\\W_]*[a4@]"
+    ],
+    "n-word evasion": [
+      "n\\s*[\\W_]*[i1!|]\\s*[\\W_]*n\\s*[\\W_]*j\\s*[\\W_]*[a4@]"
+    ],
+    "homophobic slur": [
+      "f\\s*[\\W_]*[a4@]\\s*[\\W_]*g\\s*[\\W_]*g\\s*[\\W_]*[o0]\\s*[\\W_]*t"
+    ],
+    "transphobic slur": [
+      "t\\s*[\\W_]*r\\s*[\\W_]*[a4@]\\s*[\\W_]*n\\s*[\\W_]*n\\s*[\\W_]*[y1!]"
+    ],
+    "ableist slur": [
+      "r\\s*[\\W_]*[e3]\\s*[\\W_]*t\\s*[\\W_]*[a4@]\\s*[\\W_]*r\\s*[\\W_]*d"
+    ],
+    "extremist reference": [
+      "h\\s*[\\W_]*[i1!|]\\s*[\\W_]*t\\s*[\\W_]*l\\s*[\\W_]*[e3]\\s*[\\W_]*r",
+      "n\\s*[\\W_]*[a4@]\\s*[\\W_]*z\\s*[\\W_]*[i1!|]"
+    ]
+  },
+  "crypto_keywords": [
+    "crypto",
+    "bitcoin",
+    "btc",
+    "ethereum",
+    "eth",
+    "ether",
+    "solana",
+    "sol",
+    "doge",
+    "dogecoin",
+    "litecoin",
+    "ltc",
+    "binance",
+    "bsc",
+    "bnb",
+    "polygon",
+    "matic",
+    "cardano",
+    "ada",
+    "xrp",
+    "ripple",
+    "defi",
+    "cex",
+    "dex",
+    "token",
+    "presale",
+    "airdrop",
+    "airdrops",
+    "staking",
+    "yield",
+    "farm",
+    "nft",
+    "web3"
+  ]
+}

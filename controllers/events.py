@@ -7,6 +7,7 @@ from views.embeds import EmbedViews
 from views.forum_thread_view import ForumThreadView
 from views.ask_staff_topic_view import AskStaffTopicView
 from config import Config
+from models.user_safety_monitor import UserSafetyMonitor
 import logging
 import asyncio
 import random
@@ -27,6 +28,7 @@ class EventsController:
         self.bot = bot
         self.spam_channel_message_count = 0  # Track messages in spam channel
         self.quest_manager = None  # Will be initialized when bot is ready
+        self.user_safety_monitor = UserSafetyMonitor(bot)
     
     def get_mod_offline_manager(self) -> Optional[ModOfflineManager]:
         """Get the mod offline manager from the commands controller"""
@@ -129,6 +131,7 @@ class EventsController:
             
             # Send welcome message if enabled
             await self._send_welcome_message(member)
+            await self.user_safety_monitor.handle_member_join(member)
                     
         except Exception as e:
             logger.error(f"Error handling member join for NSFWBAN reapplication: {e}")
@@ -383,6 +386,8 @@ class EventsController:
         # Only process events from the configured guild
         if after.guild.id != Config.GUILD_ID:
             return
+
+        await self.user_safety_monitor.handle_member_update(before, after)
         
         # Get role changes
         roles_added = set(after.roles) - set(before.roles)
@@ -433,6 +438,8 @@ class EventsController:
         # Only process messages from the configured guild
         if not message.guild or message.guild.id != Config.GUILD_ID:
             return
+
+        await self.user_safety_monitor.handle_message(message)
         
         # Check for positive Ino mentions first (reward good behavior!)
         await self._check_positive_ino_mention(message)
