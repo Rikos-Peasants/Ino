@@ -88,6 +88,12 @@ class Config:
         "Seika": 742066956194152449,
         "Taishi": 121269547452989440
     }
+
+    # Safety monitoring DM targets
+    SAFETY_DM_USER_IDS = [
+        742066956194152449,
+        784822151529627708
+    ]
     
     # Tag to title prefix mapping for staff forum auto-formatting
     STAFF_FORUM_TAG_PREFIXES = {
