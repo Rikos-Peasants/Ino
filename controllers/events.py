@@ -827,6 +827,31 @@ class EventsController:
                 except Exception as emergency_error:
                     logger.error(f"💀 Emergency ping also failed for help thread {thread.id}: {emergency_error}")
 
+    async def _add_help_role_members_to_private_thread(self, thread: discord.Thread, help_role: Optional[discord.Role]):
+        """Add help-role members to private help threads so role pings can notify them."""
+        if not help_role:
+            return
+
+        if not getattr(thread, "is_private", lambda: False)():
+            return
+
+        logger.info(f"🔐 Private help thread detected ({thread.id}) - adding help role members to the thread before pinging")
+
+        added_members = 0
+        for member in help_role.members:
+            try:
+                await thread.add_user(member)
+                added_members += 1
+            except discord.Forbidden:
+                logger.warning(f"Missing permission to add {member.display_name} ({member.id}) to private thread {thread.id}")
+            except discord.HTTPException as error:
+                # Ignore if the member is already in the thread; log anything else.
+                if "already" in str(error).lower():
+                    continue
+                logger.warning(f"Could not add {member.display_name} ({member.id}) to private thread {thread.id}: {error}")
+
+        logger.info(f"✅ Added {added_members} help role members to private thread {thread.id}")
+
     async def _handle_help_forum_thread(self, thread: discord.Thread, parent_channel: discord.ForumChannel):
         """Handle thread creation in the help forum - ALWAYS sends notification ping"""
         try:
@@ -843,6 +868,9 @@ class EventsController:
                 # Still try to send the ping even if role verification fails
             else:
                 logger.info(f"Help role verified: {help_role.name} ({help_role.id}) with {len(help_role.members)} members")
+
+            # In private threads, members outside the thread won't receive notifications unless added first.
+            await self._add_help_role_members_to_private_thread(thread, help_role)
             
             # Create embed for the help ping
             embed = discord.Embed(
@@ -897,7 +925,12 @@ class EventsController:
             
             try:
                 # Send ping message with embed and button
-                message = await thread.send(content=ping_message, embed=embed, view=view)
+                message = await thread.send(
+                    content=ping_message,
+                    embed=embed,
+                    view=view,
+                    allowed_mentions=discord.AllowedMentions(roles=True)
+                )
                 logger.info(f"✅ SUCCESS: Help ping sent! Message ID: {message.id} in thread '{thread.name}'")
                 
                 # Log additional details for debugging
@@ -907,7 +940,10 @@ class EventsController:
                 logger.error(f"❌ HTTP error sending help ping to thread {thread.id}: {e}")
                 # Try sending a simpler message as fallback
                 try:
-                    fallback_message = await thread.send(f"🆘 **New Help Request** {ping_message}\n\nHelpers have been notified for: **{thread.name}**")
+                    fallback_message = await thread.send(
+                        f"🆘 **New Help Request** {ping_message}\n\nHelpers have been notified for: **{thread.name}**",
+                        allowed_mentions=discord.AllowedMentions(roles=True)
+                    )
                     logger.info(f"✅ FALLBACK SUCCESS: Simple ping sent! Message ID: {fallback_message.id}")
                 except Exception as fallback_error:
                     logger.error(f"❌ CRITICAL: Both primary and fallback ping failed for thread {thread.id}: {fallback_error}")
@@ -920,7 +956,10 @@ class EventsController:
                 logger.error(f"❌ UNEXPECTED ERROR sending help ping to thread {thread.id}: {e}")
                 # Try one more time with just the ping
                 try:
-                    emergency_message = await thread.send(ping_message)
+                    emergency_message = await thread.send(
+                        ping_message,
+                        allowed_mentions=discord.AllowedMentions(roles=True)
+                    )
                     logger.info(f"🚨 EMERGENCY PING SUCCESS: Message ID: {emergency_message.id}")
                 except Exception as emergency_error:
                     logger.error(f"💥 EMERGENCY PING FAILED: {emergency_error}")
@@ -929,7 +968,10 @@ class EventsController:
             logger.error(f"💥 CRITICAL ERROR in help forum thread handler for thread {thread.id}: {e}")
             # Last resort: try to send just the ping without any embeds
             try:
-                emergency_ping = await thread.send(f"<@&{Config.HELP_ROLE_ID}>")
+                emergency_ping = await thread.send(
+                    f"<@&{Config.HELP_ROLE_ID}>",
+                    allowed_mentions=discord.AllowedMentions(roles=True)
+                )
                 logger.info(f"🆘 LAST RESORT PING SUCCESS: {emergency_ping.id}")
             except Exception as last_resort_error:
                 logger.error(f"💀 COMPLETE FAILURE: Cannot send any message to thread {thread.id}: {last_resort_error}")
