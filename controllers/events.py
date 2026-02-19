@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 QUALITY_POST_MIN_LIKES = 4  # Minimum likes for "Quality Control (Expert)" quest
 TRENDING_POST_MIN_LIKES = 7  # Minimum likes for "Trending Creator" quest
 VIRAL_IMAGE_MIN_LIKES = 15  # Minimum likes for "viral_image" quest
+AI_MODERATION_TIMEOUT_THRESHOLD = 0.85  # 85% confidence required for auto-timeout
+AI_MODERATION_TIMEOUT_DURATION = timedelta(minutes=5)
 
 class EventsController:
     """Controller for handling Discord events"""
@@ -1752,6 +1754,9 @@ class EventsController:
             
             # Reduce InoRep for flagged content (severity-based penalty)
             await self._apply_moderation_inorep_penalty(message, moderation_result)
+
+            # Apply short timeout for high-confidence AI moderation hits
+            await self._apply_ai_moderation_timeout(message, moderation_result)
             
             # Handle blacklisted content (auto-rejected)
             if moderation_result.get('status') == 'blacklisted':
@@ -1764,6 +1769,44 @@ class EventsController:
             
         except Exception as e:
             logger.error(f"Error in message moderation: {e}")
+
+    def _should_apply_ai_timeout(self, moderation_result: dict) -> bool:
+        """Return True when moderation result meets AI timeout criteria."""
+        moderation_source = moderation_result.get('moderation_source')
+        is_ai_moderation = moderation_source in {'dual', 'openai_only'}
+        max_confidence = moderation_result.get('max_confidence', 0)
+
+        return is_ai_moderation and max_confidence >= AI_MODERATION_TIMEOUT_THRESHOLD
+
+    async def _apply_ai_moderation_timeout(self, message: discord.Message, moderation_result: dict):
+        """Apply 5-minute timeout and DM when AI moderation confidence is 85%+."""
+        if not self._should_apply_ai_timeout(moderation_result):
+            return
+
+        try:
+            await message.author.timeout(
+                AI_MODERATION_TIMEOUT_DURATION,
+                reason=f"AI moderation confidence {moderation_result.get('max_confidence', 0):.1%} (>=85%)"
+            )
+            logger.info(
+                f"Applied AI moderation timeout ({AI_MODERATION_TIMEOUT_DURATION}) "
+                f"to {message.author.display_name} at {moderation_result.get('max_confidence', 0):.1%} confidence"
+            )
+        except discord.Forbidden:
+            logger.warning(f"Missing permission to timeout {message.author.display_name} for AI moderation")
+            return
+        except Exception as e:
+            logger.error(f"Error applying AI moderation timeout: {e}")
+            return
+
+        try:
+            await message.author.send(
+                "We've decided to time you out for 5 minutes due to high-confidence AI moderation detection on your message."
+            )
+        except discord.Forbidden:
+            logger.info(f"Could not DM {message.author.display_name} about AI moderation timeout (DMs disabled)")
+        except Exception as e:
+            logger.error(f"Error sending AI moderation timeout DM: {e}")
     
     async def _handle_blacklisted_content(self, message: discord.Message, moderation_result: dict):
         """Handle when blacklisted content is detected"""
