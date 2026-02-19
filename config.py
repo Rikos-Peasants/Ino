@@ -80,6 +80,9 @@ class Config:
     # Ask and complain to staff channel
     ASK_COMPLAIN_STAFF_CHANNEL_ID = 1426179557299453972  # Ask and complain to staff forum channel
     STAFF_ROLE_ID = 1372477845997359244  # Staff role to ping for all threads
+
+    # Self-promotion moderation
+    SELF_PROMO_WHITELIST_THREAD_ID = 1345520586012754001  # Thread where Discord invite links are allowed
     
     # Staff member IDs for specific pings
     STAFF_MEMBERS = {
