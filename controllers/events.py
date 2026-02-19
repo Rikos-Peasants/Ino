@@ -11,6 +11,7 @@ from models.user_safety_monitor import UserSafetyMonitor
 import logging
 import asyncio
 import random
+import re
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -22,6 +23,10 @@ TRENDING_POST_MIN_LIKES = 7  # Minimum likes for "Trending Creator" quest
 VIRAL_IMAGE_MIN_LIKES = 15  # Minimum likes for "viral_image" quest
 AI_MODERATION_TIMEOUT_THRESHOLD = 0.85  # 85% confidence required for auto-timeout
 AI_MODERATION_TIMEOUT_DURATION = timedelta(minutes=5)
+DISCORD_INVITE_REGEX = re.compile(
+    r"https?://(?:www\.)?(?:discord\.gg|discord(?:app)?\.com/invite)/[A-Za-z0-9-]+",
+    re.IGNORECASE
+)
 
 class EventsController:
     """Controller for handling Discord events"""
@@ -441,6 +446,9 @@ class EventsController:
         if not message.guild or message.guild.id != Config.GUILD_ID:
             return
 
+        if await self._handle_discord_invite_link(message):
+            return
+
         await self.user_safety_monitor.handle_message(message)
         
         # Check for positive Ino mentions first (reward good behavior!)
@@ -557,6 +565,40 @@ class EventsController:
             
             # Penalize InoRep for text spamming in image channels
             await self._apply_text_spam_inorep_penalty(message)
+
+    async def _handle_discord_invite_link(self, message: discord.Message) -> bool:
+        """Remove Discord invite links outside the self-promotion thread and DM the user."""
+        if message.channel.id == Config.SELF_PROMO_WHITELIST_THREAD_ID:
+            return False
+
+        if not DISCORD_INVITE_REGEX.search(message.content or ""):
+            return False
+
+        try:
+            await message.delete()
+            logger.info(
+                f"Removed Discord invite link from {message.author.display_name} in channel {message.channel.id}"
+            )
+        except discord.Forbidden:
+            logger.warning("Missing permission to delete Discord invite link message")
+            return False
+        except discord.NotFound:
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting Discord invite message: {e}")
+            return False
+
+        try:
+            await message.author.send(
+                "Hey! Please DM your Discord invite link directly to the person of interest. "
+                "We don't allow self-promotion links in the general server channels."
+            )
+        except discord.Forbidden:
+            logger.info(f"Could not DM {message.author.display_name} about invite link removal (DMs disabled)")
+        except Exception as e:
+            logger.error(f"Error sending Discord invite warning DM: {e}")
+
+        return True
     
     async def _check_for_chat_reminder(self, message: discord.Message):
         """Check if the last messages are text messages and send a chat reminder.
