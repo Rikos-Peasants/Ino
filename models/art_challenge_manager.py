@@ -545,7 +545,6 @@ Rules:
 - Keep it mainstream and recognizable
 - Avoid child-only/loli characters
 - Keep tag query concise
-- Character must work with a single-subject image query (solo, exactly one human)
 """
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
@@ -821,8 +820,6 @@ Task: Verify if the submitted image moves {character_to_move} from Reference Ima
 Requirements:
 - {character_to_move} should be visibly present in the submission
 - The destination should clearly resemble the scenery/location of Reference Image 2
-- The final image should contain exactly one human/person character (the moved character only)
-- Reject submissions with extra people (examples: 2girls, 2boys, 1boy+1girl, crowd/group scenes)
 - The composition should look intentional (not a low-effort copy/paste)
 
 Please verify if this submission meets the scene move challenge.
@@ -1321,27 +1318,18 @@ Please verify if this submission includes all the required elements.
                 character_name = character_target.get("name", "the character")
                 character_tag = character_target.get("tag", "1girl")
 
-                single_subject_exclude_tags = (
-                    "2girls, 3girls, 4girls, 5girls, multiple girls, "
-                    "2boys, 3boys, 4boys, 5boys, multiple boys, "
-                    "1girl 1boy, 1boy 1girl, "
-                    "girl and boy, boy and girl, duo, group, crowd"
-                )
-
                 character_images = await self.get_random_image(
                     ratings=rating,
                     count=1,
                     no_ai=True,
-                    tags=f"{character_tag}, solo",
-                    exclude_tags=single_subject_exclude_tags
+                    tags=f"{character_tag}, solo"
                 )
                 if not character_images or len(character_images) == 0:
                     character_images = await self.get_random_image(
                         ratings=rating,
                         count=1,
                         no_ai=True,
-                        tags=f"{character_tag}, solo",
-                        exclude_tags=single_subject_exclude_tags
+                        tags=character_tag
                     )
 
                 scene_images = await self.get_random_image(
@@ -1371,8 +1359,7 @@ Please verify if this submission includes all the required elements.
                 challenge_data["challenge_title"] = f"🧳 Move {character_name} to This Scene!"
                 challenge_data["challenge_description"] = (
                     f"Use **Image 1** as the character reference and place **{character_name}** into **Image 2** (the scenery scene). "
-                    "Use exactly one person in the final image (the moved character only), "
-                    "keep the character recognizable, and blend them naturally into the environment."
+                    "Keep the character recognizable and blend them naturally into the environment."
                 )
 
             elif challenge_type == self.CHALLENGE_TYPE_PALETTE:
