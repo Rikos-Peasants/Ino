@@ -25,6 +25,9 @@ class ArtChallengeManager:
     CHALLENGE_TYPE_TAGS = "tags"
     CHALLENGE_TYPE_MIXED = "mixed"
     CHALLENGE_TYPE_EDIT = "edit"
+    CHALLENGE_TYPE_SCENE_MOVE = "scene_move"
+    CHALLENGE_TYPE_PALETTE = "palette"
+    CHALLENGE_TYPE_TIME_SHIFT = "time_shift"
     
     # Challenge states
     STATE_ACTIVE = "active"
@@ -520,6 +523,139 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
             logger.error(f"Error generating edit item: {e}")
             return None
     
+    async def _generate_scene_move_character(self) -> Dict[str, str]:
+        """Select a character target for scene-move challenges, with AI-assisted variety."""
+        # Baseline curated list to keep prompts clean and safe
+        fallback_characters = [
+            {"name": "Frieren", "tag": "frieren (sousou no frieren)"},
+            {"name": "Fern", "tag": "fern (sousou no frieren)"},
+            {"name": "Maomao", "tag": "maomao (kusuriya no hitorigoto)"},
+            {"name": "Violet Evergarden", "tag": "violet evergarden"},
+            {"name": "Mikasa", "tag": "mikasa ackerman"}
+        ]
+
+        if not self.gemini_api_key:
+            return random.choice(fallback_characters)
+
+        try:
+            client = genai.Client(api_key=self.gemini_api_key)
+            prompt = """Pick ONE anime character for a non-NSFW art challenge where users move the character into a different scenery image.
+Return JSON ONLY: {"name":"Display Name","tag":"booru-style character tag"}
+Rules:
+- Keep it mainstream and recognizable
+- Avoid child-only/loli characters
+- Keep tag query concise
+"""
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.4,
+                    system_instruction=[types.Part.from_text(text=self.art_system_prompt)]
+                )
+            )
+            response_text = (response.text or "").strip().replace("```json", "").replace("```", "").strip()
+            data = json.loads(response_text)
+            if isinstance(data, dict) and data.get("name") and data.get("tag"):
+                return {"name": data["name"], "tag": data["tag"]}
+        except Exception as e:
+            logger.warning(f"Failed to generate scene-move character via AI: {e}")
+
+        return random.choice(fallback_characters)
+
+    def _get_random_palette(self) -> Dict[str, Any]:
+        """Return a random art palette challenge spec."""
+        palettes = [
+            {"name": "Sunset Glow", "colors": ["#FF6B6B", "#FFB56B", "#FFE66D", "#4ECDC4", "#1A535C"]},
+            {"name": "Forest Mist", "colors": ["#2D6A4F", "#40916C", "#74C69D", "#B7E4C7", "#1B4332"]},
+            {"name": "Neon Night", "colors": ["#0D0221", "#0F084B", "#C449FF", "#00F5D4", "#F15BB5"]},
+            {"name": "Royal Ink", "colors": ["#1D3557", "#457B9D", "#A8DADC", "#E63946", "#F1FAEE"]},
+            {"name": "Desert Dusk", "colors": ["#6D597A", "#B56576", "#E56B6F", "#EAAC8B", "#355070"]},
+            {"name": "Retro Pop", "colors": ["#FF006E", "#FB5607", "#FFBE0B", "#3A86FF", "#8338EC"]},
+            {"name": "Ocean Glass", "colors": ["#003049", "#669BBC", "#A8DADC", "#EAE2B7", "#D62828"]},
+            {"name": "Soft Sakura", "colors": ["#FFC8DD", "#FFAFCC", "#BDE0FE", "#A2D2FF", "#CDB4DB"]}
+        ]
+        return random.choice(palettes)
+
+    def _pick_time_shift_direction(self) -> Dict[str, str]:
+        """Pick whether artists age the character up or down (adult-only)."""
+        if random.choice([True, False]):
+            return {
+                "direction": "future",
+                "instruction": "Age the character up into a future older adult version"
+            }
+        return {
+            "direction": "past",
+            "instruction": "Age the character down into a younger adult version (must remain 18+)"
+        }
+
+    async def _generate_palette_spec(self) -> Dict[str, Any]:
+        """Generate a palette challenge spec with AI, fallback to local curated palettes."""
+        fallback = self._get_random_palette()
+        if not self.gemini_api_key:
+            return fallback
+
+        try:
+            client = genai.Client(api_key=self.gemini_api_key)
+            prompt = """Create one art challenge palette.
+Return JSON ONLY in this schema:
+{"name":"Palette Name","colors":["#RRGGBB","#RRGGBB","#RRGGBB","#RRGGBB","#RRGGBB"]}
+Rules:
+- Exactly 5 colors
+- High visual harmony and contrast balance
+- Keep hex uppercase format
+"""
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.5,
+                    system_instruction=[types.Part.from_text(text=self.art_system_prompt)]
+                )
+            )
+            response_text = (response.text or "").strip().replace("```json", "").replace("```", "").strip()
+            data = json.loads(response_text)
+            colors = data.get("colors", []) if isinstance(data, dict) else []
+            if isinstance(data, dict) and data.get("name") and isinstance(colors, list) and len(colors) == 5:
+                if all(isinstance(c, str) and c.startswith('#') and len(c) == 7 for c in colors):
+                    return {"name": data["name"], "colors": colors}
+        except Exception as e:
+            logger.warning(f"Failed to generate palette via AI: {e}")
+
+        return fallback
+
+    async def _generate_time_shift_spec(self) -> Dict[str, str]:
+        """Generate time-shift direction with AI guidance, fallback deterministic random."""
+        fallback = self._pick_time_shift_direction()
+        if not self.gemini_api_key:
+            return fallback
+
+        try:
+            client = genai.Client(api_key=self.gemini_api_key)
+            prompt = """Pick one direction for an art challenge: future or past.
+Return JSON ONLY: {"direction":"future|past","instruction":"clear one-line instruction"}
+Rules:
+- Future means older adult version
+- Past means younger adult version, still 18+
+- Never mention minors
+"""
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.3,
+                    system_instruction=[types.Part.from_text(text=self.art_system_prompt)]
+                )
+            )
+            response_text = (response.text or "").strip().replace("```json", "").replace("```", "").strip()
+            data = json.loads(response_text)
+            if isinstance(data, dict) and data.get("direction") in ["future", "past"] and data.get("instruction"):
+                return {"direction": data["direction"], "instruction": data["instruction"]}
+        except Exception as e:
+            logger.warning(f"Failed to generate time-shift spec via AI: {e}")
+
+        return fallback
+
     async def verify_submission(self, challenge_data: Dict, submission_image_url: str) -> Dict:
         """Verify a submission using Gemini AI"""
         if not self.gemini_api_key:
@@ -536,7 +672,7 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
             challenge_type = challenge_data.get("challenge_type")
             
             # For remake and edit challenges, check if user just re-uploaded the reference image
-            if challenge_type in [self.CHALLENGE_TYPE_REMAKE, self.CHALLENGE_TYPE_EDIT]:
+            if challenge_type in [self.CHALLENGE_TYPE_REMAKE, self.CHALLENGE_TYPE_EDIT, self.CHALLENGE_TYPE_TIME_SHIFT]:
                 reference_url = challenge_data.get("reference_image_url")
                 if reference_url:
                     similarity_check = await self.check_image_similarity(reference_url, submission_image_url, challenge_type)
@@ -553,6 +689,28 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
                             "quality_notes": "Duplicate/reupload detected",
                             "is_duplicate": True,
                             "is_exact_match": is_exact,
+                            "similarity_score": similarity_score
+                        }
+
+            if challenge_type == self.CHALLENGE_TYPE_SCENE_MOVE:
+                for reference_url in [
+                    challenge_data.get("reference_image_url"),
+                    challenge_data.get("reference_image_url_2")
+                ]:
+                    if not reference_url:
+                        continue
+                    similarity_check = await self.check_image_similarity(reference_url, submission_image_url, self.CHALLENGE_TYPE_MIXED)
+                    if similarity_check.get("is_duplicate"):
+                        similarity_score = similarity_check.get("similarity_score", 1.0)
+                        return {
+                            "verified": False,
+                            "confidence": 1.0,
+                            "reasoning": f"This submission appears to match one of the reference images too closely (similarity: {similarity_score:.0%}). Please submit an original composition.",
+                            "matched_elements": [],
+                            "missing_elements": ["Original composition"],
+                            "quality_notes": "Duplicate/reupload detected",
+                            "is_duplicate": True,
+                            "is_exact_match": similarity_check.get("is_exact_match", False),
                             "similarity_score": similarity_score
                         }
             
@@ -639,6 +797,90 @@ Please verify if this submission meets the challenge requirements.
                     types.Part.from_text(text="REFERENCE IMAGE (original to edit):"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
                     types.Part.from_text(text=f"SUBMISSION (should have '{required_item}' added):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
+                    types.Part.from_text(text=verification_prompt)
+                ]
+
+            elif challenge_type == self.CHALLENGE_TYPE_SCENE_MOVE:
+                # For scene move challenges, check character transfer into new scenery
+                reference_url_1 = challenge_data.get("reference_image_url")
+                reference_url_2 = challenge_data.get("reference_image_url_2")
+                character_to_move = challenge_data.get("character_to_move", "the character")
+
+                reference_bytes_1 = await self.download_image_bytes(reference_url_1)
+                reference_bytes_2 = await self.download_image_bytes(reference_url_2)
+
+                if not reference_bytes_1 or not reference_bytes_2:
+                    return {"verified": False, "reasoning": "Could not download reference images", "confidence": 0}
+
+                verification_prompt = f"""
+Challenge Type: SCENE MOVE
+Task: Verify if the submitted image moves {character_to_move} from Reference Image 1 into the environment of Reference Image 2.
+
+Requirements:
+- {character_to_move} should be visibly present in the submission
+- The destination should clearly resemble the scenery/location of Reference Image 2
+- The composition should look intentional (not a low-effort copy/paste)
+
+Please verify if this submission meets the scene move challenge.
+"""
+                parts = [
+                    types.Part.from_text(text=f"REFERENCE IMAGE 1 (character: {character_to_move}):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_1),
+                    types.Part.from_text(text="REFERENCE IMAGE 2 (destination scenery):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_2),
+                    types.Part.from_text(text="SUBMISSION (character moved into the scenery):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
+                    types.Part.from_text(text=verification_prompt)
+                ]
+
+            elif challenge_type == self.CHALLENGE_TYPE_PALETTE:
+                palette_name = challenge_data.get("palette_name", "the required palette")
+                required_palette = challenge_data.get("required_palette", [])
+                verification_prompt = f"""
+Challenge Type: PALETTE
+Palette Name: {palette_name}
+Required Colors: {', '.join(required_palette)}
+Task: Verify if the submission primarily follows the required palette.
+
+Requirements:
+- Most dominant colors should align with the palette
+- Minor shading/tint variations are allowed
+- Strong unrelated colors should be limited
+
+Please verify if this submission follows the palette lock challenge.
+"""
+                parts = [
+                    types.Part.from_text(text="SUBMISSION IMAGE:"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
+                    types.Part.from_text(text=verification_prompt)
+                ]
+
+            elif challenge_type == self.CHALLENGE_TYPE_TIME_SHIFT:
+                reference_url = challenge_data.get("reference_image_url")
+                shift_direction = challenge_data.get("time_shift_direction", "future")
+                reference_bytes = await self.download_image_bytes(reference_url)
+
+                if not reference_bytes:
+                    return {"verified": False, "reasoning": "Could not download reference image", "confidence": 0}
+
+                verification_prompt = f"""
+Challenge Type: TIME SHIFT
+Direction: {shift_direction}
+Task: Verify if the submission transforms the reference character into a {shift_direction} self.
+
+Requirements:
+- Character should remain recognizable from the reference
+- If direction is future: depict an older adult version
+- If direction is past: depict a younger adult version only (18+)
+- Never allow minor/loli/shota or child-like depictions
+
+Please verify if this submission meets the time shift challenge.
+"""
+                parts = [
+                    types.Part.from_text(text="REFERENCE IMAGE (original character):"),
+                    types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
+                    types.Part.from_text(text=f"SUBMISSION ({shift_direction} self interpretation):"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
                     types.Part.from_text(text=verification_prompt)
                 ]
@@ -879,7 +1121,7 @@ Please verify if this submission includes all the required elements.
         Args:
             channel_id: The channel to create the challenge in
             guild_id: The guild ID
-            challenge_type: 'remake', 'tags', 'mixed', or 'edit', random if None
+            challenge_type: 'remake', 'tags', 'mixed', 'edit', 'scene_move', 'palette', or 'time_shift', random if None
             rating: Image rating - 'safe' for SFW, 'questionable' for NSFW channels
         """
         if not self._ensure_connected():
@@ -888,8 +1130,16 @@ Please verify if this submission includes all the required elements.
         
         # Determine challenge type if not specified
         if challenge_type is None:
-            # Random choice between all four types
-            challenge_type = random.choice([self.CHALLENGE_TYPE_REMAKE, self.CHALLENGE_TYPE_TAGS, self.CHALLENGE_TYPE_MIXED, self.CHALLENGE_TYPE_EDIT])
+            # Random choice between all challenge types
+            challenge_type = random.choice([
+                self.CHALLENGE_TYPE_REMAKE,
+                self.CHALLENGE_TYPE_TAGS,
+                self.CHALLENGE_TYPE_MIXED,
+                self.CHALLENGE_TYPE_EDIT,
+                self.CHALLENGE_TYPE_SCENE_MOVE,
+                self.CHALLENGE_TYPE_PALETTE,
+                self.CHALLENGE_TYPE_TIME_SHIFT
+            ])
         
         challenge_data = {
             "channel_id": channel_id,
@@ -902,7 +1152,7 @@ Please verify if this submission includes all the required elements.
             "message_id": None,  # Will be set after posting
             "submissions_count": 0,
             "verified_count": 0,
-            "reward_points": 50 if challenge_type not in [self.CHALLENGE_TYPE_MIXED, self.CHALLENGE_TYPE_EDIT] else 75  # Mixed/Edit are harder, more points
+            "reward_points": 50 if challenge_type not in [self.CHALLENGE_TYPE_MIXED, self.CHALLENGE_TYPE_EDIT, self.CHALLENGE_TYPE_SCENE_MOVE, self.CHALLENGE_TYPE_PALETTE, self.CHALLENGE_TYPE_TIME_SHIFT] else 75  # Harder challenge types award more points
         }
         
         try:
@@ -1061,6 +1311,103 @@ Please verify if this submission includes all the required elements.
                 challenge_data["required_item"] = item_to_add
                 challenge_data["challenge_title"] = "✏️ Edit This Image!"
                 challenge_data["challenge_description"] = f"Take this image and add **{item_to_add}** to it! Edit, draw over, or recreate it with the new element added."
+
+            elif challenge_type == self.CHALLENGE_TYPE_SCENE_MOVE:
+                # Move a rotating character into a separate scenery-only scene
+                character_target = await self._generate_scene_move_character()
+                character_name = character_target.get("name", "the character")
+                character_tag = character_target.get("tag", "1girl")
+
+                character_images = await self.get_random_image(
+                    ratings=rating,
+                    count=1,
+                    no_ai=True,
+                    tags=f"{character_tag}, solo"
+                )
+                if not character_images or len(character_images) == 0:
+                    character_images = await self.get_random_image(
+                        ratings=rating,
+                        count=1,
+                        no_ai=True,
+                        tags=character_tag
+                    )
+
+                scene_images = await self.get_random_image(
+                    ratings=rating,
+                    count=1,
+                    no_ai=True,
+                    tags="scenery",
+                    exclude_tags="1girl, 1boy, girl, boy, human, people, crowd"
+                )
+
+                if (not character_images or len(character_images) == 0 or
+                        not scene_images or len(scene_images) == 0):
+                    logger.error(f"Failed to get reference images for scene move challenge (rating: {rating})")
+                    return None
+
+                character_data = character_images[0] if isinstance(character_images, list) else character_images
+                scene_data = scene_images[0] if isinstance(scene_images, list) else scene_images
+
+                challenge_data["reference_image_url"] = character_data.get("url") or character_data.get("thumbnail_url")
+                challenge_data["reference_image_url_2"] = scene_data.get("url") or scene_data.get("thumbnail_url")
+                challenge_data["reference_image_id"] = character_data.get("id")
+                challenge_data["reference_image_id_2"] = scene_data.get("id")
+                challenge_data["reference_tags"] = [t.get("name") for t in character_data.get("tags", [])]
+                challenge_data["reference_tags_2"] = [t.get("name") for t in scene_data.get("tags", [])]
+                challenge_data["character_to_move"] = character_name
+                challenge_data["character_tag"] = character_tag
+                challenge_data["challenge_title"] = f"🧳 Move {character_name} to This Scene!"
+                challenge_data["challenge_description"] = (
+                    f"Use **Image 1** as the character reference and place **{character_name}** into **Image 2** (the scenery scene). "
+                    "Keep the character recognizable and blend them naturally into the environment."
+                )
+
+            elif challenge_type == self.CHALLENGE_TYPE_PALETTE:
+                palette = await self._generate_palette_spec()
+                challenge_data["palette_name"] = palette["name"]
+                challenge_data["required_palette"] = palette["colors"]
+                challenge_data["challenge_title"] = "🎨 Palette Lock Challenge!"
+                challenge_data["challenge_description"] = (
+                    f"Create an image using the **{palette['name']}** palette only. "
+                    "You can shade/tint, but keep the core colors tied to this palette."
+                )
+
+            elif challenge_type == self.CHALLENGE_TYPE_TIME_SHIFT:
+                # Use a character image and transform them into future/past self (adult only)
+                shift_images = await self.get_random_image(
+                    ratings=rating,
+                    count=1,
+                    no_ai=True,
+                    tags="solo, 1girl",
+                    exclude_tags="loli, shota, child"
+                )
+                if not shift_images or len(shift_images) == 0:
+                    shift_images = await self.get_random_image(
+                        ratings=rating,
+                        count=1,
+                        no_ai=True,
+                        tags="solo, 1boy",
+                        exclude_tags="loli, shota, child"
+                    )
+                if not shift_images or len(shift_images) == 0:
+                    shift_images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+
+                if not shift_images or len(shift_images) == 0:
+                    logger.error(f"Failed to get random image for time shift challenge (rating: {rating})")
+                    return None
+
+                shift_data = shift_images[0] if isinstance(shift_images, list) else shift_images
+                shift_mode = await self._generate_time_shift_spec()
+
+                challenge_data["reference_image_url"] = shift_data.get("url") or shift_data.get("thumbnail_url")
+                challenge_data["reference_image_id"] = shift_data.get("id")
+                challenge_data["reference_tags"] = [t.get("name") for t in shift_data.get("tags", [])]
+                challenge_data["time_shift_direction"] = shift_mode["direction"]
+                challenge_data["challenge_title"] = "⏳ Time Shift Challenge!"
+                challenge_data["challenge_description"] = (
+                    f"Use the character in this image and {shift_mode['instruction']}. "
+                    "Do not depict minors, loli, shota, or child-like features."
+                )
                 
             else:  # Tag-based challenge
                 # Get random tags for the challenge
@@ -1244,6 +1591,22 @@ Please verify if this submission includes all the required elements.
             elif challenge_type == self.CHALLENGE_TYPE_EDIT:
                 required_item = challenge_data.get("required_item", "an item")
                 context = f"This was an EDIT challenge where artists added '{required_item}' to a reference image."
+            elif challenge_type == self.CHALLENGE_TYPE_SCENE_MOVE:
+                character_to_move = challenge_data.get("character_to_move", "the character")
+                context = (
+                    f"This was a SCENE MOVE challenge where artists placed {character_to_move} "
+                    "from one reference image into a second scenery reference image."
+                )
+            elif challenge_type == self.CHALLENGE_TYPE_PALETTE:
+                palette_name = challenge_data.get("palette_name", "a required palette")
+                palette_colors = challenge_data.get("required_palette", [])
+                context = f"This was a PALETTE challenge using {palette_name}: {', '.join(palette_colors)}."
+            elif challenge_type == self.CHALLENGE_TYPE_TIME_SHIFT:
+                direction = challenge_data.get("time_shift_direction", "future")
+                context = (
+                    f"This was a TIME SHIFT challenge where artists transformed a character into a {direction} self, "
+                    "while keeping it adult-only and recognizable."
+                )
             elif challenge_type == self.CHALLENGE_TYPE_MIXED:
                 context = f"This was a MIXED challenge combining elements from two reference images."
             else:
