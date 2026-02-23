@@ -53,11 +53,14 @@ class ArtChallengeEmbed:
                     inline=False
                 )
         
-        elif challenge_type == "mixed":
-            # Mixed challenge - combine two images
+        elif challenge_type in ["mixed", "scene_move"]:
+            # Mixed or scene-move challenge - combine two images
+            character_name = challenge_data.get("character_to_move", "the character")
+            default_title = "🔀 Mix These Images!" if challenge_type == "mixed" else f"🧳 Move {character_name} to This Scene!"
+            default_description = "Combine elements from BOTH images!" if challenge_type == "mixed" else "Move the character from image 1 into image 2."
             embed = discord.Embed(
-                title=challenge_data.get("challenge_title", "🔀 Mix These Images!"),
-                description=challenge_data.get("challenge_description", "Combine elements from BOTH images!"),
+                title=challenge_data.get("challenge_title", default_title),
+                description=challenge_data.get("challenge_description", default_description),
                 color=discord.Color.from_rgb(0, 191, 255)  # Deep sky blue
             )
             
@@ -71,10 +74,53 @@ class ArtChallengeEmbed:
                     value=", ".join(all_tags[:10]) if all_tags else "No tags",
                     inline=False
                 )
+
+            if challenge_type == "scene_move":
+                embed.add_field(
+                    name="🎯 Goal",
+                    value=f"Place **{character_name}** from Image 1 into the scenery shown in Image 2.",
+                    inline=False
+                )
             
             # Mark that this needs image files uploaded
             challenge_data["_needs_image_files"] = True
         
+        elif challenge_type == "palette":
+            palette_name = challenge_data.get("palette_name", "Random Palette")
+            palette_colors = challenge_data.get("required_palette", [])
+            embed = discord.Embed(
+                title=challenge_data.get("challenge_title", "🎨 Palette Lock Challenge!"),
+                description=challenge_data.get("challenge_description", "Create artwork using only the required palette."),
+                color=discord.Color.from_rgb(255, 105, 180)
+            )
+            if palette_colors:
+                embed.add_field(
+                    name=f"🖌️ Required Palette: {palette_name}",
+                    value="\n".join([f"• `{c}`" for c in palette_colors]),
+                    inline=False
+                )
+
+        elif challenge_type == "time_shift":
+            shift_direction = challenge_data.get("time_shift_direction", "future")
+            embed = discord.Embed(
+                title=challenge_data.get("challenge_title", "⏳ Time Shift Challenge!"),
+                description=challenge_data.get("challenge_description", "Transform the reference character across time."),
+                color=discord.Color.from_rgb(255, 165, 0)
+            )
+            reference_url = challenge_data.get("reference_image_url")
+            if reference_url:
+                embed.set_image(url=reference_url)
+            embed.add_field(
+                name="🕰️ Direction",
+                value=f"**{shift_direction.title()} Self**",
+                inline=False
+            )
+            embed.add_field(
+                name="🔞 Safety Rule",
+                value="Must remain adult-only (18+). No minor/loli/shota depictions.",
+                inline=False
+            )
+
         elif challenge_type == "edit":
             # Edit challenge - modify image and add an item
             embed = discord.Embed(
@@ -320,6 +366,27 @@ class ArtChallengeEmbed:
             embed.add_field(
                 name="🔀 Challenge Type",
                 value="Mixed Challenge",
+                inline=True
+            )
+        elif challenge_type == "scene_move":
+            embed.add_field(
+                name="🧳 Challenge Type",
+                value=f"Scene Move Challenge (Move {challenge_data.get('character_to_move', 'Character')})",
+                inline=True
+            )
+        elif challenge_type == "palette":
+            palette_name = challenge_data.get("palette_name", "Palette")
+            palette_colors = challenge_data.get("required_palette", [])
+            embed.add_field(
+                name="🎨 Challenge Type",
+                value=f"Palette Lock ({palette_name}): {', '.join(palette_colors)}",
+                inline=True
+            )
+        elif challenge_type == "time_shift":
+            shift_direction = challenge_data.get("time_shift_direction", "future")
+            embed.add_field(
+                name="⏳ Challenge Type",
+                value=f"Time Shift Challenge ({shift_direction.title()} Self)",
                 inline=True
             )
         else:
