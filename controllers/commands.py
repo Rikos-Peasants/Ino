@@ -5648,7 +5648,7 @@ class CommandsController:
             Parameters
             ----------
             challenge_type : str, optional
-                Type of challenge: 'remake', 'tags', or 'mixed'. Random if not specified.
+                Type of challenge. Random if not specified.
             """
             try:
                 art_manager = getattr(self.bot, 'art_challenge_manager', None)
@@ -5665,8 +5665,23 @@ class CommandsController:
                     return
                 
                 # Validate challenge type
-                if challenge_type and challenge_type.lower() not in ['remake', 'tags', 'mixed', 'edit']:
-                    await ctx.send("❌ Invalid challenge type. Use 'remake', 'tags', 'mixed', or 'edit'.", ephemeral=True)
+                supported_types = [
+                    art_manager.CHALLENGE_TYPE_REMAKE,
+                    art_manager.CHALLENGE_TYPE_TAGS,
+                    art_manager.CHALLENGE_TYPE_MIXED,
+                    art_manager.CHALLENGE_TYPE_EDIT,
+                    art_manager.CHALLENGE_TYPE_SCENE_MOVE,
+                    art_manager.CHALLENGE_TYPE_PALETTE,
+                    art_manager.CHALLENGE_TYPE_TIME_SHIFT,
+                ]
+
+                normalized_challenge_type = challenge_type.lower().strip() if challenge_type else None
+                if normalized_challenge_type and normalized_challenge_type not in supported_types:
+                    supported_types_text = ", ".join(f"'{challenge}'" for challenge in supported_types)
+                    await ctx.send(
+                        f"❌ Invalid challenge type. Use one of: {supported_types_text}.",
+                        ephemeral=True,
+                    )
                     return
                 
                 await ctx.defer()
@@ -5678,7 +5693,7 @@ class CommandsController:
                 challenge_data = await art_manager.create_challenge(
                     channel_id=ctx.channel.id,
                     guild_id=ctx.guild.id,
-                    challenge_type=challenge_type.lower() if challenge_type else None,
+                    challenge_type=normalized_challenge_type,
                     rating=rating
                 )
                 
