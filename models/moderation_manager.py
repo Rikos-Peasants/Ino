@@ -9,6 +9,14 @@ import aiohttp
 import discord
 from pymongo import MongoClient, DESCENDING
 from difflib import SequenceMatcher
+import json as _json
+
+try:
+    from google import genai
+    from google.genai import types as genai_types
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +29,7 @@ class ModerationManager:
         
         self.openai_api_key = Config.OPENAI_KEY
         self.google_nl_api_key = Config.GOOGLE_NL_API_KEY
+        self.gemini_api_key = Config.GEMINI_API_KEY
         self.db = mongo_client[database_name]
         
         # Collections for moderation system
@@ -35,7 +44,7 @@ class ModerationManager:
         self.openai_moderation_endpoint = "https://api.openai.com/v1/moderations"
         self.google_nl_endpoint = "https://language.googleapis.com/v1/documents:moderateText"
         
-        logger.info("Moderation Manager initialized with dual-API support")
+        logger.info("Moderation Manager initialized with triple-API support (OpenAI + Google NL + Gemini LLM)")
     
     def _create_indexes(self):
         """Create database indexes for moderation collections"""
@@ -182,15 +191,37 @@ class ModerationManager:
         spaced_normalized = re.sub(r'\s+', ' ', spaced_normalized).strip()
         
         # Patterns that need WHOLE WORD matching (to avoid false positives)
+        # Uses \b word boundaries so e.g. "flag" won't match "fag"
         exact_word_patterns = {
             # Racial slurs - must be standalone words
             r'\bnigger\b': 'racial slur',
+            r'\bniggers\b': 'racial slur',
             r'\bnigga\b': 'racial slur',
+            r'\bniggas\b': 'racial slur',
+            r'\bcoon\b': 'racial slur',
+            r'\bcoons\b': 'racial slur',
+            r'\bspic\b': 'racial slur',
+            r'\bspics\b': 'racial slur',
+            r'\bchink\b': 'racial slur',
+            r'\bchinks\b': 'racial slur',
+            r'\bkike\b': 'racial slur',
+            r'\bkikes\b': 'racial slur',
+            r'\bwetback\b': 'racial slur',
+            r'\bgook\b': 'racial slur',
+            r'\bgooks\b': 'racial slur',
+            # Homophobic / transphobic slurs
             r'\bfaggot\b': 'homophobic slur',
-            r'\bfag\b': 'homophobic slur',  # Only as whole word (not "flagrant")
+            r'\bfaggots\b': 'homophobic slur',
+            r'\bfag\b': 'homophobic slur',
+            r'\bfags\b': 'homophobic slur',
+            r'\bdyke\b': 'homophobic slur',
+            r'\bdykes\b': 'homophobic slur',
             r'\btranny\b': 'transphobic slur',
+            r'\btrannies\b': 'transphobic slur',
+            # Ableist slurs
             r'\bretard\b': 'ableist slur',
             r'\bretarded\b': 'ableist slur',
+            r'\bretards\b': 'ableist slur',
         }
         
         # Check exact word patterns on spaced version
@@ -204,20 +235,69 @@ class ModerationManager:
         
         # Patterns to check on space-removed version (catches "k y s" -> "kys")
         no_space_patterns = {
+            # Suicide encouragement
             'killyourself': 'suicide encouragement',
+            'killedyourself': 'suicide encouragement',
+            'killurself': 'suicide encouragement',
             'kys': 'suicide encouragement',
             'neckyourself': 'suicide encouragement',
             'ropeyourself': 'suicide encouragement',
+            'hangyourself': 'suicide encouragement',
+            'drinbleach': 'suicide encouragement',
+            'drinkbleach': 'suicide encouragement',
+            'endyourlife': 'suicide encouragement',
+            'godie': 'suicide encouragement',
+            # Violent threats
             'illkillyou': 'violent threat',
             'imgonnakillyou': 'violent threat',
             'illmurderyou': 'violent threat',
+            'imgoingtokillyou': 'violent threat',
+            'iwillkillyou': 'violent threat',
+            'iwillmurderyou': 'violent threat',
+            'iwillfindyou': 'doxxing/stalking threat',
+            'iknowwhereyoulive': 'doxxing/stalking threat',
+            'illdoxyou': 'doxxing threat',
+            'illswat': 'swatting threat',
+            'getswatted': 'swatting threat',
+            # CSAM solicitation
+            'sendnudeskid': 'CSAM solicitation',
+            'sendcpof': 'CSAM solicitation',
         }
         
-        # Check on space-removed version
-        for pattern, reason in no_space_patterns.items():
-            if pattern in no_space_normalized:
-                logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
+        # Flexible regex patterns checked on the SPACED version
+        # These catch phrases with extra words in between, e.g. "drink some bleach"
+        flexible_patterns = [
+            (r'\bkill(ed)?\s+(your|ur)\s*self\b', 'suicide encouragement'),
+            (r'\bdrink\s+(\w+\s+)?bleach\b', 'suicide encouragement'),
+            (r'\bhang\s+(your|ur)\s*self\b', 'suicide encouragement'),
+            (r'\bneck\s+(your|ur)\s*self\b', 'suicide encouragement'),
+            (r'\brope\s+(your|ur)\s*self\b', 'suicide encouragement'),
+            (r'\bend\s+(your|ur)\s+(own\s+)?life\b', 'suicide encouragement'),
+        ]
+        
+        for pattern, reason in flexible_patterns:
+            if re.search(pattern, spaced_normalized):
+                logger.warning(f"Detected harmful content via flexible pattern: '{pattern}' -> {reason}")
                 return True, reason
+        
+        # Check patterns - short patterns use word boundary on the SPACED version
+        # (so "just kys already" matches) while long patterns use substring on
+        # the no-space version (so "k i l l y o u r s e l f" matches).
+        for pattern, reason in no_space_patterns.items():
+            if len(pattern) <= 4:
+                # Short patterns: check on SPACED version with word boundaries
+                # e.g. "just kys already" → "just kys already" has \bkys\b
+                # Also check no-space version as exact match for pure evasion
+                if re.search(r'\b' + re.escape(pattern) + r'\b', spaced_normalized):
+                    logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
+                    return True, reason
+                if no_space_normalized == pattern:
+                    logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
+                    return True, reason
+            else:
+                if pattern in no_space_normalized:
+                    logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
+                    return True, reason
         
         # Special check: If a slur appears with spaces between EVERY letter (evasion)
         # e.g., "n i g g e r" becomes "nigger" after removing spaces
@@ -274,12 +354,15 @@ class ModerationManager:
         """
         Determine if content is seriously harmful vs just light profanity
         
-        Serious harm includes:
+        Serious harm (always moderated at any flagged confidence):
         - Hate speech / slurs
         - Self-harm / suicide encouragement
-        - Violence / threats
-        - Sexual harassment
-        - Targeted harassment
+        - Harassment with threats
+        
+        Context-dependent (only moderated at HIGH confidence >= 80%):
+        - Violence (often triggered by gaming/self-defense/meme context)
+        - Sexual/minors (often triggered by rule discussions mentioning terms)
+        - Violence/graphic
         
         Light profanity (allowed):
         - General swearing (fuck, shit, damn, etc.)
@@ -288,17 +371,22 @@ class ModerationManager:
         Returns:
             Tuple[is_serious, adjusted_confidence]
         """
-        # Categories that indicate SERIOUS harm (should be moderated)
-        serious_categories_openai = {
+        # Categories that ALWAYS indicate serious harm (moderated regardless)
+        always_serious_openai = {
             'hate',
             'hate/threatening', 
             'self-harm',
             'self-harm/intent',
             'self-harm/instructions',
-            'violence',
-            'violence/graphic',
             'harassment/threatening',
-            'sexual/minors'
+        }
+        
+        # Context-dependent categories - ONLY serious at high confidence (>= 80%)
+        # These produce tons of false positives on gaming talk, rule discussions, etc.
+        context_dependent_openai = {
+            'violence': 0.80,
+            'violence/graphic': 0.80,
+            'sexual/minors': 0.80,
         }
         
         # Light categories that are okay if alone
@@ -315,12 +403,21 @@ class ModerationManager:
             if is_flagged:
                 score = openai_scores.get(category, 0.0)
                 
-                if category in serious_categories_openai:
+                if category in always_serious_openai:
                     flagged_serious.append((category, score))
+                elif category in context_dependent_openai:
+                    # Only flag if score meets the high threshold for this category
+                    required_threshold = context_dependent_openai[category]
+                    if score >= required_threshold:
+                        flagged_serious.append((category, score))
+                    else:
+                        # Below threshold - treat as light/informational
+                        logger.info(f"Context-dependent category '{category}' at {score:.1%} is below {required_threshold:.0%} threshold - ignoring")
+                        flagged_light.append((category, score))
                 elif category in light_categories_openai:
                     flagged_light.append((category, score))
         
-        # If Google NL provided results, check those too
+        # If Google NL provided results, check those too (raised threshold to 0.80)
         if google_categories:
             serious_categories_google = {
                 'Violent',
@@ -330,7 +427,7 @@ class ModerationManager:
             }
             
             for category, confidence in google_categories.items():
-                if confidence > 0.6 and category in serious_categories_google:
+                if confidence > 0.80 and category in serious_categories_google:
                     flagged_serious.append((f"Google:{category}", confidence))
         
         # If ANY serious category is flagged, it's serious harm
@@ -349,6 +446,94 @@ class ModerationManager:
         
         # No serious harm detected
         return False, 0.0
+    
+    def _is_likely_false_positive(self, content: str, categories: Dict, category_scores: Dict) -> bool:
+        """
+        Context-aware false positive detection.
+        
+        Catches common innocent messages that AI moderators misclassify:
+        - Gaming talk ("shoot the enemy", "kill the boss", "1v5", "defend myself")
+        - Rule discussions ("banned loli content", "TOS", "rule about")
+        - Self-defense context ("life danger", "attacked my aggressor", "defend myself")
+        - Memes and jokes ("protip:", "meme goes here", "lmao")
+        - Meta-moderation talk ("report function", "flagged", "moderated")
+        
+        Returns True if the message is likely a false positive and should be ignored.
+        """
+        content_lower = content.lower()
+        
+        # Determine which categories triggered the flag
+        flagged_violence = categories.get('violence', False)
+        flagged_sexual_minors = categories.get('sexual/minors', False)
+        flagged_violence_graphic = categories.get('violence/graphic', False)
+        
+        violence_score = category_scores.get('violence', 0.0)
+        sexual_minors_score = category_scores.get('sexual/minors', 0.0)
+        violence_graphic_score = category_scores.get('violence/graphic', 0.0)
+        
+        # --- GAMING CONTEXT (violence false positives) ---
+        if flagged_violence or flagged_violence_graphic:
+            gaming_indicators = [
+                # Game actions
+                'shoot the enemy', 'kill the boss', 'kill the mob', 'kill the monster',
+                'until it dies', 'until they die', 'one shot', '1v5', '1v1', '1v2', '1v3', '1v4',
+                'headshot', 'double kill', 'triple kill', 'team kill', 'spawn kill',
+                'pvp', 'pve', 'dps', 'tank', 'healer', 'gg', 'ez',
+                'respawn', 'game over', 'level up', 'power up', 'boss fight',
+                'nuke', 'airstrike', 'grenade', 'sniper', 'shotgun', 'rifle',
+                'fortnite', 'valorant', 'cs2', 'csgo', 'cod', 'apex', 'overwatch',
+                'minecraft', 'roblox', 'gta', 'league', 'dota', 'warzone',
+                'protip', 'pro tip', 'meme', 'lmao', 'lmfao', 'rofl',
+                # Self-defense / real-life non-threatening context
+                'defend myself', 'self defense', 'self-defense', 'protecting myself',
+                'life danger', 'in danger', 'attacked me', 'attacking me',
+                'aggressor', 'bully', 'bullied', 'bullying',
+            ]
+            
+            for indicator in gaming_indicators:
+                if indicator in content_lower:
+                    # Only bypass if score is below 90% (truly extreme content still gets flagged)
+                    if violence_score < 0.90 and violence_graphic_score < 0.90:
+                        logger.info(f"Gaming/self-defense context detected ('{indicator}'), ignoring violence flag at {violence_score:.1%}")
+                        return True
+        
+        # --- RULE DISCUSSION CONTEXT (sexual/minors false positives) ---
+        if flagged_sexual_minors:
+            rule_discussion_indicators = [
+                # Discussing server rules
+                'rule', 'rules', 'tos', 'terms of service', 'banned', 'ban',
+                'discord tos', 'server rules', 'not allowed', 'prohibited',
+                'content policy', 'guidelines', 'remind people', 'reminder',
+                'against the rules', 'break the rules', 'violate',
+                # Meta-discussion about content types
+                'loli content', 'shota content', 'nsfw rule', 'nsfw policy',
+                'banned content', 'not permitted', 'why is', 'what about',
+                'is only there to', 'rule is', 'the rule',
+            ]
+            
+            for indicator in rule_discussion_indicators:
+                if indicator in content_lower:
+                    if sexual_minors_score < 0.90:
+                        logger.info(f"Rule discussion context detected ('{indicator}'), ignoring sexual/minors flag at {sexual_minors_score:.1%}")
+                        return True
+        
+        # --- META-MODERATION TALK ---
+        meta_moderation_indicators = [
+            'report function', 'testing', 'flagged', 'moderated',
+            'false positive', 'wrongly flagged', 'incorrectly flagged',
+            'bot flagged', 'bot deleted', 'ai moderation', 'automod',
+            'yelled at me', 'got flagged', 'was flagged', 'got banned',
+            'was banned', 'was removed', 'got removed', 'got moderated',
+        ]
+        
+        for indicator in meta_moderation_indicators:
+            if indicator in content_lower:
+                max_score = max(category_scores.values()) if category_scores else 0.0
+                if max_score < 0.90:
+                    logger.info(f"Meta-moderation discussion detected ('{indicator}'), ignoring flag at {max_score:.1%}")
+                    return True
+        
+        return False
     
     async def _check_with_google_nl(self, content: str) -> Optional[Dict]:
         """
@@ -402,6 +587,129 @@ class ModerationManager:
                     
         except Exception as e:
             logger.error(f"Error calling Google Natural Language API: {e}")
+            return None
+    
+    async def _verify_with_gemini(self, content: str, flagged_categories: Dict, category_scores: Dict, max_confidence: float) -> Optional[Dict]:
+        """
+        Third-tier verification using Gemini LLM.
+        
+        Gemini analyzes the flagged message in context and returns a verdict:
+        - is_harmful: True if the message genuinely violates moderation rules
+        - reasoning: Brief explanation of why
+        - adjusted_severity: "high", "medium", or "none"
+        
+        This catches false positives that the OpenAI/Google APIs miss because
+        Gemini can understand context (gaming, rule discussions, jokes, etc.)
+        """
+        if not self.gemini_api_key or not HAS_GENAI:
+            logger.warning("Gemini API key not configured or google-genai not installed, skipping LLM verification")
+            return None
+        
+        try:
+            # Build category summary for the prompt
+            flagged_summary = []
+            for cat, flagged in flagged_categories.items():
+                if flagged:
+                    score = category_scores.get(cat, 0.0)
+                    if score >= 0.50:  # Only mention categories with meaningful scores
+                        flagged_summary.append(f"- {cat}: {score:.0%}")
+            
+            categories_text = "\n".join(flagged_summary) if flagged_summary else "No specific categories flagged above 50%"
+            
+            prompt = f"""You are a Discord server content moderator AI. Your job is to determine if a flagged message is GENUINELY harmful or a FALSE POSITIVE.
+
+An automated moderation system flagged this message at {max_confidence:.0%} confidence. Your job is to verify whether this is truly harmful content or an innocent message that was incorrectly flagged.
+
+**Flagged message:**
+"{content}"
+
+**Categories flagged by automated system:**
+{categories_text}
+
+**IMPORTANT CONTEXT — these are common FALSE POSITIVES you must NOT flag:**
+- Gaming talk: "shoot the enemy", "kill the boss", "headshot", "1v5", "nuke the base" → NOT harmful
+- Rule/TOS discussions: "loli content is banned", "the nsfw rule says", "discord TOS" → NOT harmful (discussing rules, not breaking them)
+- Self-defense talk: "defend myself", "was in danger", "bully attacked me" → NOT harmful
+- Memes/jokes: "protip: shoot the enemy until it dies", gaming memes → NOT harmful
+- Meta-moderation: "the bot flagged me", "false positive", "got moderated" → NOT harmful
+- Light profanity: "damn", "shit", "fuck", casual swearing → NOT harmful (allowed on Discord)
+- Action movies/media: discussing violence in movies, games, anime, books → NOT harmful
+
+**Things that ARE genuinely harmful:**
+- Slurs and hate speech targeting real groups
+- Genuine threats of violence against real people
+- Suicide encouragement directed at someone
+- CSAM or sexual content involving minors
+- Doxxing, swatting threats
+- Detailed self-harm instructions
+- Graphic descriptions of real violence with intent to glorify
+
+Respond with ONLY valid JSON (no markdown, no code fences):
+{{"is_harmful": true/false, "reasoning": "brief one-sentence explanation", "adjusted_severity": "high"/"medium"/"none"}}"""
+
+            client = genai.Client(api_key=self.gemini_api_key)
+            
+            # Try models in order of preference
+            models_to_try = ["gemini-2.0-flash", "gemini-2.5-flash"]
+            response_text = ""
+            
+            for model_name in models_to_try:
+                if response_text:
+                    break
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=genai_types.GenerateContentConfig(
+                            temperature=0.1,  # Low temperature for consistent moderation decisions
+                            max_output_tokens=200,
+                        ),
+                    )
+                    response_text = (response.text or "").strip()
+                    if response_text:
+                        logger.info(f"Gemini moderation verification successful with model {model_name}")
+                        break
+                except Exception as model_err:
+                    logger.warning(f"Gemini model {model_name} failed: {model_err}")
+                    continue
+            
+            if not response_text:
+                logger.warning("Gemini returned empty response for moderation verification")
+                return None
+            
+            # Clean response — strip markdown fences if present
+            cleaned = response_text.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("\n", 1)[-1]  # Remove first line
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                cleaned = cleaned.strip()
+            
+            # Parse JSON response
+            try:
+                result = _json.loads(cleaned)
+                is_harmful = result.get("is_harmful", True)  # Default to harmful if parsing issue
+                reasoning = result.get("reasoning", "No reasoning provided")
+                adjusted_severity = result.get("adjusted_severity", "medium")
+                
+                logger.info(f"Gemini verdict: is_harmful={is_harmful}, severity={adjusted_severity}, reasoning={reasoning}")
+                
+                return {
+                    "is_harmful": is_harmful,
+                    "reasoning": reasoning,
+                    "adjusted_severity": adjusted_severity,
+                }
+            except _json.JSONDecodeError:
+                logger.warning(f"Failed to parse Gemini moderation response as JSON: {cleaned[:200]}")
+                # Fallback: if Gemini says "false" or "not harmful" anywhere, treat as not harmful
+                lower = cleaned.lower()
+                if '"is_harmful": false' in lower or '"is_harmful":false' in lower:
+                    return {"is_harmful": False, "reasoning": "Parsed from non-JSON response", "adjusted_severity": "none"}
+                # Default to harmful if can't parse (safety)
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error verifying with Gemini: {e}")
             return None
     
     async def scan_message(self, message: discord.Message) -> Optional[Dict]:
@@ -491,16 +799,23 @@ class ModerationManager:
                     category_scores = moderation_result.get('category_scores', {})
                     max_confidence = max(category_scores.values()) if category_scores else 0.0
                     
-                    # Apply confidence-based thresholds:
-                    # < 50%: Do nothing
-                    # 50-75%: Flag but don't delete
-                    # >= 75%: Flag and mark for deletion
+                    # Apply confidence-based thresholds (triple-API pipeline):
+                    # < 75%: Do nothing — too low for any concern
+                    # 75%+: Run through Google NL + Gemini LLM verification
+                    # After verification: 80-90% = flag for review, >= 90% = flag + delete
                     
-                    if max_confidence < 0.50:
-                        # Below 50% confidence - ignore
+                    if max_confidence < 0.75:
+                        # Below 75% confidence - ignore entirely
+                        # Gemini will verify everything 75%+, so we can cast a wider net
+                        logger.debug(f"OpenAI confidence {max_confidence:.1%} below 75% threshold - ignoring")
                         return None
                     
-                    # Secondary check with Google Natural Language API for all flagged content (50-100%)
+                    # Check for context-aware false positives BEFORE expensive API calls
+                    if self._is_likely_false_positive(clean_content, moderation_result.get('categories', {}), category_scores):
+                        logger.info(f"Context-aware filter: message likely a false positive, ignoring (confidence: {max_confidence:.1%})")
+                        return None
+                    
+                    # Secondary check with Google Natural Language API for flagged content (80%+)
                     google_result = None
                     google_max_confidence = 0.0
                     
@@ -524,8 +839,8 @@ class ModerationManager:
                         google_categories
                     )
                     
-                    # If it's ONLY light profanity, allow it (reduce confidence)
-                    if not is_serious and adjusted_confidence < 0.50:
+                    # If it's ONLY light profanity, allow it
+                    if not is_serious and adjusted_confidence < 0.80:
                         logger.info(f"Light profanity detected and allowed. Confidence adjusted to {adjusted_confidence:.1%}")
                         return None  # Don't flag light profanity
                     
@@ -534,11 +849,53 @@ class ModerationManager:
                         max_confidence = adjusted_confidence
                         logger.info(f"Serious harm confirmed. Using adjusted confidence: {max_confidence:.1%}")
                     
+                    # THIRD TIER: Gemini LLM verification — the final judge
+                    # Send the flagged message to Gemini to verify if it's genuinely harmful
+                    # This catches false positives the other APIs miss (gaming talk, rule discussions, etc.)
+                    categories = moderation_result.get('categories', {})
+                    gemini_verdict = await self._verify_with_gemini(clean_content, categories, category_scores, max_confidence)
+                    
+                    gemini_reasoning = None
+                    if gemini_verdict is not None:
+                        gemini_reasoning = gemini_verdict.get("reasoning", "")
+                        
+                        if not gemini_verdict["is_harmful"]:
+                            # Gemini says it's NOT harmful — false positive caught!
+                            logger.info(
+                                f"Gemini LLM override: message is NOT harmful. "
+                                f"Reasoning: {gemini_reasoning}. "
+                                f"Original confidence: {max_confidence:.1%}. Dropping flag."
+                            )
+                            return None
+                        
+                        # Gemini confirmed harmful — use its severity if provided
+                        gemini_severity = gemini_verdict.get("adjusted_severity", "medium")
+                        logger.info(
+                            f"Gemini LLM confirmed harmful. "
+                            f"Severity: {gemini_severity}. Reasoning: {gemini_reasoning}"
+                        )
+                        
+                        # If Gemini downgrades from high to medium/none, respect that
+                        if gemini_severity == "none":
+                            logger.info("Gemini downgraded severity to none — dropping flag")
+                            return None
+                        elif gemini_severity == "medium" and max_confidence >= 0.90:
+                            # Gemini thinks it's only medium even though confidence is high
+                            # Trust Gemini's contextual understanding
+                            max_confidence = 0.85  # Bring it down to medium range
+                            logger.info("Gemini downgraded high severity to medium — adjusting confidence to 85%")
+                    else:
+                        # Gemini unavailable — fall through with existing confidence
+                        # Still require 80%+ to flag (safety net without LLM verification)
+                        if max_confidence < 0.80:
+                            logger.info(f"Gemini unavailable and confidence {max_confidence:.1%} < 80% — not flagging without LLM verification")
+                            return None
+                    
                     # Determine severity based on final confidence
-                    if max_confidence >= 0.75:
+                    if max_confidence >= 0.90:
                         severity = "high"  # Should be deleted
                         should_delete = True
-                    else:  # 0.50 <= max_confidence < 0.75
+                    else:  # 0.80 <= max_confidence < 0.90 (or Gemini-adjusted)
                         severity = "medium"  # Flag for review only
                         should_delete = False
                     
@@ -549,6 +906,16 @@ class ModerationManager:
                     content_variants = self._generate_content_variants(clean_content)
                     primary_variant = self._normalize_content(clean_content)
                     content_hash = hash(primary_variant)
+                    
+                    # Determine moderation source label
+                    if gemini_verdict and google_result:
+                        mod_source = "triple"  # OpenAI + Google NL + Gemini
+                    elif gemini_verdict:
+                        mod_source = "openai_gemini"
+                    elif google_result:
+                        mod_source = "openai_google"
+                    else:
+                        mod_source = "openai_only"
                     
                     moderation_data = {
                         "message_id": str(message.id),
@@ -566,7 +933,10 @@ class ModerationManager:
                         "category_scores": category_scores,
                         "google_nl_confidence": google_max_confidence if google_result else None,
                         "google_nl_categories": google_result['flagged_categories'] if google_result else None,
-                        "moderation_source": "dual" if google_result else "openai_only",
+                        "gemini_verified": gemini_verdict["is_harmful"] if gemini_verdict else None,
+                        "gemini_reasoning": gemini_reasoning,
+                        "gemini_severity": gemini_verdict.get("adjusted_severity") if gemini_verdict else None,
+                        "moderation_source": mod_source,
                         "status": "auto_approved" if existing_decision and existing_decision['decision'] == "whitelist" else "pending_review",
                         "existing_decision": existing_decision['decision'] if existing_decision else None,
                         "created_at": datetime.utcnow(),
@@ -591,8 +961,6 @@ class ModerationManager:
                     
                     logger.info(f"Message flagged for review from {message.author.display_name} in #{message.channel.name} (confidence: {max_confidence:.1%}, severity: {severity})")
                     return moderation_data
-                    
-                    return None
                     
         except Exception as e:
             logger.error(f"Error scanning message for moderation: {e}")

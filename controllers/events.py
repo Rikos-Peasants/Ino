@@ -13,7 +13,8 @@ import asyncio
 import random
 import re
 from datetime import datetime, timedelta
-from typing import List, Optional
+from collections import Counter
+from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,13 @@ TRENDING_POST_MIN_LIKES = 7  # Minimum likes for "Trending Creator" quest
 VIRAL_IMAGE_MIN_LIKES = 15  # Minimum likes for "viral_image" quest
 AI_MODERATION_TIMEOUT_THRESHOLD = 0.85  # 85% confidence required for auto-timeout
 AI_MODERATION_TIMEOUT_DURATION = timedelta(minutes=5)
+
+# Ping spam detection constants
+PING_SPAM_SAME_USER_LIMIT = 3       # 3 pings to the same person
+PING_SPAM_MASS_USER_LIMIT = 7       # 7 unique user pings
+PING_SPAM_WINDOW = timedelta(minutes=2)  # within 2 minutes
+PING_SPAM_TIMEOUT_DURATION = timedelta(minutes=5)
+
 DISCORD_INVITE_REGEX = re.compile(
     r"https?://(?:www\.)?(?:discord\.gg|discord(?:app)?\.com/invite)/[A-Za-z0-9-]+",
     re.IGNORECASE
@@ -36,6 +44,10 @@ class EventsController:
         self.spam_channel_message_count = 0  # Track messages in spam channel
         self.quest_manager = None  # Will be initialized when bot is ready
         self.user_safety_monitor = UserSafetyMonitor(bot)
+        # Ping spam tracking: {author_id: [(target_id, timestamp, message_id), ...]}
+        self._ping_history: Dict[int, List[tuple]] = {}
+        # Track which authors have been timed out recently to avoid re-triggering
+        self._ping_timeout_cooldown: Dict[int, datetime] = {}
     
     def get_mod_offline_manager(self) -> Optional[ModOfflineManager]:
         """Get the mod offline manager from the commands controller"""
@@ -451,6 +463,9 @@ class EventsController:
 
         await self.user_safety_monitor.handle_message(message)
         
+        # Check for ping spam (repeated pings to same user / mass pings)
+        await self._check_ping_spam(message)
+        
         # Check for positive Ino mentions first (reward good behavior!)
         await self._check_positive_ino_mention(message)
         
@@ -599,6 +614,152 @@ class EventsController:
             logger.error(f"Error sending Discord invite warning DM: {e}")
 
         return True
+    
+    async def _check_ping_spam(self, message: discord.Message):
+        """
+        Detect and timeout users who abuse pings:
+        1. 3+ pings to the SAME person in 2 minutes (unless that person replied → conversation)
+        2. 7+ unique user pings in 2 minutes (mass ping)
+        """
+        if not message.guild or message.author.bot:
+            return
+        
+        # Only count real user mentions (not roles, @everyone, @here)
+        mentioned_users = [u for u in message.mentions if not u.bot and u.id != message.author.id]
+        if not mentioned_users:
+            return
+        
+        now = datetime.utcnow()
+        author_id = message.author.id
+        
+        # Check cooldown — don't re-trigger within 5 minutes of last timeout
+        last_timeout = self._ping_timeout_cooldown.get(author_id)
+        if last_timeout and (now - last_timeout) < PING_SPAM_TIMEOUT_DURATION:
+            return
+        
+        # Record each mention
+        if author_id not in self._ping_history:
+            self._ping_history[author_id] = []
+        
+        for user in mentioned_users:
+            self._ping_history[author_id].append((user.id, now, message.channel.id))
+        
+        # Prune old records outside the window
+        cutoff = now - PING_SPAM_WINDOW
+        self._ping_history[author_id] = [
+            (tid, ts, cid) for tid, ts, cid in self._ping_history[author_id]
+            if ts > cutoff
+        ]
+        
+        recent_pings = self._ping_history[author_id]
+        
+        # --- CHECK 1: Same-user ping spam (3+ pings to same person in 2 min) ---
+        target_counts = Counter(tid for tid, ts, cid in recent_pings)
+        
+        for target_id, count in target_counts.items():
+            if count >= PING_SPAM_SAME_USER_LIMIT:
+                # Before timing out, check if the target has replied in the channel
+                # If they replied, it's a conversation — put the check on hold
+                if await self._has_target_replied(message.channel, target_id, author_id, cutoff):
+                    logger.info(
+                        f"Ping spam check: {message.author.display_name} pinged user {target_id} "
+                        f"{count}x but target replied — treating as conversation, no action"
+                    )
+                    continue
+                
+                # Target didn't reply — this is ping harassment
+                target_user = message.guild.get_member(target_id)
+                target_name = target_user.display_name if target_user else f"<@{target_id}>"
+                
+                await self._apply_ping_spam_timeout(
+                    message,
+                    reason=f"Ping spamming {target_name} ({count} pings in 2 minutes)",
+                    violation_type="same_user",
+                    details=f"Pinged {target_name} {count} times"
+                )
+                return  # Only one timeout per message
+        
+        # --- CHECK 2: Mass user pings (7+ unique users in 2 min) ---
+        unique_targets = set(tid for tid, ts, cid in recent_pings)
+        if len(unique_targets) >= PING_SPAM_MASS_USER_LIMIT:
+            await self._apply_ping_spam_timeout(
+                message,
+                reason=f"Mass ping spam ({len(unique_targets)} users pinged in 2 minutes)",
+                violation_type="mass_ping",
+                details=f"Pinged {len(unique_targets)} different users"
+            )
+    
+    async def _has_target_replied(self, channel, target_id: int, author_id: int, since: datetime) -> bool:
+        """
+        Check if the pinged target has sent a message in the channel recently.
+        If they replied, it's a conversation and we shouldn't timeout the pinger.
+        """
+        try:
+            # Look through recent messages for a reply from the target
+            async for msg in channel.history(limit=30, after=since):
+                if msg.author.id == target_id:
+                    # Target posted in this channel after being pinged — it's a conversation
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error checking if target replied in ping spam check: {e}")
+            return False  # Err on the side of caution — don't timeout
+    
+    async def _apply_ping_spam_timeout(self, message: discord.Message, reason: str, violation_type: str, details: str):
+        """Apply timeout and notify for ping spam violations."""
+        author = message.author
+        now = datetime.utcnow()
+        
+        # Apply timeout
+        try:
+            await author.timeout(PING_SPAM_TIMEOUT_DURATION, reason=reason)
+            self._ping_timeout_cooldown[author.id] = now
+            # Clear their ping history after timeout
+            self._ping_history.pop(author.id, None)
+            logger.info(f"Timed out {author.display_name} for ping spam: {reason}")
+        except discord.Forbidden:
+            logger.warning(f"Missing permission to timeout {author.display_name} for ping spam")
+            return
+        except Exception as e:
+            logger.error(f"Error applying ping spam timeout to {author.display_name}: {e}")
+            return
+        
+        # DM the user
+        try:
+            embed = EmbedViews.ping_spam_timeout_embed(reason, details, PING_SPAM_TIMEOUT_DURATION)
+            await author.send(embed=embed)
+        except discord.Forbidden:
+            logger.info(f"Could not DM {author.display_name} about ping spam timeout (DMs disabled)")
+        except Exception as e:
+            logger.error(f"Error sending ping spam timeout DM: {e}")
+        
+        # Send a brief channel notification that auto-deletes
+        try:
+            notification = await message.channel.send(
+                f"⏱️ {author.mention} has been timed out for 5 minutes for excessive pinging.",
+                delete_after=30
+            )
+        except Exception as e:
+            logger.error(f"Error sending ping spam channel notification: {e}")
+        
+        # Apply InoRep penalty
+        try:
+            if hasattr(self.bot, 'leaderboard_manager') and hasattr(self.bot.leaderboard_manager, 'inorep_manager'):
+                inorep_manager = self.bot.leaderboard_manager.inorep_manager
+                if inorep_manager:
+                    penalty = -5 if violation_type == "mass_ping" else -3
+                    await inorep_manager.add_rep(
+                        user_id=str(author.id),
+                        guild_id=str(message.guild.id),
+                        user_name=author.display_name,
+                        amount=penalty,
+                        reason=f"Ping spam: {reason}",
+                        moderator_id="0",
+                        moderator_name="Ino's Ping Spam Detection"
+                    )
+                    logger.info(f"Applied InoRep penalty ({penalty}) to {author.display_name} for ping spam")
+        except Exception as e:
+            logger.error(f"Error applying InoRep penalty for ping spam: {e}")
     
     async def _check_for_chat_reminder(self, message: discord.Message):
         """Check if the last messages are text messages and send a chat reminder.
@@ -2013,12 +2174,12 @@ class EventsController:
             if categories.get('self-harm') or categories.get('self_harm') or categories.get('self-harm/intent') or categories.get('self-harm/instructions'):
                 await self._send_self_harm_help(message.author)
             
-            # Delete the original message only if confidence is 75% or higher
+            # Delete the original message only if confidence is 90% or higher
             should_delete = moderation_result.get('should_delete', False)
             if should_delete:
                 try:
                     await message.delete()
-                    logger.info(f"Deleted flagged message from {message.author.display_name} (confidence >= 75%)")
+                    logger.info(f"Deleted flagged message from {message.author.display_name} (confidence >= 90%)")
                     
                     # Send notification in channel that auto-deletes after 60 seconds
                     severity = moderation_result.get('severity', 'high')
@@ -2044,7 +2205,7 @@ class EventsController:
                 except discord.NotFound:
                     pass  # Message already deleted
             else:
-                logger.info(f"Message flagged but not deleted (confidence 50-75%) from {message.author.display_name}")
+                logger.info(f"Message flagged but not deleted (confidence 80-90%) from {message.author.display_name}")
             
             logger.info(f"Sent moderation review request with UI buttons for message from {message.author.display_name}")
             
@@ -2075,10 +2236,10 @@ class EventsController:
                 penalty = -10
                 reason = f"Severe violation detected: {pattern_reason}"
             elif severity == "high":
-                # High severity (75%+ confidence, will be deleted)
+                # High severity (90%+ confidence, will be deleted)
                 penalty = -5
                 reason = f"Harmful content flagged ({max_confidence:.0%} confidence)"
-            else:  # medium severity (50-75%)
+            else:  # medium severity (80-90%)
                 # Medium severity (flagged for review only)
                 penalty = -2
                 reason = f"Content flagged for review ({max_confidence:.0%} confidence)"

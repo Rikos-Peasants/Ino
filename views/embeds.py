@@ -938,21 +938,33 @@ class EmbedViews:
         # Set color based on severity
         if severity == "high":
             color = discord.Color.red()
-            severity_text = "🔴 HIGH (≥75%)"
+            severity_text = "🔴 HIGH (≥90%)"
             action_text = "Message has been deleted"
         else:  # medium
             color = discord.Color.orange()
-            severity_text = "🟡 MEDIUM (50-75%)"
+            severity_text = "🟡 MEDIUM (80-90%)"
             action_text = "Message is still visible"
         
-        # Check if dual moderation was used
+        # Check which APIs were used
         moderation_source = moderation_data.get('moderation_source', 'openai_only')
         google_confidence = moderation_data.get('google_nl_confidence', 0)
+        gemini_verified = moderation_data.get('gemini_verified')
+        gemini_reasoning = moderation_data.get('gemini_reasoning')
         
         description = f"AI moderation has flagged this content for manual review.\n**Combined Confidence:** {max_confidence:.1%} | **Severity:** {severity_text}"
         
-        if moderation_source == "dual" and google_confidence:
-            description += f"\n\n🔍 **Dual-API Check**\n• OpenAI + Google Natural Language\n• Google NL: {google_confidence:.1%}"
+        # Show API pipeline info
+        api_info = []
+        if google_confidence:
+            api_info.append(f"• Google NL: {google_confidence:.1%}")
+        if gemini_verified is not None:
+            api_info.append(f"• Gemini LLM: {'✅ Confirmed harmful' if gemini_verified else '❌ Not harmful'}")
+            if gemini_reasoning:
+                api_info.append(f"• Reasoning: *{gemini_reasoning}*")
+        
+        if api_info:
+            source_label = {"triple": "Triple-API", "openai_gemini": "OpenAI + Gemini", "openai_google": "OpenAI + Google NL", "openai_only": "OpenAI Only"}.get(moderation_source, moderation_source)
+            description += f"\n\n🔍 **{source_label} Check**\n" + "\n".join(api_info)
         
         embed = discord.Embed(
             title="⚠️ Content Flagged for Review",
@@ -965,12 +977,14 @@ class EmbedViews:
         embed.add_field(name="📍 Channel", value=f"<#{moderation_data['channel_id']}>", inline=True)
         embed.add_field(name="🗑️ Action", value=action_text, inline=True)
         
-        # Show flagged categories
+        # Show flagged categories (only show categories with scores >= 80% to avoid
+        # confusing reviewers with low-confidence scores that aren't meaningful)
         flagged_categories = []
         for category, flagged in moderation_data.get('categories', {}).items():
             if flagged:
                 score = moderation_data.get('category_scores', {}).get(category, 0)
-                flagged_categories.append(f"• **{category.replace('_', ' ').title()}** ({score:.2%})")
+                if score >= 0.80:
+                    flagged_categories.append(f"• **{category.replace('_', ' ').title()}** ({score:.0%})")
         
         if flagged_categories:
             embed.add_field(
@@ -1081,6 +1095,31 @@ class EmbedViews:
         embed.add_field(name="🚫 Action", value="Auto-rejected", inline=True)
         
         embed.add_field(name="🔗 Jump to Message", value=f"[Click here]({log_data['jump_url']})", inline=False)
+        
+        return embed
+    
+    @staticmethod
+    def ping_spam_timeout_embed(reason: str, details: str, duration) -> discord.Embed:
+        """Create an embed for ping spam timeout DM notification"""
+        minutes = int(duration.total_seconds() // 60)
+        embed = discord.Embed(
+            title="⏱️ Timed Out — Excessive Pinging",
+            description=f"You have been timed out for **{minutes} minutes** for ping spam.",
+            color=discord.Color.orange(),
+            timestamp=datetime.utcnow()
+        )
+        
+        embed.add_field(name="📋 Reason", value=reason, inline=False)
+        embed.add_field(name="📊 Details", value=details, inline=False)
+        embed.add_field(
+            name="ℹ️ Rules",
+            value="• Don't ping the same person more than **2 times** in 2 minutes unless they reply\n"
+                  "• Don't mass-ping **7+ different users** in 2 minutes\n"
+                  "• If someone replies to your ping, you're having a conversation — that's fine!",
+            inline=False
+        )
+        
+        embed.set_footer(text="Repeated violations may result in longer timeouts")
         
         return embed
     
