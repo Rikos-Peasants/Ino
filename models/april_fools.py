@@ -653,6 +653,15 @@ async def uwuify_message_via_webhook(message: discord.Message) -> bool:
         # Uwuify the content
         uwu_content = uwuify_text(message.content)
         
+        # If this was a reply, add a reply indicator at the start
+        if message.reference and message.reference.message_id:
+            try:
+                reply_target = await message.channel.fetch_message(message.reference.message_id)
+                reply_indicator = f"> in weply to **{reply_target.author.display_name}** nya~\n"
+                uwu_content = reply_indicator + uwu_content
+            except Exception:
+                pass  # If we can't fetch the reply target, just send without indicator
+        
         # Build kwargs for webhook send
         kwargs = {
             "content": uwu_content,
