@@ -571,24 +571,50 @@ SPARKLES = ["*", "~", "^", "+", ">", "<"]
 
 KEYSMASHES = ["asdfghjkl", "qwertyuiop", "sjdksjdk", "ahhhh", "wjwkwkw", "eeeeee", "aaaaaa"]
 
+def _uwuify_url_text(url: str) -> str:
+    """Uwuify just the text portions of a URL (domain, path) while keeping structure."""
+    # Parse URL components
+    import urllib.parse
+    try:
+        parsed = urllib.parse.urlparse(url)
+        # Uwuify domain
+        domain = parsed.netloc
+        domain = domain.replace('r', 'w').replace('l', 'w')
+        domain = domain.replace('R', 'W').replace('L', 'W')
+        domain = domain.replace('th', 'f').replace('TH', 'F')
+        domain = domain.replace('no', 'nyo').replace('na', 'nya')
+        
+        # Uwuify path
+        path = parsed.path
+        path = path.replace('r', 'w').replace('l', 'w')
+        path = path.replace('R', 'W').replace('L', 'W')
+        path = path.replace('th', 'f').replace('TH', 'F')
+        path = path.replace('no', 'nyo').replace('na', 'nya')
+        
+        # Reconstruct URL
+        uwu_url = urllib.parse.urlunparse((
+            parsed.scheme,
+            domain,
+            path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment
+        ))
+        return uwu_url
+    except Exception:
+        # Fallback: simple text replace
+        return url.replace('r', 'w').replace('l', 'w').replace('no', 'nyo').replace('na', 'nya')
+
+
 def uwuify_text(text: str) -> str:
-    """Transform text into MAXIMUM EXTREME uwu speak.
+    """Transform text into uwu speak - simplified with 1 decoration max.
     
-    Maximum cringe rules:
-    - Clean zalgo/bypass text first
+    Rules:
     - r/l -> w, R/L -> W  
     - 'th' -> 'd' or 'f'
-    - 'no' -> 'nyo' (aggressive)
-    - 'na' -> 'nya', 'ne' -> 'nye', 'ni' -> 'nyi', 'mu' -> 'myu'
-    - EXTREME stuttering ~60% (double/triple/quadruple)
-    - Add uwu face ~70% at end
-    - Add asterisk actions ~25% randomly
-    - Add sparkles ~40% between words
-    - Add meow variations ~20%
-    - Add w- dashes ~50% (w-what, h-hewwo)
-    - Repeat words ~20% (word word)
-    - Occasional keysmash ~10%
-    - Tildes ~80% on sentences
+    - 'no' -> 'nyo', 'na' -> 'nya', 'ne' -> 'nye', 'ni' -> 'nyi', 'mu' -> 'myu'
+    - Light stuttering ~30%
+    - ONE decoration at end only (face OR tilde OR asterisk action)
     """
     if not text:
         return text
@@ -621,14 +647,28 @@ def uwuify_text(text: str) -> str:
     result = []
     words = text.split(' ')
     
-    # Randomly insert asterisk action at start
-    if random.random() < ASTERISK_ACTION_CHANCE:
-        result.append(random.choice(ASTERISK_ACTIONS))
-    
     prev_word = ""
     for word in words:
-        # Skip if it's a placeholder
-        if word.startswith('{') and word.endswith('}'):
+        # Skip Discord emojis placeholders
+        if word.startswith('{EMOJI_') and word.endswith('}'):
+            result.append(word)
+            continue
+        
+        # Check if it's a URL placeholder - uwuify the domain/path portion
+        if word.startswith('{URL_') and word.endswith('}'):
+            # Extract the original URL, uwuify it, then restore
+            placeholder_idx = int(word[5:-1])
+            if placeholder_idx < len(preserved_items):
+                original_url = preserved_items[placeholder_idx][1]
+                # Uwuify just the text parts of URL (domain, path)
+                uwu_url = _uwuify_url_text(original_url)
+                result.append(uwu_url)
+                # Mark this placeholder as used
+                preserved_items[placeholder_idx] = (word, uwu_url)
+            continue
+        
+        if word.startswith('{TENOR_') and word.endswith('}'):
+            # Keep tenor links unchanged
             result.append(word)
             continue
         
@@ -642,20 +682,11 @@ def uwuify_text(text: str) -> str:
             result.append(punctuation)
             continue
         
-        # EXTREME stuttering - can be n-n-, n-n-n-, or n-n-n-n-
-        if len(word) > 2 and random.random() < STUTTER_CHANCE:
+        # Light stuttering - single double only
+        if len(word) > 2 and random.random() < 0.3:
             first_char = word[0].lower()
             if first_char.isalpha():
-                roll = random.random()
-                if roll < 0.2:
-                    # Quadruple stutter!
-                    word = f"{first_char}-{first_char}-{first_char}-{first_char}-{word}"
-                elif roll < 0.5:
-                    # Triple stutter
-                    word = f"{first_char}-{first_char}-{first_char}-{word}"
-                else:
-                    # Double stutter
-                    word = f"{first_char}-{first_char}-{word}"
+                word = f"{first_char}-{word}"
         
         # Transform the word
         transformed = word
@@ -702,40 +733,13 @@ def uwuify_text(text: str) -> str:
         transformed = ''.join(new_chars)
         
         # w- prefix chance (w-what, h-hewwo style)
-        if random.random() < W_DASH_CHANCE and len(transformed) > 2:
+        if random.random() < 0.3 and len(transformed) > 2:
             first_char = transformed[0].lower()
             if first_char in 'hw' and not transformed.startswith(('w-', 'h-')):
                 transformed = f"{first_char}-{transformed}"
         
-        # owo/uwu-ify endings more aggressively
-        if transformed.lower().endswith('o') and len(transformed) > 1:
-            if random.random() < 0.35:
-                transformed = transformed[:-1] + ('owo' if transformed[-1].islower() else 'OWO')
-        elif transformed.lower().endswith('u') and len(transformed) > 1:
-            if random.random() < 0.35:
-                transformed = transformed[:-1] + ('uwu' if transformed[-1].islower() else 'UWU')
-        
-        # Add sparkle before word randomly
-        prefix = ''
-        if random.random() < SPARKLE_CHANCE:
-            prefix = random.choice(SPARKLES) + " "
-        
-        # Add nya~/meow suffix randomly
-        suffix = ''
-        if random.random() < NYA_CHANCE and len(transformed) > 2:
-            suffixes = [' nya~', ' rawr', ' ~', ' ^w^', ' uwu', ' owo']
-            suffix = random.choice(suffixes)
-        
-        # Word repetition (word word)
-        if random.random() < REPEAT_CHANCE and len(transformed) > 2 and transformed != prev_word:
-            transformed = f"{transformed} {transformed.lower()}"
-        
-        result.append(prefix + transformed + suffix + punctuation)
+        result.append(transformed + punctuation)
         prev_word = transformed.lower()
-        
-        # Random meow insertion between words
-        if random.random() < MEOW_CHANCE:
-            result.append(random.choice(MEOW_VARIATIONS))
     
     text = ' '.join(result)
     
@@ -743,31 +747,19 @@ def uwuify_text(text: str) -> str:
     for placeholder, original in preserved_items:
         text = text.replace(placeholder, original, 1)
     
-    # Add asterisk action in middle or end randomly
-    if random.random() < ASTERISK_ACTION_CHANCE:
-        text = text + " " + random.choice(ASTERISK_ACTIONS)
-    
-    # Occasional keysmash at end
-    if random.random() < KEYSMASH_CHANCE:
-        text = text + " " + random.choice(KEYSMASHES)
-    
-    # EXTREME tilde addition (~80% chance)
-    if random.random() < 0.8 and not any(c in text[-5:] for c in ['~']):
-        for punct in ['.', '!', '?']:
-            if text.rstrip().endswith(punct):
-                text = text.rstrip()[:-1] + punct + '~'
-                break
-        else:
-            text = text + '~'
-    
-    # Add sparkle cluster at end randomly
-    if random.random() < 0.5:
-        sparkles = ''.join(random.choice(SPARKLES) for _ in range(random.randint(2, 5)))
-        text = text + " " + sparkles
-    
-    # Add random uwu face at end (70% chance)
-    if random.random() < FACE_CHANCE:
+    # Add ONE decoration at end only
+    roll = random.random()
+    if roll < 0.4:
+        # Add uwu face
         text = text + " " + random.choice(UWU_FACES)
+    elif roll < 0.7:
+        # Add tilde
+        if not text.endswith('~'):
+            if text[-1] in '.,!?;:' :
+                text = text[:-1] + text[-1] + '~'
+            else:
+                text = text + '~'
+    # 30% chance: no decoration added
     
     return text
 
@@ -779,8 +771,20 @@ def should_uwuify_message(message: discord.Message) -> bool:
     - Message has only links/media (no text content)
     - Message is from a bot
     - Message is a command (starts with R! or /)
+    - Message is not in allowed channels
     """
+    # Allowed channels for uwuify
+    ALLOWED_CHANNELS = {
+        1278117139428933647,
+        1278117139428933649,
+        1282209240949198928
+    }
+    
     if message.author.bot:
+        return False
+    
+    # Only uwuify in specific channels
+    if message.channel.id not in ALLOWED_CHANNELS:
         return False
     
     content = message.content.strip()
@@ -793,15 +797,7 @@ def should_uwuify_message(message: discord.Message) -> bool:
     if content.startswith(('R!', '/', '!', '?')):
         return False
     
-    # Check if there's any actual text content (not just links)
-    # Remove all URLs and see if anything remains
-    text_without_links = GENERIC_URL_PATTERN.sub('', content).strip()
-    text_without_emojis = EMOJI_PATTERN.sub('', text_without_links).strip()
-    
-    # If nothing remains after removing links/emojis, skip
-    if not text_without_emojis:
-        return False
-    
+    # Allow all messages including URL-only ones
     return True
 
 
