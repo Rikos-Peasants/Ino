@@ -18,10 +18,9 @@ class ArtChallengeEmbed:
 
     @staticmethod
     def _maybe_flip(embed: discord.Embed) -> discord.Embed:
-        """Auto-flip all embed text when April Fools mode is active."""
-        from models.april_fools import is_april_fools, flip_embed
-        if is_april_fools():
-            return flip_embed(embed)
+        """Auto-flip all embed text when April Fools mode is active.
+        DISABLED for art challenges - they need to remain readable."""
+        # Art challenges should NOT be flipped - they need to be usable
         return embed
 
     @staticmethod
