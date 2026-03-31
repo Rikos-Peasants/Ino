@@ -100,7 +100,7 @@ def get_random_roast(display_name: str) -> str:
 
 
 async def maybe_roast(ctx) -> bool:
-    """50 % chance to roast the user instead of running the command.
+    """50 % chance to roast the user instead of running a prefix/hybrid command.
 
     Call this in a ``before_invoke`` hook.  Returns True when a roast fired
     (the caller should raise RoastInterrupt), False otherwise.
@@ -114,6 +114,24 @@ async def maybe_roast(ctx) -> bool:
         await ctx.send(roast)
     except Exception as e:
         logger.warning(f"Failed to send roast: {e}")
+    return True
+
+
+async def maybe_roast_interaction(interaction: discord.Interaction) -> bool:
+    """50 % chance to roast the user on a slash/app command interaction.
+
+    Use in ``bot.tree.interaction_check``.  Returns True when roast fired
+    (return False from the check to cancel the command).
+    """
+    if not is_april_fools():
+        return False
+    if random.random() >= 0.5:
+        return False
+    roast = get_random_roast(interaction.user.display_name)
+    try:
+        await interaction.response.send_message(roast)
+    except Exception as e:
+        logger.warning(f"Failed to send interaction roast: {e}")
     return True
 
 

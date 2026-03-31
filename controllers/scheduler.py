@@ -772,46 +772,18 @@ class SchedulerController:
 
     @tasks.loop(hours=1)
     async def april_fools_pfp(self):
-        """Cycle the bot's avatar every hour on April 1st.
+        """Re-apply Jake's avatar and nickname every hour while April Fools mode is on.
 
-        Pattern: images 1.png → 9.png (each 1 hour), then default.png for 1 hour,
-        then repeat.  Outside April 1st this task is a no-op.
+        This acts as a safety net in case Discord resets the avatar or nickname.
+        Outside April Fools mode this task is a no-op.
         """
         try:
             from models.april_fools import is_april_fools
             if not is_april_fools():
                 return
 
-            import os
-            avatars_dir = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)),
-                "assets", "april_fools_avatars"
-            )
+            await self.bot._apply_jake_profile()
 
-            # Determine which avatar to use:
-            # Slot 0-8  → 1.png – 9.png
-            # Slot 9    → default.png  (1 hour break)
-            now = datetime.now()
-            # Use hours since midnight mod 10 so the cycle resets each day
-            slot = now.hour % 10
-
-            if slot < 9:
-                avatar_path = os.path.join(avatars_dir, f"{slot + 1}.png")
-            else:
-                avatar_path = os.path.join(avatars_dir, "default.png")
-
-            if not os.path.isfile(avatar_path):
-                logger.warning(f"🃏 April Fools pfp: file not found: {avatar_path}")
-                return
-
-            with open(avatar_path, "rb") as f:
-                avatar_bytes = f.read()
-
-            await self.bot.user.edit(avatar=avatar_bytes)
-            logger.info(f"🃏 April Fools pfp updated → slot {slot} ({os.path.basename(avatar_path)})")
-
-        except discord.HTTPException as e:
-            logger.warning(f"🃏 April Fools pfp change rate-limited or failed: {e}")
         except Exception as e:
             logger.error(f"Error in april_fools_pfp task: {e}")
 

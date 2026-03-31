@@ -51,6 +51,14 @@ class RikoBot(commands.Bot):
             if await maybe_roast(ctx):
                 raise RoastInterrupt()
 
+        # Same roast check for ALL slash / app commands
+        @self.tree.interaction_check
+        async def roast_interaction_check(interaction: discord.Interaction) -> bool:
+            from models.april_fools import maybe_roast_interaction
+            if await maybe_roast_interaction(interaction):
+                return False
+            return True
+
         # Add a check to restrict the bot to the Rayen server only
         @self.check
         async def globally_block_dms_and_other_guilds(ctx):
@@ -535,6 +543,58 @@ class RikoBot(commands.Bot):
             
         except Exception as e:
             logger.error(f"Error in scan_historical_images: {e}")
+
+    async def _apply_jake_profile(self):
+        """Download Jake's avatar and apply it + server nickname."""
+        import aiohttp
+        try:
+            from models.april_fools import JAKE_AVATAR, JAKE_NAME
+            async with aiohttp.ClientSession() as session:
+                async with session.get(JAKE_AVATAR, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status == 200:
+                        avatar_bytes = await resp.read()
+                        await self.user.edit(avatar=avatar_bytes)
+                        logger.info("🃏 Jake avatar applied")
+        except discord.HTTPException as e:
+            logger.warning(f"🃏 Avatar change rate-limited or failed: {e}")
+        except Exception as e:
+            logger.warning(f"🃏 Failed to apply Jake avatar: {e}")
+        # Nickname in configured guild only
+        try:
+            from config import Config
+            from models.april_fools import JAKE_NAME
+            guild = self.get_guild(Config.GUILD_ID)
+            if guild and guild.me:
+                await guild.me.edit(nick=JAKE_NAME)
+                logger.info(f"🃏 Nickname set to {JAKE_NAME}")
+        except Exception as e:
+            logger.warning(f"🃏 Failed to set Jake nickname: {e}")
+
+    async def _restore_profile(self):
+        """Restore default avatar from file and clear server nickname."""
+        import os
+        try:
+            default_path = os.path.join(
+                os.path.dirname(__file__), "assets", "april_fools_avatars", "default.png"
+            )
+            if os.path.isfile(default_path):
+                with open(default_path, "rb") as f:
+                    avatar_bytes = f.read()
+                await self.user.edit(avatar=avatar_bytes)
+                logger.info("✅ Default avatar restored")
+        except discord.HTTPException as e:
+            logger.warning(f"Avatar restore rate-limited or failed: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to restore avatar: {e}")
+        # Clear nickname
+        try:
+            from config import Config
+            guild = self.get_guild(Config.GUILD_ID)
+            if guild and guild.me:
+                await guild.me.edit(nick=None)
+                logger.info("✅ Nickname cleared")
+        except Exception as e:
+            logger.warning(f"Failed to clear nickname: {e}")
 
     async def close(self):
         """Clean shutdown"""

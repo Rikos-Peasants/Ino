@@ -2776,11 +2776,13 @@ class CommandsController:
                     if value and value.lower() in ['true', '1', 'on', 'yes']:
                         await moderation_manager.set_moderation_setting(str(ctx.guild.id), 'april1st', True)
                         set_april_fools_mode(True)
+                        await self.bot._apply_jake_profile()
                         response = "🃏 April Fools mode **enabled**. Good luck out there."
                         success = True
                     elif value and value.lower() in ['false', '0', 'off', 'no']:
                         await moderation_manager.set_moderation_setting(str(ctx.guild.id), 'april1st', False)
                         set_april_fools_mode(False)
+                        await self.bot._restore_profile()
                         response = "✅ April Fools mode **disabled**. Back to normal."
                         success = True
                     else:
