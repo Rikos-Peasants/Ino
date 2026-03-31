@@ -240,6 +240,20 @@ class RikoBot(commands.Bot):
             self.cycle_status.start()
             logger.info("Status cycling started")
         
+        # Restore april1st toggle from persistent storage
+        try:
+            lm = self.leaderboard_manager
+            if lm and hasattr(lm, 'moderation_manager') and lm.moderation_manager:
+                stored = await lm.moderation_manager.get_moderation_setting(
+                    str(Config.GUILD_ID), 'april1st', False
+                )
+                if stored:
+                    from models.april_fools import set_april_fools_mode
+                    set_april_fools_mode(True)
+                    logger.info("🃏 April Fools mode restored from DB: ENABLED")
+        except Exception as e:
+            logger.warning(f"Could not restore april1st setting: {e}")
+
         logger.info("🚀 Bot is fully ready and operational!")
     
     async def on_interaction(self, interaction: discord.Interaction):

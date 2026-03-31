@@ -40,11 +40,22 @@ def flip_text(text: str) -> str:
     return ''.join(_FLIP_MAP.get(c, c) for c in reversed(text))
 
 
-# ── Date helpers ──────────────────────────────────────────────────────────────
+# ── Manual toggle ────────────────────────────────────────────────────────────
+# Controlled via /modconfig setting:april1st value:true|false
+# Cached in memory so is_april_fools() stays synchronous.
+_april_fools_active: bool = False
+
+
 def is_april_fools() -> bool:
-    """Return True if today is April 1st (local server time)."""
-    now = datetime.now()
-    return now.month == 4 and now.day == 1
+    """Return True when the april1st mode is manually enabled."""
+    return _april_fools_active
+
+
+def set_april_fools_mode(value: bool) -> None:
+    """Set the in-memory april1st toggle (call after saving to DB)."""
+    global _april_fools_active
+    _april_fools_active = bool(value)
+    logger.info(f"April Fools mode {'ENABLED' if value else 'DISABLED'}")
 
 
 # ── Command roast system ──────────────────────────────────────────────────────

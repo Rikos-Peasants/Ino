@@ -2668,6 +2668,7 @@ class CommandsController:
                 
                 # If no setting provided, show current configuration
                 if not setting:
+                    from models.april_fools import is_april_fools
                     settings = {
                         'moderation_enabled': await moderation_manager.get_moderation_setting(str(ctx.guild.id), 'moderation_enabled', False),
                         'review_role_id': await moderation_manager.get_review_role_id(str(ctx.guild.id)),
@@ -2676,17 +2677,21 @@ class CommandsController:
                     }
                     
                     embed = EmbedViews.moderation_config_embed(str(ctx.guild.id), settings)
+                    af_status = "🟢 ON" if is_april_fools() else "🔴 OFF"
+                    embed.add_field(name="🃏 April Fools Mode", value=af_status, inline=True)
                     help_text = """
 **Available settings:**
 • `enable` - Enable/disable moderation (true/false)
 • `review_role` - Set role that can review flagged content
 • `admin_role` - Set role that can overrule decisions
 • `log_channel` - Set channel for moderation logs
+• `april1st` - Toggle April Fools mode (true/false)
 
 **Examples:**
 • `/modconfig enable true`
 • `/modconfig review_role @Seraphs`
 • `/modconfig log_channel #mod-logs`
+• `/modconfig april1st true`
                     """
                     embed.add_field(name="💡 Usage", value=help_text, inline=False)
                     
@@ -2766,6 +2771,21 @@ class CommandsController:
                     else:
                         response = "❌ Text channel not found. Use a channel mention or channel ID."
                 
+                elif setting.lower() == 'april1st':
+                    from models.april_fools import set_april_fools_mode
+                    if value and value.lower() in ['true', '1', 'on', 'yes']:
+                        await moderation_manager.set_moderation_setting(str(ctx.guild.id), 'april1st', True)
+                        set_april_fools_mode(True)
+                        response = "🃏 April Fools mode **enabled**. Good luck out there."
+                        success = True
+                    elif value and value.lower() in ['false', '0', 'off', 'no']:
+                        await moderation_manager.set_moderation_setting(str(ctx.guild.id), 'april1st', False)
+                        set_april_fools_mode(False)
+                        response = "✅ April Fools mode **disabled**. Back to normal."
+                        success = True
+                    else:
+                        response = "❌ Invalid value. Use `true` or `false`."
+
                 else:
                     response = "❌ Unknown setting. Use `/modconfig` without parameters to see available settings."
                 
