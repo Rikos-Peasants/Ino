@@ -1449,6 +1449,52 @@ Please verify if this submission includes all the required elements.
             logger.error(f"Error creating challenge: {e}")
             return None
     
+    async def create_april_fools_challenge(self, channel_id: int, guild_id: int,
+                                            prompt: str, rating: str = "safe") -> Optional[Dict]:
+        """Create an April Fools custom prompt challenge (no reference image needed).
+
+        Args:
+            channel_id: The channel to create the challenge in
+            guild_id: The guild ID
+            prompt: The custom drawing prompt (from AF_ART_CHALLENGE_PROMPTS)
+            rating: Image rating - 'safe' for SFW, 'questionable' for NSFW channels
+        """
+        if not self._ensure_connected():
+            logger.error("Database not connected")
+            return None
+
+        # AF challenges are shorter (30 min duration to match spawn rate)
+        challenge_data = {
+            "channel_id": channel_id,
+            "guild_id": guild_id,
+            "challenge_type": "april_fools_custom",
+            "rating": rating,
+            "state": self.STATE_ACTIVE,
+            "created_at": datetime.utcnow(),
+            "end_time": datetime.utcnow() + timedelta(minutes=30),  # 30 min duration
+            "message_id": None,
+            "submissions_count": 0,
+            "verified_count": 0,
+            "reward_points": 25,  # Lower points for quick challenges
+            "is_april_fools": True,
+            "custom_prompt": prompt,
+            "challenge_title": "🃏 April Fools Challenge!",
+            "challenge_description": prompt,
+        }
+
+        try:
+            # Insert into database
+            result = self.challenges_collection.insert_one(challenge_data)
+            challenge_data["_id"] = result.inserted_id
+            challenge_data["challenge_id"] = str(result.inserted_id)
+
+            logger.info(f"Created April Fools art challenge in channel {channel_id}")
+            return challenge_data
+
+        except Exception as e:
+            logger.error(f"Error creating AF challenge: {e}")
+            return None
+
     def update_challenge_message(self, challenge_id: str, message_id: int) -> bool:
         """Update the challenge with its Discord message ID"""
         if not self._ensure_connected():

@@ -63,6 +63,9 @@ class SchedulerController:
         
         if not self.april_fools_pfp.is_running():
             self.april_fools_pfp.start()
+        
+        if not self.april_fools_art_challenges.is_running():
+            self.april_fools_art_challenges.start()
     
     def stop_tasks(self):
         """Stop all scheduled tasks"""
@@ -95,6 +98,9 @@ class SchedulerController:
         
         if self.april_fools_pfp.is_running():
             self.april_fools_pfp.cancel()
+        
+        if self.april_fools_art_challenges.is_running():
+            self.april_fools_art_challenges.cancel()
     
     @tasks.loop(hours=24)  # Check daily
     async def weekly_best_image(self):
@@ -811,3 +817,68 @@ class SchedulerController:
     async def before_april_fools_pfp(self):
         """Wait for bot to be ready before starting icon cycling"""
         await self.bot.wait_until_ready()
+
+    # ── April Fools: 30-minute custom art challenges ─────────────────────────
+
+    @tasks.loop(minutes=30)
+    async def april_fools_art_challenges(self):
+        """Spawn custom Ino/Jake themed art challenges every 30 min during AF mode.
+
+        Drops challenges in BOTH art channels using the custom prompt list.
+        """
+        try:
+            from models.april_fools import is_april_fools, AF_ART_CHALLENGE_PROMPTS, AF_ART_CHALLENGE_INTERVAL_MINUTES
+            if not is_april_fools():
+                return
+
+            art_manager = getattr(self.bot, 'art_challenge_manager', None)
+            art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
+
+            if not art_manager or not art_view_manager:
+                return
+
+            guild = self.bot.get_guild(Config.GUILD_ID)
+            if not guild:
+                return
+
+            from config import Config
+            # Challenge both channels
+            channels_to_challenge = [
+                (Config.ART_CHALLENGE_CHANNEL_SFW, "safe"),
+                (Config.ART_CHALLENGE_CHANNEL_NSFW, "questionable"),
+            ]
+
+            for channel_id, rating in channels_to_challenge:
+                channel = guild.get_channel(channel_id)
+                if not channel:
+                    continue
+
+                # Check if already has active challenge
+                if art_manager.get_active_challenge(channel_id):
+                    logger.info(f"⏭️ AF challenge skipped - already active in #{channel.name}")
+                    continue
+
+                # Create AF custom challenge
+                prompt = random.choice(AF_ART_CHALLENGE_PROMPTS)
+                challenge_data = await art_manager.create_april_fools_challenge(
+                    channel_id=channel_id,
+                    guild_id=guild.id,
+                    prompt=prompt,
+                    rating=rating
+                )
+
+                if challenge_data:
+                    message = await art_view_manager.post_challenge(channel, challenge_data)
+                    if message:
+                        logger.info(f"🃏 AF art challenge started in #{channel.name}")
+                    else:
+                        logger.error(f"Failed to post AF challenge in #{channel.name}")
+
+        except Exception as e:
+            logger.error(f"Error in AF art challenge task: {e}")
+
+    @april_fools_art_challenges.before_loop
+    async def before_april_fools_art_challenges(self):
+        """Wait for bot to be ready before starting AF art challenges"""
+        await self.bot.wait_until_ready()
+        await asyncio.sleep(15)  # Slightly longer delay to ensure managers ready

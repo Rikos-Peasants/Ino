@@ -337,3 +337,80 @@ APRIL_FOOLS_ACHIEVEMENT = {
     "is_april_fools": True,
     "earned_at": datetime(2026, 4, 1),
 }
+
+
+# ── April Fools Art Challenge Prompts ─────────────────────────────────────────
+# 50+ custom drawing prompts for AF mode - Ino/Jake themed
+AF_ART_CHALLENGE_PROMPTS = [
+    # Ino themed prompts (tired, didn't feel like it, being dramatic)
+    "Ino didn't feel like getting out of bed today. Draw her still in pajamas, hair a mess, looking at her phone",
+    "Ino is having an existential crisis. Draw her staring into the void while drinking coffee",
+    "Ino told you to draw her looking cool but you only have 5 minutes. Draw a quick sketch",
+    "Ino forgot to do her hair. Draw her with absolute bedhead and a look of mild despair",
+    "Ino is judging your art from her couch. Draw her lounging with a very tired expression",
+    "Ino said she 'literally cannot even' today. Draw her dramatically draped over furniture",
+    "Ino didn't want to wear her shrine outfit. Draw her in casual clothes looking relieved",
+    "Ino is scrolling social media while pretending to work. Draw her 'multitasking'",
+    "Ino is tired of being a shrine spirit. Draw her filling out a job application at Starbucks",
+    "Ino needs coffee but the machine is broken. Draw her staring at a broken coffee maker",
+    "Ino is procrastinating on shrine duties. Draw her doing literally anything else",
+    "Ino is eating chips in bed at 3am. Draw her having a self-care moment",
+    "Ino is giving you side-eye while holding a mug. Draw her skeptical expression",
+    "Ino is wearing sunglasses indoors for no reason. Draw her being unnecessarily cool",
+    "Ino is wrapped in 5 blankets watching anime. Draw her cozy setup",
+    "Ino is taking a nap in an inconvenient place. Draw her sleeping somewhere weird",
+    "Ino is holding a 'will work for snacks' sign. Draw her being dramatic about hunger",
+    "Ino is doing her taxes and crying. Draw adulting hitting her hard",
+    "Ino is playing video games instead of shrine duties. Draw her gaming setup",
+    "Ino is standing in the rain looking dramatic. Draw her being unnecessarily cinematic",
+    "Ino is sitting on the floor because the couch is too far. Draw her being lazy",
+    "Ino is holding a list of complaints. Draw her being very thorough about what's wrong",
+    "Ino is wearing a hoodie 3 sizes too big. Draw her drowning in fabric",
+    "Ino is staring at the ceiling contemplating life choices. Draw her being philosophical",
+    "Ino is eating instant ramen at 2am. Draw her late-night lifestyle",
+    
+    # Jake themed prompts (clueless, running things, confused)
+    "Jake is trying to run the shrine and failing. Draw him looking confused at paperwork",
+    "Jake is eating lunch at Ino's desk without permission. Draw him making himself at home",
+    "Jake is reading Ino's 47-page instruction manual. Draw him on page 1 looking lost",
+    "Jake is trying to dress like a shrine spirit. Draw his terrible cosplay attempt",
+    "Jake is talking to an empty shrine. Draw him asking where everyone is",
+    "Jake is wearing Ino's shrine outfit as a joke. Draw him being way too confident",
+    "Jake is trying to use shrine magic and nothing happens. Draw him confused why it won't work",
+    "Jake is taking a selfie in the shrine. Draw his tourist energy",
+    "Jake is napping in Ino's spot. Draw him taking liberties",
+    "Jake is eating all the shrine offerings. Draw him snacking disrespectfully",
+    "Jake is holding a clipboard pretending to know what he's doing. Draw fake authority",
+    "Jake is wearing a tie over a t-shirt for 'professionalism'. Draw his business casual",
+    "Jake is confused about what a 'shrine spirit' even is. Draw him googling it",
+    "Jake is sitting in Ino's chair spinning around. Draw him enjoying his promotion too much",
+    "Jake is trying to answer follower questions with made-up answers. Draw him winging it",
+    
+    # Riko themed prompts
+    "Riko standing in a completely normal position. Draw her being unusually calm",
+    "Riko doing taxes and looking stressed. Draw her adulting poorly",
+    "Riko trying to cook and creating chaos. Draw kitchen disaster",
+    "Riko at a job interview looking nervous. Draw her trying to be professional",
+    "Riko waiting in line at the DMV. Draw her being mundane",
+    "Riko trying to assemble IKEA furniture. Draw her confusion and frustration",
+    "Riko doing laundry and finding mysterious items. Draw her confusion",
+    "Riko grocery shopping with a very long list. Draw her being overwhelmed",
+    "Riko trying to parallel park. Draw her struggle in real time",
+    "Riko at the dentist looking terrified. Draw her medical anxiety",
+    "Riko trying to tech support for her parents. Draw her patience being tested",
+    
+    # Mixed/Other prompts
+    "Ino and Jake having a staring contest. Draw the tension",
+    "Jake trying to convince Ino to get out of bed. Draw the negotiation",
+    "Ino throwing Jake out of her shrine. Draw the eviction",
+    "Riko meeting Jake for the first time. Draw the awkward introduction",
+    "Ino hiding from her responsibilities behind Jake. Draw her using him as a shield",
+    "Jake trying to explain what he thinks a shrine spirit does. Draw his wrong assumptions",
+    "Ino and Riko having coffee and gossiping. Draw their friendship",
+    "Jake accidentally breaking something in the shrine. Draw his panic",
+    "Ino doing Jake's makeup as revenge. Draw the makeover",
+    "All three trying to take a group photo and looking chaotic. Draw the disaster",
+]
+
+# AF mode art challenge spawn interval (minutes)
+AF_ART_CHALLENGE_INTERVAL_MINUTES = 30

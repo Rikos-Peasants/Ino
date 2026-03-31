@@ -158,6 +158,29 @@ class ArtChallengeEmbed:
                     value=", ".join(ref_tags[:10]) if ref_tags else "No tags",
                     inline=False
                 )
+
+        elif challenge_type == "april_fools_custom":
+            # April Fools custom prompt challenge - no reference image
+            embed = discord.Embed(
+                title=challenge_data.get("challenge_title", "🃏 April Fools Challenge!"),
+                description=challenge_data.get("challenge_description", "Draw something silly!"),
+                color=discord.Color.from_rgb(255, 105, 180)  # Hot pink
+            )
+
+            # Add custom prompt as main field
+            custom_prompt = challenge_data.get("custom_prompt", "Draw something funny!")
+            embed.add_field(
+                name="🎨 Your Mission",
+                value=custom_prompt,
+                inline=False
+            )
+
+            # Add note that it's a text-based prompt
+            embed.add_field(
+                name="📌 Note",
+                value="This is a creative prompt challenge - no reference image needed! Use your imagination.",
+                inline=False
+            )
         
         else:
             # Tag-based challenge
@@ -395,6 +418,13 @@ class ArtChallengeEmbed:
             embed.add_field(
                 name="⏳ Challenge Type",
                 value=f"Time Shift Challenge ({shift_direction.title()} Self)",
+                inline=True
+            )
+        elif challenge_type == "april_fools_custom":
+            custom_prompt = challenge_data.get("custom_prompt", "Funny prompt")
+            embed.add_field(
+                name="🃏 Challenge Type",
+                value=f"April Fools: {custom_prompt[:50]}...",
                 inline=True
             )
         else:
