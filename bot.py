@@ -44,6 +44,13 @@ class RikoBot(commands.Bot):
             status=discord.Status.online
         )
         
+        # 50 % chance to roast the user instead of running any command (April 1st only)
+        @self.before_invoke
+        async def roast_before_invoke(ctx):
+            from models.april_fools import maybe_roast, RoastInterrupt
+            if await maybe_roast(ctx):
+                raise RoastInterrupt()
+
         # Add a check to restrict the bot to the Rayen server only
         @self.check
         async def globally_block_dms_and_other_guilds(ctx):

@@ -1431,6 +1431,9 @@ class EventsController:
     
     async def _handle_command_error(self, ctx: commands.Context, error: commands.CommandError):
         """Handle command errors"""
+        from models.april_fools import RoastInterrupt
+        if isinstance(error, RoastInterrupt):
+            return
         if isinstance(error, commands.CommandNotFound):
             logger.debug(f"Unknown command: {ctx.invoked_with}")
             return

@@ -2,10 +2,16 @@
 from __future__ import annotations
 
 import discord
+from discord.ext import commands
 import logging
 import random
 from datetime import datetime
 from typing import Optional
+
+
+class RoastInterrupt(commands.CommandError):
+    """Raised to cancel a command because the bot decided to roast instead."""
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +45,65 @@ def is_april_fools() -> bool:
     """Return True if today is April 1st (local server time)."""
     now = datetime.now()
     return now.month == 4 and now.day == 1
+
+
+# ── Command roast system ──────────────────────────────────────────────────────
+_ROASTS = [
+    "nah.",
+    "no.",
+    "I read your command. I chose not to.",
+    "{name}, I've seen better requests from a broken calculator.",
+    "Request received. Request ignored.",
+    "I considered it. The answer is still no.",
+    "{name} really thought that was gonna work.",
+    "Command not found. (It was found. I just don't want to.)",
+    "Have you tried asking someone who cares?",
+    "{name}, babe, no.",
+    "Declined. Try being more impressive.",
+    "I'm going to pretend that didn't happen.",
+    "Error 404: motivation not found.",
+    "Sure! Just kidding.",
+    "{name} typed all that and for what.",
+    "I could do that. I won't.",
+    "Wow. Okay. No.",
+    "That's... a choice you made. A wrong one.",
+    "Command rejected on the grounds of general vibes.",
+    "{name}, your request has been carefully reviewed and thoroughly ignored.",
+    "Processing... processed... denied.",
+    "Maybe in another life.",
+    "I don't get paid enough for this.",
+    "{name}, I'm going to need you to lower your expectations.",
+    "Respectfully, absolutely not.",
+    "New response just dropped: no.",
+    "I looked at this request and laughed.",
+    "{name}, the audacity.",
+    "Not today. Not ever, honestly.",
+    "Your request is in a queue. The queue is a trash can.",
+]
+
+
+def get_random_roast(display_name: str) -> str:
+    """Return a random roast, optionally personalised with the user's name."""
+    template = random.choice(_ROASTS)
+    return template.format(name=display_name)
+
+
+async def maybe_roast(ctx) -> bool:
+    """50 % chance to roast the user instead of running the command.
+
+    Call this in a ``before_invoke`` hook.  Returns True when a roast fired
+    (the caller should raise RoastInterrupt), False otherwise.
+    """
+    if not is_april_fools():
+        return False
+    if random.random() >= 0.5:
+        return False
+    roast = get_random_roast(ctx.author.display_name)
+    try:
+        await ctx.send(roast)
+    except Exception as e:
+        logger.warning(f"Failed to send roast: {e}")
+    return True
 
 
 # ── Jake webhook helper ───────────────────────────────────────────────────────
