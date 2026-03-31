@@ -15,7 +15,15 @@ logger = logging.getLogger(__name__)
 
 class ArtChallengeEmbed:
     """Creates embeds for art challenges"""
-    
+
+    @staticmethod
+    def _maybe_flip(embed: discord.Embed) -> discord.Embed:
+        """Auto-flip all embed text when April Fools mode is active."""
+        from models.april_fools import is_april_fools, flip_embed
+        if is_april_fools():
+            return flip_embed(embed)
+        return embed
+
     @staticmethod
     def create_challenge_embed(challenge_data: dict) -> discord.Embed:
         """Create an embed for an art challenge announcement"""
@@ -189,7 +197,7 @@ class ArtChallengeEmbed:
         embed.set_footer(text="🤖 AI-verified submissions | Good luck, artists!")
         embed.timestamp = datetime.utcnow()
         
-        return embed
+        return ArtChallengeEmbed._maybe_flip(embed)
     
     @staticmethod
     def create_submission_result_embed(result: dict, user: discord.Member) -> discord.Embed:
@@ -227,7 +235,7 @@ class ArtChallengeEmbed:
             )
             embed.set_footer(text="⚠️ Re-uploading the reference image is considered cheating")
             embed.timestamp = datetime.utcnow()
-            return embed
+            return ArtChallengeEmbed._maybe_flip(embed)
         
         if verified:
             if already_verified:
@@ -334,7 +342,7 @@ class ArtChallengeEmbed:
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
         embed.timestamp = datetime.utcnow()
         
-        return embed
+        return ArtChallengeEmbed._maybe_flip(embed)
     
     @staticmethod
     def create_challenge_ended_embed(challenge_data: dict, submissions: list, winner_data: dict = None) -> discord.Embed:
@@ -450,7 +458,7 @@ class ArtChallengeEmbed:
         embed.set_footer(text="Thanks for participating!")
         embed.timestamp = datetime.utcnow()
         
-        return embed
+        return ArtChallengeEmbed._maybe_flip(embed)
     
     @staticmethod
     def create_stats_embed(user: discord.Member, stats: dict) -> discord.Embed:
@@ -495,7 +503,7 @@ class ArtChallengeEmbed:
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
         embed.timestamp = datetime.utcnow()
         
-        return embed
+        return ArtChallengeEmbed._maybe_flip(embed)
     
     @staticmethod
     def create_leaderboard_embed(leaderboard: list, bot) -> discord.Embed:
@@ -508,7 +516,7 @@ class ArtChallengeEmbed:
         
         if not leaderboard:
             embed.description = "No challenge data yet! Be the first to participate!"
-            return embed
+            return ArtChallengeEmbed._maybe_flip(embed)
         
         leaderboard_text = ""
         medals = ["🥇", "🥈", "🥉"]
@@ -530,7 +538,7 @@ class ArtChallengeEmbed:
         embed.set_footer(text="Complete art challenges to earn points!")
         embed.timestamp = datetime.utcnow()
         
-        return embed
+        return ArtChallengeEmbed._maybe_flip(embed)
 
 
 class SubmitArtworkModal(Modal):
