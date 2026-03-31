@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import logging
 import json
 import asyncio
+import random
 from typing import Optional, Union
 from models.role_manager import RoleManager
 from models.mod_offline_manager import ModOfflineManager
@@ -2772,11 +2773,37 @@ class CommandsController:
                         response = "❌ Text channel not found. Use a channel mention or channel ID."
                 
                 elif setting.lower() == 'april1st':
-                    from models.april_fools import set_april_fools_mode
+                    from models.april_fools import set_april_fools_mode, AF_ART_CHALLENGE_PROMPTS
                     if value and value.lower() in ['true', '1', 'on', 'yes']:
                         await moderation_manager.set_moderation_setting(str(ctx.guild.id), 'april1st', True)
                         set_april_fools_mode(True)
                         await self.bot._apply_jake_profile()
+                        
+                        # Spawn initial AF art challenges immediately
+                        try:
+                            art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                            art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
+                            if art_manager and art_view_manager:
+                                guild = ctx.guild
+                                channels_to_challenge = [
+                                    (Config.ART_CHALLENGE_CHANNEL_SFW, "safe"),
+                                    (Config.ART_CHALLENGE_CHANNEL_NSFW, "questionable"),
+                                ]
+                                for channel_id, rating in channels_to_challenge:
+                                    channel = guild.get_channel(channel_id)
+                                    if channel and not art_manager.get_active_challenge(channel_id):
+                                        prompt = random.choice(AF_ART_CHALLENGE_PROMPTS)
+                                        challenge_data = await art_manager.create_april_fools_challenge(
+                                            channel_id=channel_id,
+                                            guild_id=guild.id,
+                                            prompt=prompt,
+                                            rating=rating
+                                        )
+                                        if challenge_data:
+                                            await art_view_manager.post_challenge(channel, challenge_data)
+                        except Exception as e:
+                            logger.error(f"Error spawning initial AF challenges: {e}")
+                        
                         response = "🃏 April Fools mode **enabled**. Good luck out there."
                         success = True
                     elif value and value.lower() in ['false', '0', 'off', 'no']:

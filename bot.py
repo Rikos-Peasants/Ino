@@ -256,10 +256,38 @@ class RikoBot(commands.Bot):
                     str(Config.GUILD_ID), 'april1st', False
                 )
                 if stored:
-                    from models.april_fools import set_april_fools_mode
+                    from models.april_fools import set_april_fools_mode, AF_ART_CHALLENGE_PROMPTS
+                    import random
                     set_april_fools_mode(True)
                     logger.info("🃏 April Fools mode restored from DB: ENABLED")
                     await self._apply_jake_profile()
+                    
+                    # Spawn initial AF art challenges immediately
+                    try:
+                        art_manager = getattr(self, 'art_challenge_manager', None)
+                        art_view_manager = getattr(self, 'art_challenge_view_manager', None)
+                        if art_manager and art_view_manager:
+                            guild = self.get_guild(Config.GUILD_ID)
+                            if guild:
+                                channels_to_challenge = [
+                                    (Config.ART_CHALLENGE_CHANNEL_SFW, "safe"),
+                                    (Config.ART_CHALLENGE_CHANNEL_NSFW, "questionable"),
+                                ]
+                                for channel_id, rating in channels_to_challenge:
+                                    channel = guild.get_channel(channel_id)
+                                    if channel and not art_manager.get_active_challenge(channel_id):
+                                        prompt = random.choice(AF_ART_CHALLENGE_PROMPTS)
+                                        challenge_data = await art_manager.create_april_fools_challenge(
+                                            channel_id=channel_id,
+                                            guild_id=guild.id,
+                                            prompt=prompt,
+                                            rating=rating
+                                        )
+                                        if challenge_data:
+                                            await art_view_manager.post_challenge(channel, challenge_data)
+                                            logger.info(f"🎨 Initial AF challenge spawned in #{channel.name}")
+                    except Exception as e:
+                        logger.error(f"Error spawning initial AF challenges on startup: {e}")
         except Exception as e:
             logger.warning(f"Could not restore april1st setting: {e}")
 
