@@ -640,12 +640,11 @@ class EventsController:
     async def _send_random_neko_dm(self, user: discord.User):
         """Send a random SFW neko image to the user via DM (5% chance on messages)."""
         try:
-            # Fetch random SFW neko from nekosapi.com
-            # Using the API endpoint with rating:safe filter
+            # Use nekos.life API for random neko images
             async with aiohttp.ClientSession() as session:
+                # Get random neko GIF
                 async with session.get(
-                    "https://api.nekosapi.com/v3/images/random",
-                    params={"rating": "safe", "limit": 1},
+                    "https://nekos.life/api/v2/img/neko",
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     if response.status != 200:
@@ -653,17 +652,10 @@ class EventsController:
                         return
                     
                     data = await response.json()
+                    image_url = data.get("url")
                     
-                    # Extract image URL from response
-                    # API returns {"items": [{"image_url": "...", ...}]}
-                    items = data.get("items", [])
-                    if not items:
-                        logger.warning("NekosAPI returned no images")
-                        return
-                    
-                    image_url = items[0].get("image_url")
                     if not image_url:
-                        logger.warning("NekosAPI returned no image_url")
+                        logger.warning("NekosAPI returned no image URL")
                         return
                     
                     # Send DM with the neko image
@@ -673,7 +665,7 @@ class EventsController:
                         color=0xFFC0CB  # Pink color
                     )
                     embed.set_image(url=image_url)
-                    embed.set_footer(text="Powered by nekosapi.com")
+                    embed.set_footer(text="Powered by nekos.life")
                     
                     await user.send(embed=embed)
                     logger.info(f"Sent random neko DM to {user.display_name} ({user.id})")
