@@ -572,38 +572,29 @@ SPARKLES = ["*", "~", "^", "+", ">", "<"]
 KEYSMASHES = ["asdfghjkl", "qwertyuiop", "sjdksjdk", "ahhhh", "wjwkwkw", "eeeeee", "aaaaaa"]
 
 def _uwuify_url_text(url: str) -> str:
-    """Uwuify just the text portions of a URL (domain, path) while keeping structure."""
-    # Parse URL components
+    """Uwuify the display text of a URL while keeping the original URL for clicking.
+    Returns markdown format: [uwuified_text](original_url)"""
     import urllib.parse
     try:
         parsed = urllib.parse.urlparse(url)
-        # Uwuify domain
+        # Get domain and path for display
         domain = parsed.netloc
-        domain = domain.replace('r', 'w').replace('l', 'w')
-        domain = domain.replace('R', 'W').replace('L', 'W')
-        domain = domain.replace('th', 'f').replace('TH', 'F')
-        domain = domain.replace('no', 'nyo').replace('na', 'nya')
+        path = parsed.path if parsed.path != '/' else ''
         
-        # Uwuify path
-        path = parsed.path
-        path = path.replace('r', 'w').replace('l', 'w')
-        path = path.replace('R', 'W').replace('L', 'W')
-        path = path.replace('th', 'f').replace('TH', 'F')
-        path = path.replace('no', 'nyo').replace('na', 'nya')
+        # Create display text (domain + path)
+        display = domain + path
         
-        # Reconstruct URL
-        uwu_url = urllib.parse.urlunparse((
-            parsed.scheme,
-            domain,
-            path,
-            parsed.params,
-            parsed.query,
-            parsed.fragment
-        ))
-        return uwu_url
+        # Uwuify the display text only
+        display = display.replace('r', 'w').replace('l', 'w')
+        display = display.replace('R', 'W').replace('L', 'W')
+        display = display.replace('th', 'f').replace('TH', 'F')
+        display = display.replace('no', 'nyo').replace('na', 'nya')
+        
+        # Return markdown with uwuified display text but original URL
+        return f"[{display}]({url})"
     except Exception:
-        # Fallback: simple text replace
-        return url.replace('r', 'w').replace('l', 'w').replace('no', 'nyo').replace('na', 'nya')
+        # Fallback: simple uwuify of display part, keep original URL
+        return f"[{url.replace('r', 'w').replace('l', 'w').replace('no', 'nyo').replace('na', 'nya')}]({url})"
 
 
 def uwuify_text(text: str) -> str:
