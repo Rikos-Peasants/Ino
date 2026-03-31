@@ -548,11 +548,19 @@ class CommandsController:
                 else:
                     type = 'points'  # Default to combined points
                 
+                # April Fools: show the reversed / upside-down leaderboard
+                from models.april_fools import is_april_fools
+                af_mode = is_april_fools()
+
                 # Generate appropriate leaderboard based on type
                 if type == 'points':
                     # Combined points leaderboard (general + quest points)
                     leaderboard = await leaderboard_manager.get_combined_leaderboard(limit=10, quest_manager=quest_manager)
-                    embed = EmbedViews.combined_points_leaderboard_embed(leaderboard, ctx.author.id)
+                    if af_mode:
+                        leaderboard = list(reversed(leaderboard))
+                        embed = EmbedViews.april_fools_leaderboard_embed(leaderboard, ctx.author.id, board_type="points")
+                    else:
+                        embed = EmbedViews.combined_points_leaderboard_embed(leaderboard, ctx.author.id)
                     
                 elif type == 'inorep':
                     if not leaderboard_manager.inorep_manager:
@@ -560,13 +568,19 @@ class CommandsController:
                         await ctx.send(error_msg, ephemeral=True)
                         return
                     leaderboard_data = await leaderboard_manager.inorep_manager.get_leaderboard(
-                        str(guild.id), limit=10, reverse=False
+                        str(guild.id), limit=10, reverse=af_mode
                     )
-                    embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=False)
+                    if af_mode:
+                        embed = EmbedViews.april_fools_leaderboard_embed(leaderboard_data, ctx.author.id, board_type="inorep")
+                    else:
+                        embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=False)
                     
                 else:  # images (default)
-                    leaderboard_data = leaderboard_manager.get_leaderboard(limit=10)
-                    embed = EmbedViews.leaderboard_embed(leaderboard_data, "all time")
+                    leaderboard_data = leaderboard_manager.get_leaderboard(limit=10, reverse=af_mode)
+                    if af_mode:
+                        embed = EmbedViews.april_fools_leaderboard_embed(leaderboard_data, ctx.author.id, board_type="images")
+                    else:
+                        embed = EmbedViews.leaderboard_embed(leaderboard_data, "all time")
                     
                     # Add stats summary for images
                     stats = leaderboard_manager.get_stats_summary()

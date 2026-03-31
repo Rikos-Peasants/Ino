@@ -381,14 +381,18 @@ class MongoLeaderboardManager:
         except Exception as e:
             logger.error(f"Error updating score for {user_name}: {e}")
     
-    def get_leaderboard(self, limit: int = 10, sort_by: str = "total_score") -> List[Tuple[str, int, int, int]]:
+    def get_leaderboard(self, limit: int = 10, sort_by: str = "total_score", reverse: bool = False) -> List[Tuple[str, int, int, int]]:
         """Get leaderboard data sorted by specified criteria
         
         Args:
             limit: Maximum number of entries to return
             sort_by: Sort criteria - 'total_score', 'avg_score', or 'image_count'
+            reverse: If True, sort ascending (worst-first) for April Fools mode
         """
         try:
+            from pymongo import ASCENDING
+            sort_direction = ASCENDING if reverse else DESCENDING
+
             # For avg_score, we need to calculate it and sort in memory
             if sort_by == "avg_score":
                 # Get all users and calculate average scores
@@ -408,8 +412,8 @@ class MongoLeaderboardManager:
                         "avg_score": avg_score
                     })
                 
-                # Sort by average score
-                users_with_avg.sort(key=lambda x: x["avg_score"], reverse=True)
+                # Sort by average score (ascending when reversed)
+                users_with_avg.sort(key=lambda x: x["avg_score"], reverse=not reverse)
                 
                 # Convert to leaderboard format
                 leaderboard = [
@@ -420,7 +424,7 @@ class MongoLeaderboardManager:
             else:
                 # Direct MongoDB sort for total_score or image_count
                 sort_field = "image_count" if sort_by == "image_count" else "total_score"
-                cursor = self.collection.find({}).sort(sort_field, DESCENDING).limit(limit)
+                cursor = self.collection.find({}).sort(sort_field, sort_direction).limit(limit)
                 
                 leaderboard = []
                 for doc in cursor:

@@ -1519,6 +1519,12 @@ class EventsController:
                 score_change = 1 if added else -1
             elif str(reaction.emoji) == '👎':
                 score_change = -1 if added else 1
+
+            # April Fools: invert voting so 👍 hurts and 👎 helps
+            from models.april_fools import is_april_fools
+            if is_april_fools() and score_change != 0:
+                score_change = -score_change
+                logger.debug(f"🃏 April Fools: inverted score_change to {score_change:+d}")
             
             # Track the user reaction (for scoring channels)
             await self.bot.leaderboard_manager.track_user_reaction(
