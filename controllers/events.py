@@ -363,8 +363,13 @@ class EventsController:
         try:
             # Check if this is a system message for member join
             if message.type == discord.MessageType.new_member:
-                sticker_id = 1391462726781505536
-                sticker_image_url = "https://media.discordapp.net/stickers/1391462726781505536.webp?size=160&quality=lossless"
+                from models.april_fools import is_april_fools, AF_STICKER_ID
+                if is_april_fools():
+                    sticker_id = AF_STICKER_ID
+                    sticker_image_url = f"https://media.discordapp.net/stickers/{AF_STICKER_ID}.webp?size=160&quality=lossless"
+                else:
+                    sticker_id = 1391462726781505536
+                    sticker_image_url = "https://media.discordapp.net/stickers/1391462726781505536.webp?size=160&quality=lossless"
                 
                 # Check if it's Christmas time (Dec 24-26)
                 now = datetime.now()
@@ -458,15 +463,6 @@ class EventsController:
         if not message.guild or message.guild.id != Config.GUILD_ID:
             return
 
-        # April Fools: randomly reply with sticker (~15 % of messages)
-        try:
-            import random as _rng
-            from models.april_fools import is_april_fools, AF_STICKER_ID
-            if is_april_fools() and _rng.random() < 0.15:
-                sticker = await self.bot.fetch_sticker(AF_STICKER_ID)
-                await message.reply(stickers=[sticker])
-        except Exception:
-            pass  # silently skip if sticker unavailable or rate-limited
 
         if await self._handle_discord_invite_link(message):
             return
