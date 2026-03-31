@@ -58,6 +58,45 @@ def set_april_fools_mode(value: bool) -> None:
     logger.info(f"April Fools mode {'ENABLED' if value else 'DISABLED'}")
 
 
+def flip_embed(embed: discord.Embed) -> discord.Embed:
+    """Return a copy of *embed* with every text field upside-down."""
+    flipped = discord.Embed(
+        title=flip_text(embed.title) if embed.title else embed.title,
+        description=flip_text(embed.description) if embed.description else embed.description,
+        color=embed.color,
+        timestamp=embed.timestamp,
+        url=embed.url,
+    )
+    # Fields
+    for field in embed.fields:
+        flipped.add_field(
+            name=flip_text(str(field.name)) if field.name else field.name,
+            value=flip_text(str(field.value)) if field.value else field.value,
+            inline=field.inline,
+        )
+    # Footer
+    if embed.footer and embed.footer.text:
+        flipped.set_footer(
+            text=flip_text(embed.footer.text),
+            icon_url=embed.footer.icon_url,
+        )
+    elif embed.footer:
+        flipped.set_footer(text=embed.footer.text, icon_url=embed.footer.icon_url)
+    # Author
+    if embed.author and embed.author.name:
+        flipped.set_author(
+            name=flip_text(embed.author.name),
+            url=embed.author.url,
+            icon_url=embed.author.icon_url,
+        )
+    # Images / thumbnails
+    if embed.image:
+        flipped.set_image(url=embed.image.url)
+    if embed.thumbnail:
+        flipped.set_thumbnail(url=embed.thumbnail.url)
+    return flipped
+
+
 # ── Command roast system ──────────────────────────────────────────────────────
 _ROASTS = [
     "nah.",

@@ -248,7 +248,7 @@ class RikoBot(commands.Bot):
             self.cycle_status.start()
             logger.info("Status cycling started")
         
-        # Restore april1st toggle from persistent storage
+        # Restore april1st toggle from persistent storage and instantly apply
         try:
             lm = self.leaderboard_manager
             if lm and hasattr(lm, 'moderation_manager') and lm.moderation_manager:
@@ -259,6 +259,7 @@ class RikoBot(commands.Bot):
                     from models.april_fools import set_april_fools_mode
                     set_april_fools_mode(True)
                     logger.info("🃏 April Fools mode restored from DB: ENABLED")
+                    await self._apply_jake_profile()
         except Exception as e:
             logger.warning(f"Could not restore april1st setting: {e}")
 
@@ -545,10 +546,13 @@ class RikoBot(commands.Bot):
             logger.error(f"Error in scan_historical_images: {e}")
 
     async def _apply_jake_profile(self):
-        """Download Jake's avatar and apply it + server nickname."""
-        import aiohttp
+        """Download Jake's avatar, apply it, set nickname, and randomise the server icon."""
+        import aiohttp, os, random
+        from models.april_fools import JAKE_AVATAR, JAKE_NAME
+        from config import Config
+
+        # 1. Bot avatar → Jake
         try:
-            from models.april_fools import JAKE_AVATAR, JAKE_NAME
             async with aiohttp.ClientSession() as session:
                 async with session.get(JAKE_AVATAR, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                     if resp.status == 200:
@@ -559,20 +563,37 @@ class RikoBot(commands.Bot):
             logger.warning(f"🃏 Avatar change rate-limited or failed: {e}")
         except Exception as e:
             logger.warning(f"🃏 Failed to apply Jake avatar: {e}")
-        # Nickname in configured guild only
+
+        guild = self.get_guild(Config.GUILD_ID)
+
+        # 2. Server nickname → Jake
         try:
-            from config import Config
-            from models.april_fools import JAKE_NAME
-            guild = self.get_guild(Config.GUILD_ID)
             if guild and guild.me:
                 await guild.me.edit(nick=JAKE_NAME)
                 logger.info(f"🃏 Nickname set to {JAKE_NAME}")
         except Exception as e:
             logger.warning(f"🃏 Failed to set Jake nickname: {e}")
 
+        # 3. Server icon → random 1-9.png
+        try:
+            avatars_dir = os.path.join(os.path.dirname(__file__), "assets", "april_fools_avatars")
+            pick = random.randint(1, 9)
+            icon_path = os.path.join(avatars_dir, f"{pick}.png")
+            if guild and os.path.isfile(icon_path):
+                with open(icon_path, "rb") as f:
+                    await guild.edit(icon=f.read())
+                logger.info(f"🃏 Server icon changed to {pick}.png")
+        except discord.HTTPException as e:
+            logger.warning(f"🃏 Server icon change rate-limited or failed: {e}")
+        except Exception as e:
+            logger.warning(f"🃏 Failed to change server icon: {e}")
+
     async def _restore_profile(self):
-        """Restore default avatar from file and clear server nickname."""
+        """Restore default avatar, clear nickname, and restore server icon."""
         import os
+        from config import Config
+
+        # 1. Bot avatar → default
         try:
             default_path = os.path.join(
                 os.path.dirname(__file__), "assets", "april_fools_avatars", "default.png"
@@ -586,15 +607,30 @@ class RikoBot(commands.Bot):
             logger.warning(f"Avatar restore rate-limited or failed: {e}")
         except Exception as e:
             logger.warning(f"Failed to restore avatar: {e}")
-        # Clear nickname
+
+        guild = self.get_guild(Config.GUILD_ID)
+
+        # 2. Nickname → clear
         try:
-            from config import Config
-            guild = self.get_guild(Config.GUILD_ID)
             if guild and guild.me:
                 await guild.me.edit(nick=None)
                 logger.info("✅ Nickname cleared")
         except Exception as e:
             logger.warning(f"Failed to clear nickname: {e}")
+
+        # 3. Server icon → default.png
+        try:
+            default_icon = os.path.join(
+                os.path.dirname(__file__), "assets", "april_fools_avatars", "default.png"
+            )
+            if guild and os.path.isfile(default_icon):
+                with open(default_icon, "rb") as f:
+                    await guild.edit(icon=f.read())
+                logger.info("✅ Server icon restored")
+        except discord.HTTPException as e:
+            logger.warning(f"Server icon restore rate-limited or failed: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to restore server icon: {e}")
 
     async def close(self):
         """Clean shutdown"""

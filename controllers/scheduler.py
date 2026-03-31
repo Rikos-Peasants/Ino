@@ -768,26 +768,46 @@ class SchedulerController:
         """Wait for bot to be ready before starting historical reaction checking"""
         await self.bot.wait_until_ready()
 
-    # ── April Fools: hourly profile-picture cycling ───────────────────────────
+    # ── April Fools: 10-minute server icon cycling ──────────────────────────
 
-    @tasks.loop(hours=1)
+    @tasks.loop(minutes=10)
     async def april_fools_pfp(self):
-        """Re-apply Jake's avatar and nickname every hour while April Fools mode is on.
+        """Cycle the server icon every 10 min while April Fools mode is on.
 
-        This acts as a safety net in case Discord resets the avatar or nickname.
-        Outside April Fools mode this task is a no-op.
+        Picks a random image from assets/april_fools_avatars/1-9.png and
+        sets it as the guild icon.  Bot avatar + nickname are only refreshed
+        once per hour (slot 0 of each hour) to respect Discord rate-limits.
         """
         try:
             from models.april_fools import is_april_fools
             if not is_april_fools():
                 return
 
-            await self.bot._apply_jake_profile()
+            import os, random
+            from config import Config
 
+            guild = self.bot.get_guild(Config.GUILD_ID)
+            if not guild:
+                return
+
+            # Always cycle the server icon
+            avatars_dir = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "assets", "april_fools_avatars"
+            )
+            pick = random.randint(1, 9)
+            icon_path = os.path.join(avatars_dir, f"{pick}.png")
+            if os.path.isfile(icon_path):
+                with open(icon_path, "rb") as f:
+                    await guild.edit(icon=f.read())
+                logger.info(f"🃏 Server icon cycled to {pick}.png")
+
+        except discord.HTTPException as e:
+            logger.warning(f"🃏 Server icon cycle rate-limited: {e}")
         except Exception as e:
             logger.error(f"Error in april_fools_pfp task: {e}")
 
     @april_fools_pfp.before_loop
     async def before_april_fools_pfp(self):
-        """Wait for bot to be ready before starting pfp cycling"""
+        """Wait for bot to be ready before starting icon cycling"""
         await self.bot.wait_until_ready()

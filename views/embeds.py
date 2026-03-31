@@ -8,7 +8,15 @@ logger = logging.getLogger(__name__)
 
 class EmbedViews:
     """Handles creation of Discord embeds"""
-    
+
+    @staticmethod
+    def _maybe_flip(embed: discord.Embed) -> discord.Embed:
+        """Auto-flip all embed text when April Fools mode is active."""
+        from models.april_fools import is_april_fools, flip_embed
+        if is_april_fools():
+            return flip_embed(embed)
+        return embed
+
     @staticmethod
     def access_denied_embed() -> discord.Embed:
         """Create an embed for access denied message"""
@@ -19,7 +27,7 @@ class EmbedViews:
             timestamp=datetime.utcnow()
         )
         embed.set_footer(text="Contact an administrator if you believe this is an error")
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def nsfwban_success_embed(user: discord.Member, reason: str, banned_by: discord.Member) -> discord.Embed:
@@ -34,7 +42,7 @@ class EmbedViews:
         embed.add_field(name="👮 Banned by", value=f"{banned_by.mention}", inline=True)
         embed.add_field(name="📝 Reason", value=reason, inline=False)
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def nsfwunban_success_embed(user: discord.Member, unbanned_by: discord.Member) -> discord.Embed:
@@ -48,7 +56,7 @@ class EmbedViews:
         embed.add_field(name="👤 User", value=f"{user.mention} ({user.id})", inline=True)
         embed.add_field(name="👮 Unbanned by", value=f"{unbanned_by.mention}", inline=True)
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def nsfwban_dm_embed(reason: str, guild_name: str) -> discord.Embed:
@@ -66,7 +74,7 @@ class EmbedViews:
             inline=False
         )
         embed.set_footer(text="Contact server administrators if you believe this is an error")
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def nsfwunban_dm_embed(guild_name: str) -> discord.Embed:
@@ -82,7 +90,7 @@ class EmbedViews:
             value="• Access NSFW channels again\n• Participate in age-restricted content",
             inline=False
         )
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def uptime_embed(uptime_str: str) -> discord.Embed:
@@ -93,7 +101,7 @@ class EmbedViews:
             color=discord.Color.green(),
             timestamp=datetime.utcnow()
         )
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def error_embed(message: str) -> discord.Embed:
@@ -104,7 +112,7 @@ class EmbedViews:
             color=discord.Color.red(),
             timestamp=datetime.utcnow()
         )
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def patreon_embed() -> discord.Embed:
@@ -126,7 +134,7 @@ class EmbedViews:
         )
         embed.set_footer(text="Thank you for your support! ❤️")
         embed.set_thumbnail(url="https://c5.patreon.com/external/logo/become_a_patron_button.png")
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     async def best_image_embed(message: discord.Message, period: str, score: int) -> discord.Embed:
@@ -193,7 +201,7 @@ class EmbedViews:
         
         embed.set_footer(text=f"🎉 Winner of the {period}!")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def no_winner_embed(period: str) -> discord.Embed:
@@ -208,7 +216,7 @@ class EmbedViews:
         
         embed.set_footer(text=f"Better luck next {period} in this channel!")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def warning_embed(user: discord.Member, moderator: discord.Member, reason: str, warning_count: int, action: str) -> discord.Embed:
@@ -260,7 +268,7 @@ class EmbedViews:
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
         embed.set_footer(text="Server Moderation System")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def user_warnings_embed(user: discord.Member, warnings: list, total_count: int) -> discord.Embed:
@@ -298,7 +306,7 @@ class EmbedViews:
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
         embed.set_footer(text="Use /clearwarnings to remove warnings")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def warning_cleared_embed(user: discord.Member, cleared_count: int, moderator: discord.Member) -> discord.Embed:
@@ -317,7 +325,7 @@ class EmbedViews:
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
         embed.set_footer(text="User is now in good standing")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def warning_log_embed(user: discord.Member, moderator: discord.Member, reason: str, warning_count: int, action: str) -> discord.Embed:
@@ -370,7 +378,7 @@ class EmbedViews:
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
         embed.set_footer(text="Warning System Log", icon_url=moderator.display_avatar.url if moderator.display_avatar else None)
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def daily_quests_embed(quests: list, user_name: str) -> discord.Embed:
@@ -384,7 +392,7 @@ class EmbedViews:
                 timestamp=datetime.utcnow()
             )
             embed.set_footer(text="Quest system by Riko Bot")
-            return embed
+            return EmbedViews._maybe_flip(embed)
         
         # Calculate stats
         total_points = 0
@@ -481,7 +489,7 @@ class EmbedViews:
         # Minimal footer
         embed.set_footer(text="💡 Quests reset daily at midnight UTC", icon_url="https://i.imgur.com/vJGfLzH.png")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def _create_progress_bar(progress: float, length: int = 10) -> str:
@@ -538,7 +546,7 @@ class EmbedViews:
             
             embed.set_footer(text=f"Total Achievements: {len(achievements)} • Total Points: {total_points}")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
 
     
@@ -608,7 +616,7 @@ class EmbedViews:
                 text="💬 Text Messages • 🎤 Voice Activity • ⚡ Booster Bonus • 🎯 Quest Rewards • Showing top 10"
             )
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def quest_completed_embed(quest: dict) -> discord.Embed:
@@ -631,7 +639,7 @@ class EmbedViews:
             inline=True
         )
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def achievement_earned_embed(achievement: dict) -> discord.Embed:
@@ -655,7 +663,7 @@ class EmbedViews:
             inline=True
         )
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def event_created_embed(event: dict) -> discord.Embed:
@@ -695,7 +703,7 @@ class EmbedViews:
         
         embed.set_footer(text="All images posted during the event will compete for the highest score!")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def active_events_embed(events: list) -> discord.Embed:
@@ -725,7 +733,7 @@ class EmbedViews:
                     inline=False
                 )
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def event_winner_embed(event: dict, winner: dict) -> discord.Embed:
@@ -762,7 +770,7 @@ class EmbedViews:
         
         embed.set_footer(text="Congratulations to the winner!")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
 
     @staticmethod
     def streaks_embed(streaks: dict, user_name: str) -> discord.Embed:
@@ -843,7 +851,7 @@ class EmbedViews:
         
         embed.set_footer(text="Post images daily and complete quests to build streaks!")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
 
     @staticmethod
     def streak_milestone_embed(streak_type: str, streak_count: int, user_name: str) -> discord.Embed:
@@ -882,7 +890,7 @@ class EmbedViews:
             inline=False
         )
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
 
     @staticmethod
     def leaderboard_embed(leaderboard_data: list, period: str = "all time") -> discord.Embed:
@@ -900,7 +908,7 @@ class EmbedViews:
                 value="No images found for the specified period.",
                 inline=False
             )
-            return embed
+            return EmbedViews._maybe_flip(embed)
         
         # Add leaderboard entries
         medal_emojis = ["🥇", "🥈", "🥉"]
@@ -925,7 +933,7 @@ class EmbedViews:
         
         embed.set_footer(text=f"📊 Based on net upvotes (👍 - 👎) • Showing top 10")
         
-        return embed 
+        return EmbedViews._maybe_flip(embed) 
     
     @staticmethod
     def moderation_flagged_embed(moderation_data: dict) -> discord.Embed:
@@ -1003,7 +1011,7 @@ class EmbedViews:
         
         embed.set_footer(text="Use buttons below to vote • 2+ whitelist = auto-approve • Majority blacklist = auto-reject")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def moderation_approved_embed(log_data: dict, moderator_name: str, whitelisted: bool = False) -> discord.Embed:
@@ -1025,7 +1033,7 @@ class EmbedViews:
         
         embed.add_field(name="🔗 Jump to Message", value=f"[Click here]({log_data['jump_url']})", inline=False)
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def moderation_rejected_embed(log_data: dict, moderator_name: str, reason: str, blacklisted: bool = False) -> discord.Embed:
@@ -1049,7 +1057,7 @@ class EmbedViews:
         
         embed.add_field(name="🔗 Jump to Message", value=f"[Click here]({log_data['jump_url']})", inline=False)
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def moderation_overruled_embed(log_data: dict, admin_name: str, is_allowed: bool, reason: str) -> discord.Embed:
@@ -1078,7 +1086,7 @@ class EmbedViews:
             inline=False
         )
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def moderation_blacklisted_content_embed(log_data: dict) -> discord.Embed:
@@ -1096,7 +1104,7 @@ class EmbedViews:
         
         embed.add_field(name="🔗 Jump to Message", value=f"[Click here]({log_data['jump_url']})", inline=False)
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def ping_spam_timeout_embed(reason: str, details: str, duration) -> discord.Embed:
@@ -1121,7 +1129,7 @@ class EmbedViews:
         
         embed.set_footer(text="Repeated violations may result in longer timeouts")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def moderation_config_embed(guild_id: str, settings: dict) -> discord.Embed:
@@ -1161,7 +1169,7 @@ class EmbedViews:
         embed.add_field(name="ℹ️ Note", value="Use `/modconfig` to change these settings.", inline=False)
         embed.set_footer(text=f"Guild ID: {guild_id}")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def moderation_stats_embed(stats: dict, days: int = 30) -> discord.Embed:
@@ -1187,7 +1195,7 @@ class EmbedViews:
             accuracy = ((stats.get('approved', 0) + stats.get('rejected', 0)) / total) * 100
             embed.add_field(name="🎯 Review Rate", value=f"{accuracy:.1f}%", inline=True)
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def inorep_check_embed(user: discord.Member, rep: int) -> discord.Embed:
@@ -1476,7 +1484,7 @@ class EmbedViews:
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
         embed.set_footer(text="InoRep System • Track your relationship with Ino!")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def inorep_warned_embed(warned_user: discord.Member, warner: discord.Member, new_rep: int) -> discord.Embed:
@@ -1497,7 +1505,7 @@ class EmbedViews:
         embed.set_thumbnail(url=warned_user.display_avatar.url if warned_user.display_avatar else None)
         embed.set_footer(text="Be nicer to Ino! (This is just for fun)")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def inorep_admin_add_embed(target_user: discord.Member, admin: discord.Member, amount: int, new_rep: int, reason: str) -> discord.Embed:
@@ -1520,7 +1528,7 @@ class EmbedViews:
         embed.set_thumbnail(url=target_user.display_avatar.url if target_user.display_avatar else None)
         embed.set_footer(text="InoRep Management • Just for fun!")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def inorep_leaderboard_embed(leaderboard_data: list, worst: bool = False) -> discord.Embed:
@@ -1547,7 +1555,7 @@ class EmbedViews:
                 value="No one has any InoRep yet!",
                 inline=False
             )
-            return embed
+            return EmbedViews._maybe_flip(embed)
         
         # Add leaderboard entries
         medal_emojis = ["🥇", "🥈", "🥉"]
@@ -1572,7 +1580,7 @@ class EmbedViews:
         
         embed.set_footer(text="InoRep Leaderboard • Just for fun! • Showing top 10")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
 
 
 class QuestView(discord.ui.View):
@@ -2161,7 +2169,7 @@ def add_profile_embeds():
         
         embed.set_footer(text=f"User ID: {user.id}")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def bookmarks_embed(bookmarks, user_name):
@@ -2189,7 +2197,7 @@ def add_profile_embeds():
         else:
             embed.set_footer(text="🔖 Use the bookmark button on images to save them!")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def collection_embed(user, user_stats, recent_images):
@@ -2235,7 +2243,7 @@ def add_profile_embeds():
         
         embed.set_footer(text="Keep posting great images! 📸")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     @staticmethod
     def detailed_stats_embed(user, user_stats, quest_data):
@@ -2287,7 +2295,7 @@ def add_profile_embeds():
         
         embed.set_footer(text=f"Keep up the great work! • User ID: {user.id}")
         
-        return embed
+        return EmbedViews._maybe_flip(embed)
     
     # Add methods to EmbedViews class
     EmbedViews.profile_overview_embed = profile_overview_embed
@@ -2302,14 +2310,13 @@ add_profile_embeds()
 
 # ── April Fools embeds (injected after class definition) ─────────────────────
 def _add_april_fools_embeds():
-    from models.april_fools import flip_text
 
     @staticmethod
     def april_fools_leaderboard_embed(leaderboard_data: list, current_user_id: int, board_type: str = "images") -> discord.Embed:
-        """Upside-down Hall of Shame leaderboard for April Fools."""
+        """Hall of Shame leaderboard for April Fools (auto-flipped by _maybe_flip)."""
         embed = discord.Embed(
-            title=flip_text("Hall of Shame Leaderboard"),
-            description=flip_text("Worst users ranked best. Congratulations, losers."),
+            title="🤡 Hall of Shame Leaderboard",
+            description="Worst users ranked best. Congratulations, losers.",
             color=0xFF6B00,
             timestamp=datetime.utcnow()
         )
@@ -2317,9 +2324,9 @@ def _add_april_fools_embeds():
         shame_medals = ["🤡", "🥴", "💀"]
 
         if not leaderboard_data:
-            embed.add_field(name=flip_text("No Data"), value=flip_text("Nobody is bad enough to appear here. Yet."), inline=False)
-            embed.set_footer(text=flip_text("April Fools - everything is upside down today"))
-            return embed
+            embed.add_field(name="No Data", value="Nobody is bad enough to appear here. Yet.", inline=False)
+            embed.set_footer(text="Lower is better today. Ino is on vacation. Jake made this.")
+            return EmbedViews._maybe_flip(embed)
 
         for i, entry in enumerate(leaderboard_data[:10], 1):
             position_emoji = shame_medals[i - 1] if i <= 3 else f"{i}."
@@ -2330,9 +2337,9 @@ def _add_april_fools_embeds():
                 is_you = str(user_id) == str(current_user_id)
                 display = f"**{user_name}** 💀" if is_you else user_name
                 value = (
-                    f"**{flip_text('Total Score')}:** {total_score}\n"
-                    f"**{flip_text('Images')}:** {image_count}\n"
-                    f"**{flip_text('Avg')}:** {avg:.1f}"
+                    f"**Total Score:** {total_score}\n"
+                    f"**Images:** {image_count}\n"
+                    f"**Avg:** {avg:.1f}"
                 )
             elif board_type == "points":
                 user_name = entry.get("user_name", "Unknown") if isinstance(entry, dict) else str(entry)
@@ -2340,31 +2347,31 @@ def _add_april_fools_embeds():
                 total_points = entry.get("total_points", 0) if isinstance(entry, dict) else 0
                 is_you = str(user_id) == str(current_user_id)
                 display = f"**{user_name}** 💀" if is_you else user_name
-                value = f"**{flip_text('Total Points')}:** {total_points:,}"
+                value = f"**Total Points:** {total_points:,}"
             else:  # inorep
                 user_name = entry.get("user_name", "Unknown") if isinstance(entry, dict) else str(entry)
                 user_id = entry.get("user_id", 0) if isinstance(entry, dict) else 0
                 rep = entry.get("rep", 0) if isinstance(entry, dict) else 0
                 is_you = str(user_id) == str(current_user_id)
                 display = f"**{user_name}** 💀" if is_you else user_name
-                value = f"**{flip_text('InoRep')}:** {rep:,}"
+                value = f"**InoRep:** {rep:,}"
 
             embed.add_field(
-                name=f"{position_emoji} {flip_text(user_name)}",
+                name=f"{position_emoji} {user_name}",
                 value=value,
                 inline=True
             )
 
-        embed.set_footer(text=flip_text("April Fools - lower is better today. Ino is on vacation. Jake made this."))
-        return embed
+        embed.set_footer(text="Lower is better today. Ino is on vacation. Jake made this.")
+        return EmbedViews._maybe_flip(embed)
 
     @staticmethod
     def april_fools_badge_embed(user_name: str) -> discord.Embed:
         """Embed shown when awarding the fake April Fools badge."""
-        from models.april_fools import flip_text, APRIL_FOOLS_ACHIEVEMENT
+        from models.april_fools import APRIL_FOOLS_ACHIEVEMENT
         embed = discord.Embed(
-            title="🃏 " + flip_text("Achievement Unlocked"),
-            description=f"**{flip_text(user_name)}** — " + flip_text("congratulations on doing absolutely nothing special."),
+            title="🃏 Achievement Unlocked",
+            description=f"**{user_name}** — congratulations on doing absolutely nothing special.",
             color=0xFF69B4,
             timestamp=datetime.utcnow()
         )
@@ -2373,24 +2380,23 @@ def _add_april_fools_embeds():
             value=APRIL_FOOLS_ACHIEVEMENT["description"],
             inline=False
         )
-        embed.add_field(name=flip_text("Reward"), value=flip_text("0 points. You get nothing. Good day sir."), inline=True)
-        embed.set_footer(text=flip_text("This is a completely real and legitimate achievement."))
-        return embed
+        embed.add_field(name="Reward", value="0 points. You get nothing. Good day sir.", inline=True)
+        embed.set_footer(text="This is a completely real and legitimate achievement.")
+        return EmbedViews._maybe_flip(embed)
 
     @staticmethod
     def april_fools_quests_embed(quests: list, user_name: str) -> discord.Embed:
-        """Upside-down quest display for April Fools day."""
-        from models.april_fools import flip_text
+        """Quest display for April Fools day (auto-flipped by _maybe_flip)."""
         embed = discord.Embed(
-            title=flip_text("Daily Quests"),
-            description=flip_text(f"{user_name}'s completely meaningless quests for today"),
+            title="📋 Daily Quests",
+            description=f"{user_name}'s completely meaningless quests for today",
             color=0xFF6B00,
             timestamp=datetime.utcnow()
         )
         if not quests:
             embed.add_field(
-                name=flip_text("No quests"),
-                value=flip_text("Ino left Jake in charge. He forgot to assign quests. Classic Jake."),
+                name="No quests",
+                value="Ino left Jake in charge. He forgot to assign quests. Classic Jake.",
                 inline=False
             )
         else:
@@ -2403,15 +2409,15 @@ def _add_april_fools_embeds():
                 quest_lines.append(
                     f"{status} **{quest['name']}**\n"
                     f"　📝 _{quest.get('description', '')}_ \n"
-                    f"　`{current}/{target}` • **{pts}** {flip_text('pts')}"
+                    f"　`{current}/{target}` • **{pts}** pts"
                 )
             embed.add_field(
-                name=flip_text("Your Quests"),
+                name="Your Quests",
                 value="\n\n".join(quest_lines),
                 inline=False
             )
-        embed.set_footer(text=flip_text("Quests reset daily at midnight UTC - Jake has no idea how any of this works"))
-        return embed
+        embed.set_footer(text="Quests reset daily at midnight UTC - Jake has no idea how any of this works")
+        return EmbedViews._maybe_flip(embed)
 
     EmbedViews.april_fools_leaderboard_embed = april_fools_leaderboard_embed
     EmbedViews.april_fools_badge_embed = april_fools_badge_embed
