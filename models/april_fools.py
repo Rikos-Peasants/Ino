@@ -594,10 +594,14 @@ def uwuify_text(text: str) -> str:
         return text
     
     # First: clean any zalgo/glitched text
+    original_text = text
     text = clean_zalgo(text)
+    if text != original_text:
+        logger.debug(f"[UWUIFY] After clean_zalgo: '{text}'")
     
     # Second: normalize unicode font bypasses (Gothic, Coptic, etc.)
     text = normalize_unicode_fonts(text)
+    logger.debug(f"[UWUIFY] After normalize_unicode_fonts: '{text}'")
     
     # Extract and store links/emojis to preserve them
     preserved_items = []
@@ -623,19 +627,25 @@ def uwuify_text(text: str) -> str:
         preserved_items.append((placeholder, emoji))
         text = text.replace(emoji, placeholder, 1)
     
+    if preserved_items:
+        logger.debug(f"[UWUIFY] After extracting links/emojis: '{text}', preserved: {len(preserved_items)} items")
+    
     # Transform text
     result = []
     words = text.split(' ')
+    logger.debug(f"[UWUIFY] Split into {len(words)} words: {words[:10]}")  # Log first 10 words
     
     # Randomly insert asterisk action at start
     if random.random() < ASTERISK_ACTION_CHANCE:
         result.append(random.choice(ASTERISK_ACTIONS))
     
     prev_word = ""
+    words_processed = 0
     for word in words:
         # Skip if it's a placeholder
         if word.startswith('{') and word.endswith('}'):
             result.append(word)
+            words_processed += 1
             continue
         
         # Check for punctuation at end
@@ -646,6 +656,7 @@ def uwuify_text(text: str) -> str:
         
         if not word:
             result.append(punctuation)
+            words_processed += 1
             continue
         
         # EXTREME stuttering - can be n-n-, n-n-n-, or n-n-n-n-
@@ -738,12 +749,14 @@ def uwuify_text(text: str) -> str:
         
         result.append(prefix + transformed + suffix + punctuation)
         prev_word = transformed.lower()
+        words_processed += 1
         
         # Random meow insertion between words
         if random.random() < MEOW_CHANCE:
             result.append(random.choice(MEOW_VARIATIONS))
     
     text = ' '.join(result)
+    logger.debug(f"[UWUIFY] After word processing ({words_processed} words): '{text[:200]}...' ")  # Log first 200 chars
     
     # Restore preserved items
     for placeholder, original in preserved_items:
@@ -775,6 +788,7 @@ def uwuify_text(text: str) -> str:
     if random.random() < FACE_CHANCE:
         text = text + " " + random.choice(UWU_FACES)
     
+    logger.debug(f"[UWUIFY] Final result: '{text[:200]}...'")
     return text
 
 
