@@ -6,6 +6,7 @@ from discord.ext import commands
 import logging
 import random
 import io
+import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -684,6 +685,17 @@ async def uwuify_message_via_webhook(message: discord.Message) -> bool:
         
         # Send via webhook
         await webhook.send(**kwargs)
+        
+        # Add cute reaction before deleting (to show it's being uwuified)
+        try:
+            cute_emojis = ['🥺', '👉👈', '✨', '💖', '🐾', 'uwu']
+            chosen = random.choice(cute_emojis)
+            await message.add_reaction(chosen)
+        except Exception:
+            pass  # Silently fail if we can't react
+        
+        # Small delay so the reaction is visible briefly before deletion
+        await asyncio.sleep(0.5)
         
         # Delete original message
         await message.delete()
