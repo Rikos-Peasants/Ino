@@ -700,6 +700,17 @@ async def uwuify_message_via_webhook(message: discord.Message) -> bool:
         # Delete original message
         await message.delete()
         
+        # Send DM to user explaining what happened (uwuified of course)
+        try:
+            dm_messages = [
+                f"Hewwo! Youw message in #{message.channel.name} was so cute that I had to make it even cuter~ nya! ✨\n\nIt said:\n> {uwu_content[:500]}{'...' if len(uwu_content) > 500 else ''}",
+                f"I noticed youw message in #{message.channel.name} and it needed some *uwu magic*~ ✨🥺\n\nNow it's:\n> {uwu_content[:500]}{'...' if len(uwu_content) > 500 else ''}",
+                f"Rawr~ I uwuwified youw message in #{message.channel.name}! 🐾\n\nHewe it is:\n> {uwu_content[:500]}{'...' if len(uwu_content) > 500 else ''}",
+            ]
+            await message.author.send(random.choice(dm_messages))
+        except Exception:
+            pass  # Silently fail if DMs are disabled
+        
         return True
         
     except discord.Forbidden:
