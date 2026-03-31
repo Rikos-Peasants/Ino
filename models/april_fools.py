@@ -426,25 +426,35 @@ GENERIC_URL_PATTERN = re.compile(r'https?://[^\s]+', re.IGNORECASE)
 EMOJI_PATTERN = re.compile(r'<a?:\w+:\d+>')  # Discord custom emojis
 
 # Stutter chance and face chance
-STUTTER_CHANCE = 0.15
-FACE_CHANCE = 0.2
+STUTTER_CHANCE = 0.35
+FACE_CHANCE = 0.4
+NYA_CHANCE = 0.15
 
 UWU_FACES = [
     "(・`ω´・)", ";;w;;", "owo", "UwU", ">w<", "^w^", "(o^▽^o)",
     "(˘▽˘)っ♡", "(・ω< )", "(´･ω･`)", "(„ᵕᴗᵕ„)", "(｡♥‿♥｡)",
     "(◕‿◕✿)", "(◕ᴗ◕✿)", "(✿◠‿◠)", "(◕‿◕)", "(◕ᴗ◕)", "(｡◕‿◕｡)",
-    "(◕‿◕✿)", "(✿◠‿◠)", "(｡♥‿♥｡)", "(´｡• ᵕ •｡`)", "(｡・//ω//・｡)"
+    "(◕‿◕✿)", "(✿◠‿◠)", "(｡♥‿♥｡)", "(´｡• ᵕ •｡`)", "(｡・//ω//・｡)",
+    "rawr x3", ">////<", "nya~", "(´・ω・｀)", "(ꈍᴗꈍ)", "(｡･ω･｡)",
+    "(◠‿◠✿)", "~hewwo~", "OwO what's this?", "*notices bulge*", "uwu", "👀", "🥺"
 ]
 
 def uwuify_text(text: str) -> str:
-    """Transform text into uwu speak.
+    """Transform text into EXTREME uwu speak.
     
-    Rules:
+    Over-the-top rules:
     - r/l -> w
-    - R/L -> W
-    - 'th' -> 'd' or 'f' (random)
-    - Add stuttering ~15% of the time on first letter of words
-    - Add random uwu face ~20% of the time at end
+    - R/L -> W  
+    - 'th' -> 'd' or 'f'
+    - 'no' -> 'nyo' (aggressive)
+    - 'na' -> 'nya' 
+    - 'ne' -> 'nye'
+    - 'ni' -> 'nyi'
+    - 'mu' -> 'myu' (some/much -> sume/myuch)
+    - Double/triple stuttering ~35% of the time
+    - Add random uwu face ~40% of the time at end
+    - Add "nya~" or "rawr" randomly ~15% after words
+    - Add "~" at end of sentences ~50%
     - Preserve tenor links and other URLs
     - Preserve Discord emojis
     """
@@ -487,7 +497,7 @@ def uwuify_text(text: str) -> str:
         
         # Check for punctuation at end
         punctuation = ''
-        while word and word[-1] in '.,!?;:':
+        while word and word[-1] in '.,!?;:'
             punctuation = word[-1] + punctuation
             word = word[:-1]
         
@@ -495,33 +505,55 @@ def uwuify_text(text: str) -> str:
             result.append(punctuation)
             continue
         
-        # Stutter chance on first letter
+        # EXTREME stuttering - can be n-n- or n-n-n-
         if len(word) > 2 and random.random() < STUTTER_CHANCE:
             first_char = word[0].lower()
             if first_char.isalpha():
-                word = f"{first_char}-{word}"
+                if random.random() < 0.3:
+                    # Triple stutter!
+                    word = f"{first_char}-{first_char}-{first_char}-{word}"
+                else:
+                    # Double stutter
+                    word = f"{first_char}-{first_char}-{word}"
         
         # Transform the word
         transformed = word
+        
+        # nya-ify: no -> nyo, na -> nya, ne -> nye, ni -> nyi, mu -> myu
+        # Case insensitive replacements with case preservation
+        def nya_replace(m):
+            s = m.group(0)
+            if s.lower() == 'no':
+                return 'nyO' if s[1].isupper() else 'nyo'
+            elif s.lower() == 'na':
+                return 'nyA' if s[1].isupper() else 'nya'
+            elif s.lower() == 'ne':
+                return 'nyE' if s[1].isupper() else 'nye'
+            elif s.lower() == 'ni':
+                return 'nyI' if s[1].isupper() else 'nyi'
+            elif s.lower() == 'mu':
+                return 'myU' if s[1].isupper() else 'myu'
+            return s
+        
+        # Aggressive nya replacement at word boundaries and within words
+        transformed = re.sub(r'(?i)\b(no|na|ne|ni|mu)\b', nya_replace, transformed)
+        transformed = re.sub(r'(?i)(no|na|ne|ni|mu)(?=[^a-zA-Z])', nya_replace, transformed)
         
         # r/l -> w, R/L -> W
         transformed = transformed.replace('r', 'w').replace('l', 'w')
         transformed = transformed.replace('R', 'W').replace('L', 'W')
         
         # th -> d or f (before vowels mostly)
-        # Simple approach: th -> d when followed by vowel, f otherwise
         new_chars = []
         i = 0
         while i < len(transformed):
             if i < len(transformed) - 1 and transformed[i:i+2].lower() == 'th':
                 next_char = transformed[i+2] if i+2 < len(transformed) else ''
                 if next_char.lower() in 'aeiou':
-                    # th -> d before vowel
                     new_chars.append('d' if transformed[i] == 't' else 'D')
                     i += 2
                     continue
                 else:
-                    # th -> f otherwise
                     new_chars.append('f' if transformed[i] == 't' else 'F')
                     i += 2
                     continue
@@ -529,19 +561,38 @@ def uwuify_text(text: str) -> str:
             i += 1
         transformed = ''.join(new_chars)
         
-        # owo/uwu-ify some words ending in 'o' or 'u'
-        if transformed.lower().endswith('o') and len(transformed) > 2 and random.random() < 0.1:
-            transformed = transformed[:-1] + ('owo' if transformed[-1].islower() else 'OWO')
-        elif transformed.lower().endswith('u') and len(transformed) > 2 and random.random() < 0.1:
-            transformed = transformed[:-1] + ('uwu' if transformed[-1].islower() else 'UWU')
+        # owo/uwu-ify endings more aggressively
+        if transformed.lower().endswith('o') and len(transformed) > 1:
+            if random.random() < 0.25:
+                transformed = transformed[:-1] + ('owo' if transformed[-1].islower() else 'OWO')
+        elif transformed.lower().endswith('u') and len(transformed) > 1:
+            if random.random() < 0.25:
+                transformed = transformed[:-1] + ('uwu' if transformed[-1].islower() else 'UWU')
         
-        result.append(transformed + punctuation)
+        # Add "nya~" or other suffix randomly
+        suffix = ''
+        if random.random() < NYA_CHANCE and len(transformed) > 2:
+            suffixes = [' nya~', ' rawr', ' ~', ' ^w^', ' uwu']
+            suffix = random.choice(suffixes)
+        
+        result.append(transformed + suffix + punctuation)
     
     text = ' '.join(result)
     
     # Restore preserved items
     for placeholder, original in preserved_items:
         text = text.replace(placeholder, original, 1)
+    
+    # Add tildes to sentence endings randomly
+    if random.random() < 0.5 and not any(c in text[-5:] for c in ['~', 'w', 'W']):
+        # Find last sentence-ending punctuation and add ~ after it
+        for punct in ['.', '!', '?']:
+            if text.rstrip().endswith(punct):
+                text = text.rstrip()[:-1] + punct + '~'
+                break
+        else:
+            # No ending punctuation, just append ~
+            text = text + '~'
     
     # Add random uwu face at end
     if random.random() < FACE_CHANCE:
