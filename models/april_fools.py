@@ -497,7 +497,7 @@ def uwuify_text(text: str) -> str:
         
         # Check for punctuation at end
         punctuation = ''
-        while word and word[-1] in '.,!?;:'
+        while word and word[-1] in '.,!?;:':
             punctuation = word[-1] + punctuation
             word = word[:-1]
         
