@@ -5720,6 +5720,7 @@ class CommandsController:
                     art_manager.CHALLENGE_TYPE_SCENE_MOVE,
                     art_manager.CHALLENGE_TYPE_PALETTE,
                     art_manager.CHALLENGE_TYPE_TIME_SHIFT,
+                    "custom",  # Custom prompt challenge
                 ]
 
                 normalized_challenge_type = challenge_type.lower().strip() if challenge_type else None
@@ -5737,12 +5738,23 @@ class CommandsController:
                 rating = art_manager.get_channel_rating(ctx.channel.id)
                 
                 # Create the challenge with appropriate rating
-                challenge_data = await art_manager.create_challenge(
-                    channel_id=ctx.channel.id,
-                    guild_id=ctx.guild.id,
-                    challenge_type=normalized_challenge_type,
-                    rating=rating
-                )
+                if normalized_challenge_type == "custom":
+                    # Import custom prompts for regular use (not just April Fools)
+                    from models.april_fools import AF_ART_CHALLENGE_PROMPTS
+                    prompt = random.choice(AF_ART_CHALLENGE_PROMPTS)
+                    challenge_data = await art_manager.create_april_fools_challenge(
+                        channel_id=ctx.channel.id,
+                        guild_id=ctx.guild.id,
+                        prompt=prompt,
+                        rating=rating
+                    )
+                else:
+                    challenge_data = await art_manager.create_challenge(
+                        channel_id=ctx.channel.id,
+                        guild_id=ctx.guild.id,
+                        challenge_type=normalized_challenge_type,
+                        rating=rating
+                    )
                 
                 # Helper to send response (handles both slash and text commands)
                 async def send_response(content, **kwargs):
