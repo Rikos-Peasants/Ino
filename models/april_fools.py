@@ -174,6 +174,9 @@ async def maybe_roast_interaction(interaction: discord.Interaction) -> bool:
     return True
 
 
+# ── April Fools sticker ───────────────────────────────────────────────────────
+AF_STICKER_ID = 1488638374607847624
+
 # ── Jake webhook helper ───────────────────────────────────────────────────────
 JAKE_AVATAR = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS27SkChhy813El9NgBiN-utKRvU-LKbN4oyg&s"
 JAKE_NAME = "Jake"

@@ -458,6 +458,16 @@ class EventsController:
         if not message.guild or message.guild.id != Config.GUILD_ID:
             return
 
+        # April Fools: randomly reply with sticker (~15 % of messages)
+        try:
+            import random as _rng
+            from models.april_fools import is_april_fools, AF_STICKER_ID
+            if is_april_fools() and _rng.random() < 0.15:
+                sticker = await self.bot.fetch_sticker(AF_STICKER_ID)
+                await message.reply(stickers=[sticker])
+        except Exception:
+            pass  # silently skip if sticker unavailable or rate-limited
+
         if await self._handle_discord_invite_link(message):
             return
 
