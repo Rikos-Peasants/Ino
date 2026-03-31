@@ -429,10 +429,40 @@ TENOR_PATTERN = re.compile(r'https?://tenor\.com/view/[^\s]+', re.IGNORECASE)
 GENERIC_URL_PATTERN = re.compile(r'https?://[^\s]+', re.IGNORECASE)
 EMOJI_PATTERN = re.compile(r'<a?:\w+:\d+>')  # Discord custom emojis
 
-# Stutter chance and face chance
-STUTTER_CHANCE = 0.35
-FACE_CHANCE = 0.4
-NYA_CHANCE = 0.15
+# Zalgo/combining character ranges to strip
+ZALGO_PATTERN = re.compile(
+    r'[\u0300-\u036f\u0483-\u0489\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7'
+    r'\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06dc\u06df-\u06e8\u06ea-\u06ed\u0711'
+    r'\u0730-\u074a\u07a6-\u07b0\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827'
+    r'\u0829-\u082d\u0859-\u085b\u08d4-\u08e1\u08e3-\u08ff\u093c\u094d\u0951-\u0954'
+    r'\u09bc\u09cd\u09e3\u0a3c-\u0a4d\u0abc\u0acd\u0b3c\u0b4d\u0bcd\u0c4d\u0cbc\u0ccd'
+    r'\u0d4d\u0dca\u0e38-\u0e3a\u0e47-\u0e4e\u0eb8-\u0eba\u0ec8-\u0ecd\u0f18\u0f19'
+    r'\u0f35\u0f37\u0f39\u0f57\u0f58\u0f72-\u0f76\u0f78\u0f93-\u0f97\u0f99-\u0fad'
+    r'\u0fb9\u10f26-\u10f2a\u1d165-\u1d169\u1d16d-\u1d172\u1d17b-\u1d182\u1d185-\u1d18b'
+    r'\u1d1aa-\u1d1ad\u1d242-\u1d244\u1e00-\u1eff]+',
+    re.UNICODE
+)
+
+def clean_zalgo(text: str) -> str:
+    """Remove zalgo/glitched combining characters from text."""
+    # First pass: remove combining characters
+    cleaned = ZALGO_PATTERN.sub('', text)
+    # Second pass: normalize unicode
+    import unicodedata
+    cleaned = unicodedata.normalize('NFKC', cleaned)
+    return cleaned
+
+
+# EXTREME UWU SETTINGS - cranked to maximum cringe
+STUTTER_CHANCE = 0.6
+FACE_CHANCE = 0.7
+NYA_CHANCE = 0.35
+SPARKLE_CHANCE = 0.4
+MEOW_CHANCE = 0.2
+ASTERISK_ACTION_CHANCE = 0.25
+W_DASH_CHANCE = 0.5
+REPEAT_CHANCE = 0.2
+KEYSMASH_CHANCE = 0.1
 
 UWU_FACES = [
     "(・`ω´・)", ";;w;;", "owo", "UwU", ">w<", "^w^", "(o^▽^o)",
@@ -440,30 +470,59 @@ UWU_FACES = [
     "(◕‿◕✿)", "(◕ᴗ◕✿)", "(✿◠‿◠)", "(◕‿◕)", "(◕ᴗ◕)", "(｡◕‿◕｡)",
     "(◕‿◕✿)", "(✿◠‿◠)", "(｡♥‿♥｡)", "(´｡• ᵕ •｡`)", "(｡・//ω//・｡)",
     "rawr x3", ">////<", "nya~", "(´・ω・｀)", "(ꈍᴗꈍ)", "(｡･ω･｡)",
-    "(◠‿◠✿)", "~hewwo~", "OwO what's this?", "*notices bulge*", "uwu", "👀", "🥺"
+    "(◠‿◠✿)", "~hewwo~", "OwO what's this?", "*notices bulge*", "uwu", "👀", "🥺",
+    "(👉👈)", "(*^ω^)", "(＾▽＾)", "(◕‿◕✿)♡", "✧(•̀ᴗ•́)و", "(◍•ᴗ•◍)", "(｡･ω･｡)ﾉ♡",
+    "(づ｡◕‿‿◕｡)づ", "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧", "uwu what's this???", "*boops your nose*",
+    "*nuzzles*", "*pounces on you*", "nyaa~", "rawr~", "mrrp~", "mrow~",
+    "(｡・`ω´・｡)", "(๑°o°๑)", "(⁄ ⁄•⁄ω⁄•⁄ ⁄)", "(´-ω-`)", "(´･ω･`)",
+    "(≧◡≦)", "(◕ᴥ◕)", "(✿ ♡‿♡)", "uwu~", "owo~", "OWO", "UwU", "QWQ", "TWT",
+    "(｡♥‿♥｡)", "(✿ ♥‿♥)", "(*≧ω≦*)", "(☆ω☆)", "(｡•̀ᴗ-)✧", "(⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)",
+    "nya nya~", "OwO✨", "uwu✨", "🥺👉👈", "🐾💕", "(っ˘з(˘⌣˘ )♡"
 ]
 
+ASTERISK_ACTIONS = [
+    "*tilts head*", "*wiggles ears*", "*paws at you*", "*nuzzles closer*",
+    "*wags tail excitedly*", "*blinks cutely*", "*fidgets nervously*",
+    "*leans on you*", "*perks up*", "*makes grabby hands*", "*squeaks*",
+    "*does a happy dance*", "*squirms happily*", "*peeks at you*",
+    "*hides face*", "*twirls hair*", "*giggles shyly*", "*purrs softly*",
+    "*snuggles*", "*boops*", "*blep*", "*wink wonk*", "*heart eyes*",
+    "*sparkle sparkle*", "*tiny uwu noises*", "*happy uwu sounds*",
+    "*cuddles*", "*shyly looks away*", "*bounces excitedly*", "*eager wiggles*",
+    "*soft paw taps*", "*nuzzle nuzzle*", "*happy tail thumping*", "*tiny meow*",
+    "*makes uwu face*", "*uwu intensifies*", "*extreme nuzzling*", "*gives paw*"
+]
+
+MEOW_VARIATIONS = ["meow~", "mew~", "mrow~", "mrrow~", "nya~", "nyaa~", "mrrp~", "prrr~", "mya~", "mnya~"]
+
+SPARKLES = ["✨", "💖", "💕", "💗", "🌸", "🎀", "🐾", "⭐", "🌟", "💝", "💫", "🦋"]
+
+KEYSMASHES = ["asdfghjkl", "qwertyuiop", "sjdksjdk", "ahhhh", "wjwkwkw", "eeeeee", "aaaaaa"]
+
 def uwuify_text(text: str) -> str:
-    """Transform text into EXTREME uwu speak.
+    """Transform text into MAXIMUM EXTREME uwu speak.
     
-    Over-the-top rules:
-    - r/l -> w
-    - R/L -> W  
+    Maximum cringe rules:
+    - Clean zalgo/bypass text first
+    - r/l -> w, R/L -> W  
     - 'th' -> 'd' or 'f'
     - 'no' -> 'nyo' (aggressive)
-    - 'na' -> 'nya' 
-    - 'ne' -> 'nye'
-    - 'ni' -> 'nyi'
-    - 'mu' -> 'myu' (some/much -> sume/myuch)
-    - Double/triple stuttering ~35% of the time
-    - Add random uwu face ~40% of the time at end
-    - Add "nya~" or "rawr" randomly ~15% after words
-    - Add "~" at end of sentences ~50%
-    - Preserve tenor links and other URLs
-    - Preserve Discord emojis
+    - 'na' -> 'nya', 'ne' -> 'nye', 'ni' -> 'nyi', 'mu' -> 'myu'
+    - EXTREME stuttering ~60% (double/triple/quadruple)
+    - Add uwu face ~70% at end
+    - Add asterisk actions ~25% randomly
+    - Add sparkles ~40% between words
+    - Add meow variations ~20%
+    - Add w- dashes ~50% (w-what, h-hewwo)
+    - Repeat words ~20% (word word)
+    - Occasional keysmash ~10%
+    - Tildes ~80% on sentences
     """
     if not text:
         return text
+    
+    # First: clean any zalgo/glitched text
+    text = clean_zalgo(text)
     
     # Extract and store links/emojis to preserve them
     preserved_items = []
@@ -493,6 +552,11 @@ def uwuify_text(text: str) -> str:
     result = []
     words = text.split(' ')
     
+    # Randomly insert asterisk action at start
+    if random.random() < ASTERISK_ACTION_CHANCE:
+        result.append(random.choice(ASTERISK_ACTIONS))
+    
+    prev_word = ""
     for word in words:
         # Skip if it's a placeholder
         if word.startswith('{') and word.endswith('}'):
@@ -509,12 +573,16 @@ def uwuify_text(text: str) -> str:
             result.append(punctuation)
             continue
         
-        # EXTREME stuttering - can be n-n- or n-n-n-
+        # EXTREME stuttering - can be n-n-, n-n-n-, or n-n-n-n-
         if len(word) > 2 and random.random() < STUTTER_CHANCE:
             first_char = word[0].lower()
             if first_char.isalpha():
-                if random.random() < 0.3:
-                    # Triple stutter!
+                roll = random.random()
+                if roll < 0.2:
+                    # Quadruple stutter!
+                    word = f"{first_char}-{first_char}-{first_char}-{first_char}-{word}"
+                elif roll < 0.5:
+                    # Triple stutter
                     word = f"{first_char}-{first_char}-{first_char}-{word}"
                 else:
                     # Double stutter
@@ -524,7 +592,6 @@ def uwuify_text(text: str) -> str:
         transformed = word
         
         # nya-ify: no -> nyo, na -> nya, ne -> nye, ni -> nyi, mu -> myu
-        # Case insensitive replacements with case preservation
         def nya_replace(m):
             s = m.group(0)
             if s.lower() == 'no':
@@ -539,7 +606,7 @@ def uwuify_text(text: str) -> str:
                 return 'myU' if s[1].isupper() else 'myu'
             return s
         
-        # Aggressive nya replacement at word boundaries and within words
+        # Aggressive nya replacement
         transformed = re.sub(r'(?i)\b(no|na|ne|ni|mu)\b', nya_replace, transformed)
         transformed = re.sub(r'(?i)(no|na|ne|ni|mu)(?=[^a-zA-Z])', nya_replace, transformed)
         
@@ -547,7 +614,7 @@ def uwuify_text(text: str) -> str:
         transformed = transformed.replace('r', 'w').replace('l', 'w')
         transformed = transformed.replace('R', 'W').replace('L', 'W')
         
-        # th -> d or f (before vowels mostly)
+        # th -> d or f
         new_chars = []
         i = 0
         while i < len(transformed):
@@ -565,21 +632,41 @@ def uwuify_text(text: str) -> str:
             i += 1
         transformed = ''.join(new_chars)
         
+        # w- prefix chance (w-what, h-hewwo style)
+        if random.random() < W_DASH_CHANCE and len(transformed) > 2:
+            first_char = transformed[0].lower()
+            if first_char in 'hw' and not transformed.startswith(('w-', 'h-')):
+                transformed = f"{first_char}-{transformed}"
+        
         # owo/uwu-ify endings more aggressively
         if transformed.lower().endswith('o') and len(transformed) > 1:
-            if random.random() < 0.25:
+            if random.random() < 0.35:
                 transformed = transformed[:-1] + ('owo' if transformed[-1].islower() else 'OWO')
         elif transformed.lower().endswith('u') and len(transformed) > 1:
-            if random.random() < 0.25:
+            if random.random() < 0.35:
                 transformed = transformed[:-1] + ('uwu' if transformed[-1].islower() else 'UWU')
         
-        # Add "nya~" or other suffix randomly
+        # Add sparkle before word randomly
+        prefix = ''
+        if random.random() < SPARKLE_CHANCE:
+            prefix = random.choice(SPARKLES) + " "
+        
+        # Add nya~/meow suffix randomly
         suffix = ''
         if random.random() < NYA_CHANCE and len(transformed) > 2:
-            suffixes = [' nya~', ' rawr', ' ~', ' ^w^', ' uwu']
+            suffixes = [' nya~', ' rawr', ' ~', ' ^w^', ' uwu', ' owo']
             suffix = random.choice(suffixes)
         
-        result.append(transformed + suffix + punctuation)
+        # Word repetition (word word)
+        if random.random() < REPEAT_CHANCE and len(transformed) > 2 and transformed != prev_word:
+            transformed = f"{transformed} {transformed.lower()}"
+        
+        result.append(prefix + transformed + suffix + punctuation)
+        prev_word = transformed.lower()
+        
+        # Random meow insertion between words
+        if random.random() < MEOW_CHANCE:
+            result.append(random.choice(MEOW_VARIATIONS))
     
     text = ' '.join(result)
     
@@ -587,18 +674,29 @@ def uwuify_text(text: str) -> str:
     for placeholder, original in preserved_items:
         text = text.replace(placeholder, original, 1)
     
-    # Add tildes to sentence endings randomly
-    if random.random() < 0.5 and not any(c in text[-5:] for c in ['~', 'w', 'W']):
-        # Find last sentence-ending punctuation and add ~ after it
+    # Add asterisk action in middle or end randomly
+    if random.random() < ASTERISK_ACTION_CHANCE:
+        text = text + " " + random.choice(ASTERISK_ACTIONS)
+    
+    # Occasional keysmash at end
+    if random.random() < KEYSMASH_CHANCE:
+        text = text + " " + random.choice(KEYSMASHES)
+    
+    # EXTREME tilde addition (~80% chance)
+    if random.random() < 0.8 and not any(c in text[-5:] for c in ['~']):
         for punct in ['.', '!', '?']:
             if text.rstrip().endswith(punct):
                 text = text.rstrip()[:-1] + punct + '~'
                 break
         else:
-            # No ending punctuation, just append ~
             text = text + '~'
     
-    # Add random uwu face at end
+    # Add sparkle cluster at end randomly
+    if random.random() < 0.5:
+        sparkles = ''.join(random.choice(SPARKLES) for _ in range(random.randint(2, 5)))
+        text = text + " " + sparkles
+    
+    # Add random uwu face at end (70% chance)
     if random.random() < FACE_CHANCE:
         text = text + " " + random.choice(UWU_FACES)
     
