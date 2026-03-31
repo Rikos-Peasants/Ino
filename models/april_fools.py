@@ -463,29 +463,9 @@ def normalize_unicode_fonts(text: str) -> str:
     """
     import unicodedata
     
-    # First apply NFKC normalization which handles many mathematical/script variants
-    text = unicodedata.normalize('NFKC', text)
-    
-    # Additional mappings for characters NFKC doesn't fully catch
-    # Fullwidth forms, circled letters, etc.
+    # Explicit mappings for Coptic/Gothic and other special characters
+    # These must be checked BEFORE NFKC normalization
     font_mappings = {
-        # Fullwidth ASCII variants
-        'Ａ': 'A', 'Ｂ': 'B', 'Ｃ': 'C', 'Ｄ': 'D', 'Ｅ': 'E', 'Ｆ': 'F',
-        'Ｇ': 'G', 'Ｈ': 'H', 'Ｉ': 'I', 'Ｊ': 'J', 'Ｋ': 'K', 'Ｌ': 'L',
-        'Ｍ': 'M', 'Ｎ': 'N', 'Ｏ': 'O', 'Ｐ': 'P', 'Ｑ': 'Q', 'Ｒ': 'R',
-        'Ｓ': 'S', 'Ｔ': 'T', 'Ｕ': 'U', 'Ｖ': 'V', 'Ｗ': 'W', 'Ｘ': 'X',
-        'Ｙ': 'Y', 'Ｚ': 'Z',
-        'ａ': 'a', 'ｂ': 'b', 'ｃ': 'c', 'ｄ': 'd', 'ｅ': 'e', 'ｆ': 'f',
-        'ｇ': 'g', 'ｈ': 'h', 'ｉ': 'i', 'ｊ': 'j', 'ｋ': 'k', 'ｌ': 'l',
-        'ｍ': 'm', 'ｎ': 'n', 'ｏ': 'o', 'ｐ': 'p', 'ｑ': 'q', 'ｒ': 'r',
-        'ｓ': 's', 'ｔ': 't', 'ｕ': 'u', 'ｖ': 'v', 'ｗ': 'w', 'ｘ': 'x',
-        'ｙ': 'y', 'ｚ': 'z',
-        # Additional symbol variants that NFKC might miss
-        'ᴀ': 'A', 'ʙ': 'B', 'ᴄ': 'C', 'ᴅ': 'D', 'ᴇ': 'E', 'ғ': 'F',
-        'ɢ': 'G', 'ʜ': 'H', 'ɪ': 'I', 'ᴊ': 'J', 'ᴋ': 'K', 'ʟ': 'L',
-        'ᴍ': 'M', 'ɴ': 'N', 'ᴏ': 'O', 'ᴘ': 'P', 'ǫ': 'Q', 'ʀ': 'R',
-        's': 'S', 'ᴛ': 'T', 'ᴜ': 'U', 'ᴠ': 'V', 'ᴡ': 'W', 'x': 'X',
-        'ʏ': 'Y', 'ᴢ': 'Z',
         # Coptic letters (used for bypasses like 𐌂𐌉𐌍Ᏽ)
         '𐌂': 'C', '𐌉': 'I', '𐌍': 'N', 'Ᏽ': 'G', '𐌄': 'E',
         '𐌀': 'A', '𐋅': 'H', '𐌁': 'B', 'Ꝋ': 'O', '𐌕': 'S',
@@ -501,30 +481,46 @@ def normalize_unicode_fonts(text: str) -> str:
         '𐌾': 'J', '𐌿': 'U', '𐍀': 'P', '𐍁': 'Q', '𐍂': 'R',
         '𐍃': 'S', '𐍄': 'T', '𐍅': 'W', '𐍆': 'F', '𐍇': 'X',
         '𐍈': 'H', '𐍉': 'O', '𐍊': 'Z', '𐍋': 'Z', '𐍌': 'Z',
-        # Additional Gothic/Coptic lookalikes
         '𐌊': 'K', '𐌲': 'C', '𐌐': 'P', '𐌔': 'S', '𐌆': 'Z',
+        # Additional Gothic/Coptic lookalikes
         'Ꝛ': 'R', 'Ꝙ': 'Q', 'Ꝿ': 'F', 'Ᵹ': 'G', 'Ꞃ': 'R',
         'Ꞅ': 'S', 'Ꞇ': 'T', 'ꝉ': 'd', 'ꝑ': 'p', 'ꝕ': 'q',
     }
     
+    # First pass: explicit character mappings for Coptic/Gothic
     result = []
     for char in text:
-        # Try mapping first
         if char in font_mappings:
             result.append(font_mappings[char])
         else:
-            # Check if it's a Latin letter lookalike from other scripts
-            # Coptic, Gothic, etc.
-            cat = unicodedata.category(char)
-            name = unicodedata.name(char, '')
-            
-            # If it's a letter but from a non-Latin script that looks like Latin
-            if cat.startswith('L') and any(x in name for x in ['GOTHIC', 'COPTIC', 'OLD', 'MEDIUM']):
-                # Try to get similar looking ASCII
-                # For now, best effort: keep the NFKC result
-                result.append(char)
-            else:
-                result.append(char)
+            result.append(char)
+    text = ''.join(result)
+    
+    # Second pass: NFKC normalization for remaining font variants
+    # (mathematical bold, script, fraktur, etc.)
+    text = unicodedata.normalize('NFKC', text)
+    
+    # Third pass: additional fullwidth and symbol variants
+    fullwidth_mappings = {
+        'Ａ': 'A', 'Ｂ': 'B', 'Ｃ': 'C', 'Ｄ': 'D', 'Ｅ': 'E', 'Ｆ': 'F',
+        'Ｇ': 'G', 'Ｈ': 'H', 'Ｉ': 'I', 'Ｊ': 'J', 'Ｋ': 'K', 'Ｌ': 'L',
+        'Ｍ': 'M', 'Ｎ': 'N', 'Ｏ': 'O', 'Ｐ': 'P', 'Ｑ': 'Q', 'Ｒ': 'R',
+        'Ｓ': 'S', 'Ｔ': 'T', 'Ｕ': 'U', 'Ｖ': 'V', 'Ｗ': 'W', 'Ｘ': 'X',
+        'Ｙ': 'Y', 'Ｚ': 'Z',
+        'ａ': 'a', 'ｂ': 'b', 'ｃ': 'c', 'ｄ': 'd', 'ｅ': 'e', 'ｆ': 'f',
+        'ｇ': 'g', 'ｈ': 'h', 'ｉ': 'i', 'ｊ': 'j', 'ｋ': 'k', 'ｌ': 'l',
+        'ｍ': 'm', 'ｎ': 'n', 'ｏ': 'o', 'ｐ': 'p', 'ｑ': 'q', 'ｒ': 'r',
+        'ｓ': 's', 'ｔ': 't', 'ｕ': 'u', 'ｖ': 'v', 'ｗ': 'w', 'ｘ': 'x',
+        'ｙ': 'y', 'ｚ': 'z',
+        'ᴀ': 'A', 'ʙ': 'B', 'ᴄ': 'C', 'ᴅ': 'D', 'ᴇ': 'E', 'ғ': 'F',
+        'ɢ': 'G', 'ʜ': 'H', 'ɪ': 'I', 'ᴊ': 'J', 'ᴋ': 'K', 'ʟ': 'L',
+        'ᴍ': 'M', 'ɴ': 'N', 'ᴏ': 'O', 'ᴘ': 'P', 'ǫ': 'Q', 'ʀ': 'R',
+        'ᴛ': 'T', 'ᴜ': 'U', 'ᴠ': 'V', 'ᴡ': 'W', 'ʏ': 'Y', 'ᴢ': 'Z',
+    }
+    
+    result = []
+    for char in text:
+        result.append(fullwidth_mappings.get(char, char))
     
     return ''.join(result)
 
