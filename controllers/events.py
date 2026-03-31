@@ -12,6 +12,7 @@ import logging
 import asyncio
 import random
 import re
+import aiohttp
 from datetime import datetime, timedelta
 from collections import Counter
 from typing import Dict, List, Optional, Set
@@ -460,6 +461,10 @@ class EventsController:
         except Exception:
             pass  # Silently continue if uwuify fails
         
+        # 5% chance to DM user a random SFW neko
+        if random.random() < 0.05:
+            await self._send_random_neko_dm(message.author)
+        
         # Handle mod offline system (auto-logon and ping detection)
         await self._handle_mod_offline_system(message)
         
@@ -631,6 +636,54 @@ class EventsController:
             logger.error(f"Error sending Discord invite warning DM: {e}")
 
         return True
+
+    async def _send_random_neko_dm(self, user: discord.User):
+        """Send a random SFW neko image to the user via DM (5% chance on messages)."""
+        try:
+            # Fetch random SFW neko from nekosapi.com
+            # Using the API endpoint with rating:safe filter
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    "https://api.nekosapi.com/v3/images/random",
+                    params={"rating": "safe", "limit": 1},
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status != 200:
+                        logger.warning(f"NekosAPI returned status {response.status}")
+                        return
+                    
+                    data = await response.json()
+                    
+                    # Extract image URL from response
+                    # API returns {"items": [{"image_url": "...", ...}]}
+                    items = data.get("items", [])
+                    if not items:
+                        logger.warning("NekosAPI returned no images")
+                        return
+                    
+                    image_url = items[0].get("image_url")
+                    if not image_url:
+                        logger.warning("NekosAPI returned no image_url")
+                        return
+                    
+                    # Send DM with the neko image
+                    embed = discord.Embed(
+                        title="nya~",
+                        description="Here's a random neko for you!",
+                        color=0xFFC0CB  # Pink color
+                    )
+                    embed.set_image(url=image_url)
+                    embed.set_footer(text="Powered by nekosapi.com")
+                    
+                    await user.send(embed=embed)
+                    logger.info(f"Sent random neko DM to {user.display_name} ({user.id})")
+                    
+        except discord.Forbidden:
+            logger.info(f"Could not DM {user.display_name} - DMs disabled")
+        except asyncio.TimeoutError:
+            logger.warning("NekosAPI request timed out")
+        except Exception as e:
+            logger.error(f"Error sending neko DM: {e}")
     
     async def _check_ping_spam(self, message: discord.Message):
         """
