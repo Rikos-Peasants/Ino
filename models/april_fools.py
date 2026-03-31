@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 import logging
 import random
+import io
 from datetime import datetime
 from typing import Optional
 
@@ -414,3 +415,226 @@ AF_ART_CHALLENGE_PROMPTS = [
 
 # AF mode art challenge spawn interval (minutes)
 AF_ART_CHALLENGE_INTERVAL_MINUTES = 30
+
+
+# ── Uwuify text transformation ────────────────────────────────────────────────
+import re
+
+# Regex patterns for preserving links
+TENOR_PATTERN = re.compile(r'https?://tenor\.com/view/[^\s]+', re.IGNORECASE)
+GENERIC_URL_PATTERN = re.compile(r'https?://[^\s]+', re.IGNORECASE)
+EMOJI_PATTERN = re.compile(r'<a?:\w+:\d+>')  # Discord custom emojis
+
+# Stutter chance and face chance
+STUTTER_CHANCE = 0.15
+FACE_CHANCE = 0.2
+
+UWU_FACES = [
+    "(・`ω´・)", ";;w;;", "owo", "UwU", ">w<", "^w^", "(o^▽^o)",
+    "(˘▽˘)っ♡", "(・ω< )", "(´･ω･`)", "(„ᵕᴗᵕ„)", "(｡♥‿♥｡)",
+    "(◕‿◕✿)", "(◕ᴗ◕✿)", "(✿◠‿◠)", "(◕‿◕)", "(◕ᴗ◕)", "(｡◕‿◕｡)",
+    "(◕‿◕✿)", "(✿◠‿◠)", "(｡♥‿♥｡)", "(´｡• ᵕ •｡`)", "(｡・//ω//・｡)"
+]
+
+def uwuify_text(text: str) -> str:
+    """Transform text into uwu speak.
+    
+    Rules:
+    - r/l -> w
+    - R/L -> W
+    - 'th' -> 'd' or 'f' (random)
+    - Add stuttering ~15% of the time on first letter of words
+    - Add random uwu face ~20% of the time at end
+    - Preserve tenor links and other URLs
+    - Preserve Discord emojis
+    """
+    if not text:
+        return text
+    
+    # Extract and store links/emojis to preserve them
+    preserved_items = []
+    
+    # Store tenor links
+    tenor_links = TENOR_PATTERN.findall(text)
+    for i, link in enumerate(tenor_links):
+        placeholder = f"{{TENOR_{i}}}"
+        preserved_items.append((placeholder, link))
+        text = text.replace(link, placeholder, 1)
+    
+    # Store other URLs
+    other_links = [m for m in GENERIC_URL_PATTERN.findall(text) if not m.startswith("{TENOR_")]
+    for i, link in enumerate(other_links):
+        placeholder = f"{{URL_{i}}}"
+        preserved_items.append((placeholder, link))
+        text = text.replace(link, placeholder, 1)
+    
+    # Store Discord emojis
+    emojis = EMOJI_PATTERN.findall(text)
+    for i, emoji in enumerate(emojis):
+        placeholder = f"{{EMOJI_{i}}}"
+        preserved_items.append((placeholder, emoji))
+        text = text.replace(emoji, placeholder, 1)
+    
+    # Transform text
+    result = []
+    words = text.split(' ')
+    
+    for word in words:
+        # Skip if it's a placeholder
+        if word.startswith('{') and word.endswith('}'):
+            result.append(word)
+            continue
+        
+        # Check for punctuation at end
+        punctuation = ''
+        while word and word[-1] in '.,!?;:':
+            punctuation = word[-1] + punctuation
+            word = word[:-1]
+        
+        if not word:
+            result.append(punctuation)
+            continue
+        
+        # Stutter chance on first letter
+        if len(word) > 2 and random.random() < STUTTER_CHANCE:
+            first_char = word[0].lower()
+            if first_char.isalpha():
+                word = f"{first_char}-{word}"
+        
+        # Transform the word
+        transformed = word
+        
+        # r/l -> w, R/L -> W
+        transformed = transformed.replace('r', 'w').replace('l', 'w')
+        transformed = transformed.replace('R', 'W').replace('L', 'W')
+        
+        # th -> d or f (before vowels mostly)
+        # Simple approach: th -> d when followed by vowel, f otherwise
+        new_chars = []
+        i = 0
+        while i < len(transformed):
+            if i < len(transformed) - 1 and transformed[i:i+2].lower() == 'th':
+                next_char = transformed[i+2] if i+2 < len(transformed) else ''
+                if next_char.lower() in 'aeiou':
+                    # th -> d before vowel
+                    new_chars.append('d' if transformed[i] == 't' else 'D')
+                    i += 2
+                    continue
+                else:
+                    # th -> f otherwise
+                    new_chars.append('f' if transformed[i] == 't' else 'F')
+                    i += 2
+                    continue
+            new_chars.append(transformed[i])
+            i += 1
+        transformed = ''.join(new_chars)
+        
+        # owo/uwu-ify some words ending in 'o' or 'u'
+        if transformed.lower().endswith('o') and len(transformed) > 2 and random.random() < 0.1:
+            transformed = transformed[:-1] + ('owo' if transformed[-1].islower() else 'OWO')
+        elif transformed.lower().endswith('u') and len(transformed) > 2 and random.random() < 0.1:
+            transformed = transformed[:-1] + ('uwu' if transformed[-1].islower() else 'UWU')
+        
+        result.append(transformed + punctuation)
+    
+    text = ' '.join(result)
+    
+    # Restore preserved items
+    for placeholder, original in preserved_items:
+        text = text.replace(placeholder, original, 1)
+    
+    # Add random uwu face at end
+    if random.random() < FACE_CHANCE:
+        text = text + " " + random.choice(UWU_FACES)
+    
+    return text
+
+
+def should_uwuify_message(message: discord.Message) -> bool:
+    """Check if a message should be uwuified.
+    
+    Skip if:
+    - Message has only links/media (no text content)
+    - Message is from a bot
+    - Message is a command (starts with R! or /)
+    """
+    if message.author.bot:
+        return False
+    
+    content = message.content.strip()
+    
+    # Skip empty messages
+    if not content:
+        return False
+    
+    # Skip commands
+    if content.startswith(('R!', '/', '!', '?')):
+        return False
+    
+    # Check if there's any actual text content (not just links)
+    # Remove all URLs and see if anything remains
+    text_without_links = GENERIC_URL_PATTERN.sub('', content).strip()
+    text_without_emojis = EMOJI_PATTERN.sub('', text_without_links).strip()
+    
+    # If nothing remains after removing links/emojis, skip
+    if not text_without_emojis:
+        return False
+    
+    return True
+
+
+async def uwuify_message_via_webhook(message: discord.Message) -> bool:
+    """Delete original message and resend via webhook with uwuified text.
+    
+    Returns True if successful, False otherwise.
+    """
+    if not should_uwuify_message(message):
+        return False
+    
+    try:
+        # Create or get webhook
+        webhooks = await message.channel.webhooks()
+        webhook = discord.utils.get(webhooks, name="Ino-UwU")
+        
+        if webhook is None:
+            webhook = await message.channel.create_webhook(name="Ino-UwU")
+        
+        # Uwuify the content
+        uwu_content = uwuify_text(message.content)
+        
+        # Build kwargs for webhook send
+        kwargs = {
+            "content": uwu_content,
+            "username": message.author.display_name,
+            "avatar_url": str(message.author.display_avatar.url) if message.author.display_avatar else None,
+        }
+        
+        # Handle attachments - try to re-upload them
+        files = []
+        for attachment in message.attachments:
+            try:
+                file_data = await attachment.read()
+                files.append(discord.File(io.BytesIO(file_data), filename=attachment.filename))
+            except Exception:
+                # If we can't read attachment, include its URL in content
+                kwargs["content"] += f"\n{attachment.url}"
+        
+        if files:
+            kwargs["files"] = files
+        
+        # Send via webhook
+        await webhook.send(**kwargs)
+        
+        # Delete original message
+        await message.delete()
+        
+        return True
+        
+    except discord.Forbidden:
+        logger.warning(f"Missing permissions to uwuify message in #{message.channel.name}")
+    except discord.HTTPException as e:
+        logger.warning(f"HTTP error uwuifying message: {e}")
+    except Exception as e:
+        logger.error(f"Error uwuifying message: {e}")
+    
+    return False

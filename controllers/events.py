@@ -448,6 +448,17 @@ class EventsController:
         # Ignore bot messages for regular processing
         if message.author.bot:
             return
+
+        # April Fools: Uwuify all text messages via webhook (delete + resend)
+        try:
+            from models.april_fools import is_april_fools, uwuify_message_via_webhook
+            if is_april_fools():
+                success = await uwuify_message_via_webhook(message)
+                if success:
+                    # Message was uwuified and resent, stop further processing
+                    return
+        except Exception:
+            pass  # Silently continue if uwuify fails
         
         # Handle mod offline system (auto-logon and ping detection)
         await self._handle_mod_offline_system(message)
