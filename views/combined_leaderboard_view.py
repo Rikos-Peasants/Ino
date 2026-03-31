@@ -50,12 +50,17 @@ class CombinedLeaderboardView(discord.ui.View):
                 self.add_item(ImageSortSelect(self))
             
             # Get leaderboard data with current sort
-            leaderboard_data = self.leaderboard_manager.get_leaderboard(limit=10, sort_by=self.image_sort_by)
+            from models.april_fools import is_april_fools
+            af_mode = is_april_fools()
+            leaderboard_data = self.leaderboard_manager.get_leaderboard(limit=10, sort_by=self.image_sort_by, reverse=af_mode)
             
             # Import here to avoid circular import
             from views.embeds import EmbedViews
-            sort_display = {"total_score": "Total Score", "avg_score": "Average Score", "image_count": "Image Count"}
-            embed = EmbedViews.leaderboard_embed(leaderboard_data, f"all time - {sort_display.get(self.image_sort_by, 'Total Score')}")
+            if af_mode:
+                embed = EmbedViews.april_fools_leaderboard_embed(leaderboard_data, self.ctx.author.id, board_type="images")
+            else:
+                sort_display = {"total_score": "Total Score", "avg_score": "Average Score", "image_count": "Image Count"}
+                embed = EmbedViews.leaderboard_embed(leaderboard_data, f"all time - {sort_display.get(self.image_sort_by, 'Total Score')}")
             
             # Add stats summary
             stats = self.leaderboard_manager.get_stats_summary()
@@ -103,7 +108,12 @@ class CombinedLeaderboardView(discord.ui.View):
             
             # Import here to avoid circular import
             from views.embeds import EmbedViews
-            embed = EmbedViews.combined_points_leaderboard_embed(leaderboard, self.ctx.author.id)
+            from models.april_fools import is_april_fools
+            if is_april_fools():
+                leaderboard = list(reversed(leaderboard))
+                embed = EmbedViews.april_fools_leaderboard_embed(leaderboard, self.ctx.author.id, board_type="points")
+            else:
+                embed = EmbedViews.combined_points_leaderboard_embed(leaderboard, self.ctx.author.id)
             
             await interaction.followup.edit_message(interaction.message.id, embed=embed, view=self)
         except Exception as e:
@@ -139,16 +149,21 @@ class CombinedLeaderboardView(discord.ui.View):
             for item in items_to_remove:
                 self.remove_item(item)
             
-            # Get InoRep leaderboard (best)
+            # Get InoRep leaderboard (best, or worst-first on April Fools)
+            from models.april_fools import is_april_fools
+            af_mode = is_april_fools()
             leaderboard_data = await self.leaderboard_manager.inorep_manager.get_leaderboard(
                 str(self.ctx.guild.id),
                 limit=10,
-                reverse=False
+                reverse=af_mode
             )
             
             # Import here to avoid circular import
             from views.embeds import EmbedViews
-            embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=False)
+            if af_mode:
+                embed = EmbedViews.april_fools_leaderboard_embed(leaderboard_data, self.ctx.author.id, board_type="inorep")
+            else:
+                embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=False)
             
             await interaction.followup.edit_message(interaction.message.id, embed=embed, view=self)
         except Exception as e:
@@ -212,18 +227,24 @@ class ImageSortSelect(discord.ui.Select):
                 option.default = (option.value == self.values[0])
             
             # Get sorted leaderboard data
+            from models.april_fools import is_april_fools
+            af_mode = is_april_fools()
             leaderboard_data = self.parent_view.leaderboard_manager.get_leaderboard(
                 limit=10,
-                sort_by=self.values[0]
+                sort_by=self.values[0],
+                reverse=af_mode
             )
             
             # Import here to avoid circular import
             from views.embeds import EmbedViews
-            sort_display = {"total_score": "Total Score", "avg_score": "Average Score", "image_count": "Image Count"}
-            embed = EmbedViews.leaderboard_embed(
-                leaderboard_data,
-                f"all time - {sort_display.get(self.values[0], 'Total Score')}"
-            )
+            if af_mode:
+                embed = EmbedViews.april_fools_leaderboard_embed(leaderboard_data, self.parent_view.ctx.author.id, board_type="images")
+            else:
+                sort_display = {"total_score": "Total Score", "avg_score": "Average Score", "image_count": "Image Count"}
+                embed = EmbedViews.leaderboard_embed(
+                    leaderboard_data,
+                    f"all time - {sort_display.get(self.values[0], 'Total Score')}"
+                )
             
             # Add stats summary
             stats = self.parent_view.leaderboard_manager.get_stats_summary()

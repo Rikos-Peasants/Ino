@@ -2298,3 +2298,124 @@ def add_profile_embeds():
 
 # Call the function to add profile embeds
 add_profile_embeds()
+
+
+# ── April Fools embeds (injected after class definition) ─────────────────────
+def _add_april_fools_embeds():
+    from models.april_fools import flip_text
+
+    @staticmethod
+    def april_fools_leaderboard_embed(leaderboard_data: list, current_user_id: int, board_type: str = "images") -> discord.Embed:
+        """Upside-down Hall of Shame leaderboard for April Fools."""
+        embed = discord.Embed(
+            title=flip_text("Hall of Shame Leaderboard"),
+            description=flip_text("Worst users ranked best. Congratulations, losers."),
+            color=0xFF6B00,
+            timestamp=datetime.utcnow()
+        )
+
+        shame_medals = ["🤡", "🥴", "💀"]
+
+        if not leaderboard_data:
+            embed.add_field(name=flip_text("No Data"), value=flip_text("Nobody is bad enough to appear here. Yet."), inline=False)
+            embed.set_footer(text=flip_text("April Fools - everything is upside down today"))
+            return embed
+
+        for i, entry in enumerate(leaderboard_data[:10], 1):
+            position_emoji = shame_medals[i - 1] if i <= 3 else f"{i}."
+
+            if board_type == "images":
+                user_name, user_id, total_score, image_count = (entry + (0,) * 4)[:4]
+                avg = total_score / image_count if image_count else 0
+                is_you = str(user_id) == str(current_user_id)
+                display = f"**{user_name}** 💀" if is_you else user_name
+                value = (
+                    f"**{flip_text('Total Score')}:** {total_score}\n"
+                    f"**{flip_text('Images')}:** {image_count}\n"
+                    f"**{flip_text('Avg')}:** {avg:.1f}"
+                )
+            elif board_type == "points":
+                user_name = entry.get("user_name", "Unknown") if isinstance(entry, dict) else str(entry)
+                user_id = entry.get("user_id", 0) if isinstance(entry, dict) else 0
+                total_points = entry.get("total_points", 0) if isinstance(entry, dict) else 0
+                is_you = str(user_id) == str(current_user_id)
+                display = f"**{user_name}** 💀" if is_you else user_name
+                value = f"**{flip_text('Total Points')}:** {total_points:,}"
+            else:  # inorep
+                user_name = entry.get("user_name", "Unknown") if isinstance(entry, dict) else str(entry)
+                user_id = entry.get("user_id", 0) if isinstance(entry, dict) else 0
+                rep = entry.get("rep", 0) if isinstance(entry, dict) else 0
+                is_you = str(user_id) == str(current_user_id)
+                display = f"**{user_name}** 💀" if is_you else user_name
+                value = f"**{flip_text('InoRep')}:** {rep:,}"
+
+            embed.add_field(
+                name=f"{position_emoji} {flip_text(user_name)}",
+                value=value,
+                inline=True
+            )
+
+        embed.set_footer(text=flip_text("April Fools - lower is better today. Ino is on vacation. Jake made this."))
+        return embed
+
+    @staticmethod
+    def april_fools_badge_embed(user_name: str) -> discord.Embed:
+        """Embed shown when awarding the fake April Fools badge."""
+        from models.april_fools import flip_text, APRIL_FOOLS_ACHIEVEMENT
+        embed = discord.Embed(
+            title="🃏 " + flip_text("Achievement Unlocked"),
+            description=f"**{flip_text(user_name)}** — " + flip_text("congratulations on doing absolutely nothing special."),
+            color=0xFF69B4,
+            timestamp=datetime.utcnow()
+        )
+        embed.add_field(
+            name="🃏 " + APRIL_FOOLS_ACHIEVEMENT["name"],
+            value=APRIL_FOOLS_ACHIEVEMENT["description"],
+            inline=False
+        )
+        embed.add_field(name=flip_text("Reward"), value=flip_text("0 points. You get nothing. Good day sir."), inline=True)
+        embed.set_footer(text=flip_text("This is a completely real and legitimate achievement."))
+        return embed
+
+    @staticmethod
+    def april_fools_quests_embed(quests: list, user_name: str) -> discord.Embed:
+        """Upside-down quest display for April Fools day."""
+        from models.april_fools import flip_text
+        embed = discord.Embed(
+            title=flip_text("Daily Quests"),
+            description=flip_text(f"{user_name}'s completely meaningless quests for today"),
+            color=0xFF6B00,
+            timestamp=datetime.utcnow()
+        )
+        if not quests:
+            embed.add_field(
+                name=flip_text("No quests"),
+                value=flip_text("Ino left Jake in charge. He forgot to assign quests. Classic Jake."),
+                inline=False
+            )
+        else:
+            quest_lines = []
+            for quest in quests:
+                status = "✅" if quest.get("completed") else "⬜"
+                pts = quest.get("reward_points", 0)
+                target = quest.get("target_count", 0)
+                current = quest.get("current_count", 0)
+                quest_lines.append(
+                    f"{status} **{quest['name']}**\n"
+                    f"　📝 _{quest.get('description', '')}_ \n"
+                    f"　`{current}/{target}` • **{pts}** {flip_text('pts')}"
+                )
+            embed.add_field(
+                name=flip_text("Your Quests"),
+                value="\n\n".join(quest_lines),
+                inline=False
+            )
+        embed.set_footer(text=flip_text("Quests reset daily at midnight UTC - Jake has no idea how any of this works"))
+        return embed
+
+    EmbedViews.april_fools_leaderboard_embed = april_fools_leaderboard_embed
+    EmbedViews.april_fools_badge_embed = april_fools_badge_embed
+    EmbedViews.april_fools_quests_embed = april_fools_quests_embed
+
+
+_add_april_fools_embeds()

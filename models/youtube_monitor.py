@@ -737,6 +737,18 @@ Remember to include the correct role ping at the end based on video type!
             duration_seconds = video.get('duration_seconds', 0)
             is_short = duration_seconds > 0 and duration_seconds <= 60
             
+            # April Fools: Jake takes over all announcements
+            from models.april_fools import is_april_fools, send_as_jake, get_jake_announcement
+            if is_april_fools():
+                jake_msg = get_jake_announcement(video.get('link', ''))
+                success = await send_as_jake(channel, jake_msg)
+                if success:
+                    logger.info(f"🃏 Jake announced: {video.get('title', 'Unknown')}")
+                else:
+                    # Fallback: send as normal if webhook fails
+                    await channel.send(jake_msg)
+                return
+
             # Generate Ino's response with appropriate role
             ino_response = await self.generate_ino_response(video, is_short)
             

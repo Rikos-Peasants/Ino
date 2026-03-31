@@ -1516,8 +1516,37 @@ class QuestManager:
     async def generate_daily_quests(self, user_id: int, member: 'discord.Member' = None) -> List[Dict]:
         """Generate 3-5 random daily quests for a user with progressive difficulty scaling"""
         try:
+            from models.april_fools import is_april_fools, APRIL_FOOLS_QUESTS
             today = datetime.now().date()
-            
+
+            # April Fools: replace all quests with absurd ones
+            if is_april_fools():
+                existing = list(self.user_quests_collection.find({
+                    "user_id": str(user_id),
+                    "date": today.isoformat(),
+                    "is_april_fools": True
+                }))
+                if existing:
+                    return existing
+
+                # Clear any normal quests that may have been assigned today
+                self.user_quests_collection.delete_many({
+                    "user_id": str(user_id),
+                    "date": today.isoformat()
+                })
+
+                import random as _random
+                sample = _random.sample(APRIL_FOOLS_QUESTS, min(4, len(APRIL_FOOLS_QUESTS)))
+                af_quests = []
+                for q in sample:
+                    record = {**q, "user_id": str(user_id), "date": today.isoformat(),
+                               "current_count": 0, "completed": q.get("completed", False),
+                               "created_at": datetime.now()}
+                    self.user_quests_collection.insert_one(record)
+                    af_quests.append(record)
+                logger.info(f"🃏 April Fools: assigned {len(af_quests)} absurd quests to user {user_id}")
+                return af_quests
+
             # Remove any time-based quests and comeback already assigned today for this user
             self.user_quests_collection.delete_many({
                 "user_id": str(user_id),

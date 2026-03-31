@@ -1305,7 +1305,11 @@ class CommandsController:
                     quests = await quest_manager.generate_daily_quests(user_id, member=ctx.author)
                 
                 # Create embed and interactive view
-                embed = EmbedViews.daily_quests_embed(quests, ctx.author.display_name)
+                from models.april_fools import is_april_fools
+                if is_april_fools():
+                    embed = EmbedViews.april_fools_quests_embed(quests, ctx.author.display_name)
+                else:
+                    embed = EmbedViews.daily_quests_embed(quests, ctx.author.display_name)
                 leaderboard_manager = self.get_leaderboard_manager()
                 view = QuestView(user_id=user_id, quest_manager=quest_manager, member=ctx.author, leaderboard_manager=leaderboard_manager)
                 
@@ -5382,7 +5386,14 @@ class CommandsController:
                 
                 # Get user achievements
                 achievements = await quest_manager.get_user_achievements(target_user.id)
-                
+
+                # April Fools: inject the fake badge at the top
+                from models.april_fools import is_april_fools, APRIL_FOOLS_ACHIEVEMENT
+                from datetime import datetime as _dt
+                if is_april_fools():
+                    fake = {**APRIL_FOOLS_ACHIEVEMENT, "earned_at": _dt.now()}
+                    achievements = [fake] + list(achievements)
+
                 # Create paginated view
                 from views.paginated_achievements_view import PaginatedAchievementsView
                 view = PaginatedAchievementsView(achievements, target_user.display_name, interaction.user.id, per_page=4)
