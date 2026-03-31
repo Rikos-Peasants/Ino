@@ -634,105 +634,115 @@ def uwuify_text(text: str) -> str:
         preserved_items.append((placeholder, emoji))
         text = text.replace(emoji, placeholder, 1)
     
-    # Transform text
-    result = []
-    words = text.split(' ')
+    # Transform text line by line to preserve newlines
+    lines = text.split('\n')
+    processed_lines = []
     
-    prev_word = ""
-    for word in words:
-        # Skip Discord emojis placeholders
-        if word.startswith('{EMOJI_') and word.endswith('}'):
-            result.append(word)
-            continue
+    for line in lines:
+        # Transform each line
+        result = []
+        words = line.split(' ')
         
-        # Check if it's a URL placeholder - uwuify the domain/path portion
-        if word.startswith('{URL_') and word.endswith('}'):
-            # Extract the original URL, uwuify it, then restore
-            placeholder_idx = int(word[5:-1])
-            if placeholder_idx < len(preserved_items):
-                original_url = preserved_items[placeholder_idx][1]
-                # Uwuify just the text parts of URL (domain, path)
-                uwu_url = _uwuify_url_text(original_url)
-                result.append(uwu_url)
-                # Mark this placeholder as used
-                preserved_items[placeholder_idx] = (word, uwu_url)
-            continue
+        prev_word = ""
+        for word in words:
+            if not word:
+                continue
+                
+            # Skip Discord emojis placeholders
+            if word.startswith('{EMOJI_') and word.endswith('}'):
+                result.append(word)
+                continue
+            
+            # Check if it's a URL placeholder - uwuify the domain/path portion
+            if word.startswith('{URL_') and word.endswith('}'):
+                # Extract the original URL, uwuify it, then restore
+                placeholder_idx = int(word[5:-1])
+                if placeholder_idx < len(preserved_items):
+                    original_url = preserved_items[placeholder_idx][1]
+                    # Uwuify just the text parts of URL (domain, path)
+                    uwu_url = _uwuify_url_text(original_url)
+                    result.append(uwu_url)
+                    # Mark this placeholder as used
+                    preserved_items[placeholder_idx] = (word, uwu_url)
+                continue
+            
+            if word.startswith('{TENOR_') and word.endswith('}'):
+                # Keep tenor links unchanged
+                result.append(word)
+                continue
+            
+            # Check for punctuation at end
+            punctuation = ''
+            while word and word[-1] in '.,!?;:' :
+                punctuation = word[-1] + punctuation
+                word = word[:-1]
+            
+            if not word:
+                result.append(punctuation)
+                continue
+            
+            # Light stuttering - single double only
+            if len(word) > 2 and random.random() < 0.3:
+                first_char = word[0].lower()
+                if first_char.isalpha():
+                    word = f"{first_char}-{word}"
+            
+            # Transform the word
+            transformed = word
+            
+            # nya-ify: no -> nyo, na -> nya, ne -> nye, ni -> nyi, mu -> myu
+            def nya_replace(m):
+                s = m.group(0)
+                if s.lower() == 'no':
+                    return 'nyO' if s[1].isupper() else 'nyo'
+                elif s.lower() == 'na':
+                    return 'nyA' if s[1].isupper() else 'nya'
+                elif s.lower() == 'ne':
+                    return 'nyE' if s[1].isupper() else 'nye'
+                elif s.lower() == 'ni':
+                    return 'nyI' if s[1].isupper() else 'nyi'
+                elif s.lower() == 'mu':
+                    return 'myU' if s[1].isupper() else 'myu'
+                return s
+            
+            # Aggressive nya replacement
+            transformed = re.sub(r'(?i)\b(no|na|ne|ni|mu)\b', nya_replace, transformed)
+            transformed = re.sub(r'(?i)(no|na|ne|ni|mu)(?=[^a-zA-Z])', nya_replace, transformed)
+            
+            # r/l -> w, R/L -> W
+            transformed = transformed.replace('r', 'w').replace('l', 'w')
+            transformed = transformed.replace('R', 'W').replace('L', 'W')
+            
+            # th -> d or f
+            new_chars = []
+            i = 0
+            while i < len(transformed):
+                if i < len(transformed) - 1 and transformed[i:i+2].lower() == 'th':
+                    next_char = transformed[i+2] if i+2 < len(transformed) else ''
+                    if next_char.lower() in 'aeiou':
+                        new_chars.append('d' if transformed[i] == 't' else 'D')
+                        i += 2
+                        continue
+                    else:
+                        new_chars.append('f' if transformed[i] == 't' else 'F')
+                        i += 2
+                        continue
+                new_chars.append(transformed[i])
+                i += 1
+            transformed = ''.join(new_chars)
+            
+            # w- prefix chance (w-what, h-hewwo style)
+            if random.random() < 0.3 and len(transformed) > 2:
+                first_char = transformed[0].lower()
+                if first_char in 'hw' and not transformed.startswith(('w-', 'h-')):
+                    transformed = f"{first_char}-{transformed}"
+            
+            result.append(transformed + punctuation)
+            prev_word = transformed.lower()
         
-        if word.startswith('{TENOR_') and word.endswith('}'):
-            # Keep tenor links unchanged
-            result.append(word)
-            continue
-        
-        # Check for punctuation at end
-        punctuation = ''
-        while word and word[-1] in '.,!?;:':
-            punctuation = word[-1] + punctuation
-            word = word[:-1]
-        
-        if not word:
-            result.append(punctuation)
-            continue
-        
-        # Light stuttering - single double only
-        if len(word) > 2 and random.random() < 0.3:
-            first_char = word[0].lower()
-            if first_char.isalpha():
-                word = f"{first_char}-{word}"
-        
-        # Transform the word
-        transformed = word
-        
-        # nya-ify: no -> nyo, na -> nya, ne -> nye, ni -> nyi, mu -> myu
-        def nya_replace(m):
-            s = m.group(0)
-            if s.lower() == 'no':
-                return 'nyO' if s[1].isupper() else 'nyo'
-            elif s.lower() == 'na':
-                return 'nyA' if s[1].isupper() else 'nya'
-            elif s.lower() == 'ne':
-                return 'nyE' if s[1].isupper() else 'nye'
-            elif s.lower() == 'ni':
-                return 'nyI' if s[1].isupper() else 'nyi'
-            elif s.lower() == 'mu':
-                return 'myU' if s[1].isupper() else 'myu'
-            return s
-        
-        # Aggressive nya replacement
-        transformed = re.sub(r'(?i)\b(no|na|ne|ni|mu)\b', nya_replace, transformed)
-        transformed = re.sub(r'(?i)(no|na|ne|ni|mu)(?=[^a-zA-Z])', nya_replace, transformed)
-        
-        # r/l -> w, R/L -> W
-        transformed = transformed.replace('r', 'w').replace('l', 'w')
-        transformed = transformed.replace('R', 'W').replace('L', 'W')
-        
-        # th -> d or f
-        new_chars = []
-        i = 0
-        while i < len(transformed):
-            if i < len(transformed) - 1 and transformed[i:i+2].lower() == 'th':
-                next_char = transformed[i+2] if i+2 < len(transformed) else ''
-                if next_char.lower() in 'aeiou':
-                    new_chars.append('d' if transformed[i] == 't' else 'D')
-                    i += 2
-                    continue
-                else:
-                    new_chars.append('f' if transformed[i] == 't' else 'F')
-                    i += 2
-                    continue
-            new_chars.append(transformed[i])
-            i += 1
-        transformed = ''.join(new_chars)
-        
-        # w- prefix chance (w-what, h-hewwo style)
-        if random.random() < 0.3 and len(transformed) > 2:
-            first_char = transformed[0].lower()
-            if first_char in 'hw' and not transformed.startswith(('w-', 'h-')):
-                transformed = f"{first_char}-{transformed}"
-        
-        result.append(transformed + punctuation)
-        prev_word = transformed.lower()
+        processed_lines.append(' '.join(result))
     
-    text = ' '.join(result)
+    text = '\n'.join(processed_lines)
     
     # Restore preserved items
     for placeholder, original in preserved_items:
