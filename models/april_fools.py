@@ -897,7 +897,7 @@ async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot
     # Check for .txt file attachments FIRST (before should_uwuify check,
     # since attachment-only messages have empty content and would be rejected)
     has_txt_bypass = False
-    txt_file_content = ""
+    uwuified_txt_files = []  # List of (filename, uwuified_bytes) tuples
     
     # Only process in allowed channels
     ALLOWED_CHANNELS = {
@@ -917,10 +917,10 @@ async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot
                         txt_content = txt_content[:10000] + "\n\n*(twuncated - too wong!)*"
                     
                     uwuified_txt = uwuify_text(txt_content)
-                    txt_file_content += f"\n\n**📄 {attachment.filename}:**\n{uwuified_txt}"
+                    uwuified_txt_files.append((attachment.filename, uwuified_txt.encode('utf-8')))
                     has_txt_bypass = True
                     
-                    logger.info(f"Detected .txt bypass attempt from {message.author.display_name}, uwuifying content")
+                    logger.info(f"Detected .txt bypass from {message.author.display_name}, uwuifying {attachment.filename}")
                 except Exception as e:
                     logger.warning(f"Failed to read .txt file {attachment.filename}: {e}")
     
@@ -939,9 +939,9 @@ async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot
         # Uwuify the text content
         uwu_content = uwuify_text(message.content) if message.content else ""
         
-        # Add txt file content to the message
-        if has_txt_bypass:
-            uwu_content = (uwu_content + txt_file_content).strip()
+        # If uwuify didn't change anything and no txt bypass, skip (don't delete+repost identical text)
+        if not has_txt_bypass and uwu_content == message.content:
+            return False
         
         # If this was a reply, add a reply indicator at the start
         if message.reference and message.reference.message_id:
@@ -959,19 +959,21 @@ async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot
             "avatar_url": str(message.author.display_avatar.url) if message.author.display_avatar else None,
         }
         
-        # Handle non-txt attachments - re-upload them
+        # Handle attachments - re-upload non-txt files as-is, uwuified txt files as new .txt
         files = []
         for attachment in message.attachments:
-            # Skip .txt files since we already processed them
             if attachment.filename.lower().endswith('.txt'):
-                continue
+                continue  # Skip originals, we'll add uwuified versions below
                 
             try:
                 file_data = await attachment.read()
                 files.append(discord.File(io.BytesIO(file_data), filename=attachment.filename))
             except Exception:
-                # If we can't read attachment, include its URL in content
                 kwargs["content"] += f"\n{attachment.url}"
+        
+        # Add uwuified .txt files back as attachments
+        for filename, uwu_bytes in uwuified_txt_files:
+            files.append(discord.File(io.BytesIO(uwu_bytes), filename=filename))
         
         if files:
             kwargs["files"] = files
