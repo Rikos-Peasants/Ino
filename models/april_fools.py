@@ -765,13 +765,13 @@ def uwuify_text(text: str) -> str:
     return text
 
 
-def should_uwuify_message(message: discord.Message) -> bool:
+def should_uwuify_message(message: discord.Message, bot: commands.Bot = None) -> bool:
     """Check if a message should be uwuified.
     
     Skip if:
     - Message has only links/media (no text content)
     - Message is from a bot
-    - Message is a command (starts with R! or /)
+    - Message is an ACTUAL valid command (verified against bot commands)
     - Message is not in allowed channels
     """
     # Allowed channels for uwuify
@@ -794,20 +794,70 @@ def should_uwuify_message(message: discord.Message) -> bool:
     if not content:
         return False
     
-    # Skip commands
-    if content.startswith(('R!', '/', '!', '?')):
-        return False
+    # Check if this is actually a valid command before skipping
+    if bot:
+        # Check for slash commands - message starts with /
+        if content.startswith('/'):
+            # Extract command name (everything after / until space or end)
+            cmd_name = content[1:].split()[0].split()[0].lower()
+            # Check if it's a registered app command
+            for cmd in bot.tree.get_commands():
+                if cmd.name.lower() == cmd_name:
+                    return False  # It's a real slash command
+            # Check for subcommands (e.g., /artchallenge submit)
+            if ' ' in content[1:]:
+                base_cmd = content[1:].split()[0].lower()
+                for cmd in bot.tree.get_commands():
+                    if cmd.name.lower() == base_cmd:
+                        return False  # It's a real command with subcommand
+        
+        # Check for prefix commands (R! prefix)
+        if content.lower().startswith('r!'):
+            # Extract command name (everything after R! until space)
+            cmd_part = content[2:].strip()
+            if cmd_part:
+                cmd_name = cmd_part.split()[0].lower()
+                # Check if it's a registered prefix command
+                if cmd_name in bot.all_commands:
+                    return False  # It's a real prefix command
+        
+        # Check for other common bot prefixes that might be actual commands
+        if content.startswith('!'):
+            # Check if it matches any known command (some bots use ! prefix)
+            cmd_part = content[1:].strip()
+            if cmd_part:
+                cmd_name = cmd_part.split()[0].lower()
+                if cmd_name in bot.all_commands:
+                    return False
+    else:
+        # Fallback: only skip exact command patterns we know
+        # Skip actual slash commands (/command format)
+        if content.startswith('/'):
+            # Only skip if it looks like a real command (alphanumeric only)
+            cmd_part = content[1:].split()[0]
+            if cmd_part.isalnum():
+                return False
+        
+        # Skip actual R! commands
+        if content.lower().startswith('r!'):
+            # Only skip if it has a proper command name after R!
+            rest = content[2:].strip()
+            if rest and not rest[0].isspace() and len(rest) > 0:
+                # Check first word is alphanumeric (likely a command)
+                first_word = rest.split()[0] if ' ' in rest else rest
+                if first_word.isalnum():
+                    return False
     
     # Allow all messages including URL-only ones
     return True
 
 
-async def uwuify_message_via_webhook(message: discord.Message) -> bool:
+async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot = None) -> bool:
     """Delete original message and resend via webhook with uwuified text.
     
     Returns True if successful, False otherwise.
     """
-    if not should_uwuify_message(message):
+    if not should_uwuify_message(message, bot):
         return False
     
     try:

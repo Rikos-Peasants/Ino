@@ -454,7 +454,7 @@ class EventsController:
         try:
             from models.april_fools import is_april_fools, uwuify_message_via_webhook
             if is_april_fools():
-                success = await uwuify_message_via_webhook(message)
+                success = await uwuify_message_via_webhook(message, self.bot)
                 if success:
                     # Message was uwuified and resent, stop further processing
                     return
