@@ -434,28 +434,25 @@ TENOR_PATTERN = re.compile(r'https?://tenor\.com/view/[^\s]+', re.IGNORECASE)
 GENERIC_URL_PATTERN = re.compile(r'https?://[^\s]+', re.IGNORECASE)
 EMOJI_PATTERN = re.compile(r'<a?:\w+:\d+>')  # Discord custom emojis
 
-# Zalgo/combining character ranges to strip
+# Zalgo/combining character ranges to strip (ONLY combining marks, not real letters)
 ZALGO_PATTERN = re.compile(
-    r'[\u0300-\u036f\u0483-\u0489\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7'
-    r'\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06dc\u06df-\u06e8\u06ea-\u06ed\u0711'
-    r'\u0730-\u074a\u07a6-\u07b0\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827'
-    r'\u0829-\u082d\u0859-\u085b\u08d4-\u08e1\u08e3-\u08ff\u093c\u094d\u0951-\u0954'
-    r'\u09bc\u09cd\u09e3\u0a3c-\u0a4d\u0abc\u0acd\u0b3c\u0b4d\u0bcd\u0c4d\u0cbc\u0ccd'
-    r'\u0d4d\u0dca\u0e38-\u0e3a\u0e47-\u0e4e\u0eb8-\u0eba\u0ec8-\u0ecd\u0f18\u0f19'
-    r'\u0f35\u0f37\u0f39\u0f57\u0f58\u0f72-\u0f76\u0f78\u0f93-\u0f97\u0f99-\u0fad'
-    r'\u0fb9\u10f26-\u10f2a\u1d165-\u1d169\u1d16d-\u1d172\u1d17b-\u1d182\u1d185-\u1d18b'
-    r'\u1d1aa-\u1d1ad\u1d242-\u1d244\u1e00-\u1eff]+',
+    r'[\u0300-\u036f'   # Combining Diacritical Marks
+    r'\u0483-\u0489'    # Combining Cyrillic
+    r'\u1ab0-\u1aff'    # Combining Diacritical Marks Extended
+    r'\u1dc0-\u1dff'    # Combining Diacritical Marks Supplement
+    r'\u20d0-\u20ff'    # Combining Diacritical Marks for Symbols
+    r'\ufe20-\ufe2f'    # Combining Half Marks
+    r']+',
     re.UNICODE
 )
 
 def clean_zalgo(text: str) -> str:
-    """Remove zalgo/glitched combining characters from text."""
-    # First pass: remove combining characters
-    cleaned = ZALGO_PATTERN.sub('', text)
-    # Second pass: normalize unicode
-    import unicodedata
-    cleaned = unicodedata.normalize('NFKC', cleaned)
-    return cleaned
+    """Remove zalgo/glitched combining characters from text.
+    
+    Only strips actual combining diacritical marks used in zalgo text.
+    Does NOT touch real letters or do NFKC normalization (that's done elsewhere).
+    """
+    return ZALGO_PATTERN.sub('', text)
 
 
 def normalize_unicode_fonts(text: str) -> str:
@@ -536,6 +533,12 @@ def normalize_unicode_fonts(text: str) -> str:
         '⒨': 'm', '⒩': 'n', '⒪': 'o', '⒫': 'p', '⒬': 'q', '⒭': 'r',
         '⒮': 's', '⒯': 't', '⒰': 'u', '⒱': 'v', '⒲': 'w', '⒳': 'x',
         '⒴': 'y', '⒵': 'z',
+        # Canadian Aboriginal Syllabics (Iᒪᒪ ᗩᒪᗯᗩYᔕ style)
+        'ᗩ': 'A', 'ᗷ': 'B', 'ᑕ': 'C', 'ᗪ': 'D', 'ᗴ': 'E', 'ᖴ': 'F',
+        'ǥ': 'G', 'ᕼ': 'H', 'I': 'I', 'ᒍ': 'J', 'K': 'K', 'ᒪ': 'L',
+        'ᗰ': 'M', 'ᑎ': 'N', 'O': 'O', 'ᑭ': 'P', 'ᑫ': 'Q', 'ᖇ': 'R',
+        'ᔕ': 'S', 'T': 'T', 'ᑌ': 'U', 'ᐯ': 'V', 'ᗯ': 'W', '᙭': 'X',
+        'Y': 'Y', 'ᘔ': 'Z',
     }
     
     result = []
@@ -885,7 +888,38 @@ async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot
     Handles .txt file bypass: downloads .txt files, uwuifies content, and reposts.
     Returns True if successful, False otherwise.
     """
-    if not should_uwuify_message(message, bot):
+    # Check for .txt file attachments FIRST (before should_uwuify check,
+    # since attachment-only messages have empty content and would be rejected)
+    has_txt_bypass = False
+    txt_file_content = ""
+    
+    # Only process in allowed channels
+    ALLOWED_CHANNELS = {
+        1278117139428933647,
+        1278117139428933649,
+        1282209240949198928
+    }
+    
+    if not message.author.bot and message.channel.id in ALLOWED_CHANNELS:
+        for attachment in message.attachments:
+            if attachment.filename.lower().endswith('.txt'):
+                try:
+                    file_data = await attachment.read()
+                    txt_content = file_data.decode('utf-8', errors='ignore')
+                    
+                    if len(txt_content) > 10000:
+                        txt_content = txt_content[:10000] + "\n\n*(twuncated - too wong!)*"
+                    
+                    uwuified_txt = uwuify_text(txt_content)
+                    txt_file_content += f"\n\n**📄 {attachment.filename}:**\n{uwuified_txt}"
+                    has_txt_bypass = True
+                    
+                    logger.info(f"Detected .txt bypass attempt from {message.author.display_name}, uwuifying content")
+                except Exception as e:
+                    logger.warning(f"Failed to read .txt file {attachment.filename}: {e}")
+    
+    # For non-txt messages, use the normal should_uwuify check
+    if not has_txt_bypass and not should_uwuify_message(message, bot):
         return False
     
     try:
@@ -896,33 +930,8 @@ async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot
         if webhook is None:
             webhook = await message.channel.create_webhook(name="Ino-UwU")
         
-        # Uwuify the content
-        uwu_content = uwuify_text(message.content)
-        
-        # Check for .txt file bypass attempts
-        txt_file_content = ""
-        has_txt_bypass = False
-        
-        for attachment in message.attachments:
-            if attachment.filename.lower().endswith('.txt'):
-                try:
-                    # Download and read the .txt file
-                    file_data = await attachment.read()
-                    # Decode as UTF-8 text
-                    txt_content = file_data.decode('utf-8', errors='ignore')
-                    
-                    # Limit to reasonable size (10KB max to avoid spam)
-                    if len(txt_content) > 10000:
-                        txt_content = txt_content[:10000] + "\n\n*(twuncated - too wong!)*"
-                    
-                    # Uwuify the text file content
-                    uwuified_txt = uwuify_text(txt_content)
-                    txt_file_content += f"\n\n**📄 {attachment.filename}:**\n{uwuified_txt}"
-                    has_txt_bypass = True
-                    
-                    logger.info(f"Detected .txt bypass attempt from {message.author.display_name}, uwuifying content")
-                except Exception as e:
-                    logger.warning(f"Failed to read .txt file {attachment.filename}: {e}")
+        # Uwuify the text content
+        uwu_content = uwuify_text(message.content) if message.content else ""
         
         # Add txt file content to the message
         if has_txt_bypass:

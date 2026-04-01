@@ -848,7 +848,6 @@ class SchedulerController:
             if not guild:
                 return
 
-            from config import Config
             # Challenge both channels
             channels_to_challenge = [
                 (Config.ART_CHALLENGE_CHANNEL_SFW, "safe"),
