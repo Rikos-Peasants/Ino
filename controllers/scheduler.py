@@ -688,6 +688,11 @@ class SchedulerController:
     async def check_art_challenges(self):
         """Check for art challenge drops at specific times and handle expired challenges"""
         try:
+            # Skip regular art challenges during April (April Fools takes over)
+            from models.april_fools import is_april_month
+            if is_april_month():
+                return
+            
             # Get the art challenge manager
             art_manager = getattr(self.bot, 'art_challenge_manager', None)
             art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
@@ -822,13 +827,15 @@ class SchedulerController:
 
     @tasks.loop(minutes=30)
     async def april_fools_art_challenges(self):
-        """Spawn custom Ino/Jake themed art challenges every 30 min during AF mode.
+        """Spawn custom Ino/Jake themed art challenges every 30 min during April.
 
         Drops challenges in BOTH art channels using the custom prompt list.
+        Auto-runs during the entire month of April.
         """
         try:
-            from models.april_fools import is_april_fools, AF_ART_CHALLENGE_PROMPTS, AF_ART_CHALLENGE_INTERVAL_MINUTES
-            if not is_april_fools():
+            from models.april_fools import is_april_fools, is_april_month, AF_ART_CHALLENGE_PROMPTS, AF_ART_CHALLENGE_INTERVAL_MINUTES
+            # Run if either manual mode is on OR it's actually April
+            if not (is_april_fools() or is_april_month()):
                 return
 
             art_manager = getattr(self.bot, 'art_challenge_manager', None)

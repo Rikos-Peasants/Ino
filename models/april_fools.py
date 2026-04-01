@@ -63,6 +63,11 @@ def set_april_fools_mode(value: bool) -> None:
     logger.info(f"April Fools mode {'ENABLED' if value else 'DISABLED'}")
 
 
+def is_april_month() -> bool:
+    """Return True if current month is April (for auto-spawning AF content)."""
+    return datetime.now().month == 4
+
+
 def flip_embed(embed: discord.Embed) -> discord.Embed:
     """Return a copy of *embed* with every text field upside-down."""
     flipped = discord.Embed(
@@ -502,6 +507,7 @@ def normalize_unicode_fonts(text: str) -> str:
     
     # Third pass: additional fullwidth and symbol variants
     fullwidth_mappings = {
+        # Fullwidth (Ａ Ｂ Ｃ style)
         'Ａ': 'A', 'Ｂ': 'B', 'Ｃ': 'C', 'Ｄ': 'D', 'Ｅ': 'E', 'Ｆ': 'F',
         'Ｇ': 'G', 'Ｈ': 'H', 'Ｉ': 'I', 'Ｊ': 'J', 'Ｋ': 'K', 'Ｌ': 'L',
         'Ｍ': 'M', 'Ｎ': 'N', 'Ｏ': 'O', 'Ｐ': 'P', 'Ｑ': 'Q', 'Ｒ': 'R',
@@ -512,10 +518,24 @@ def normalize_unicode_fonts(text: str) -> str:
         'ｍ': 'm', 'ｎ': 'n', 'ｏ': 'o', 'ｐ': 'p', 'ｑ': 'q', 'ｒ': 'r',
         'ｓ': 's', 'ｔ': 't', 'ｕ': 'u', 'ｖ': 'v', 'ｗ': 'w', 'ｘ': 'x',
         'ｙ': 'y', 'ｚ': 'z',
+        # Small caps (ᴀ ʙ ᴄ style)
         'ᴀ': 'A', 'ʙ': 'B', 'ᴄ': 'C', 'ᴅ': 'D', 'ᴇ': 'E', 'ғ': 'F',
         'ɢ': 'G', 'ʜ': 'H', 'ɪ': 'I', 'ᴊ': 'J', 'ᴋ': 'K', 'ʟ': 'L',
         'ᴍ': 'M', 'ɴ': 'N', 'ᴏ': 'O', 'ᴘ': 'P', 'ǫ': 'Q', 'ʀ': 'R',
         'ᴛ': 'T', 'ᴜ': 'U', 'ᴠ': 'V', 'ᴡ': 'W', 'ʏ': 'Y', 'ᴢ': 'Z',
+        # Subscript/Currency style (Ⱨ₳Ⱨ₳ ₮Ɇ₴₮ style)
+        'Ⱨ': 'H', 'Ɇ': 'E', 'Ɽ': 'R', 'Ⱡ': 'L', 'Ø': 'O', 'Ɨ': 'I',
+        'Ʉ': 'U', 'Ɏ': 'Y', 'Ꝁ': 'K', 'Ᵽ': 'P', 'Ꞁ': 'L', 'Ꝑ': 'P',
+        '₳': 'A', '฿': 'B', '₵': 'C', 'Đ': 'D', '₴': 'S', '₮': 'T',
+        'ɽ': 'r', 'ⱡ': 'l', 'ø': 'o', 'ɨ': 'i', 'ʉ': 'u', 'ɏ': 'y',
+        # Boxed letters (【h】【a】 style) - remove the boxes
+        '【': '', '】': '',
+        # Parenthesized letters
+        '⒜': 'a', '⒝': 'b', '⒞': 'c', '⒟': 'd', '⒠': 'e', '⒡': 'f',
+        '⒢': 'g', '⒣': 'h', '⒤': 'i', '⒥': 'j', '⒦': 'k', '⒧': 'l',
+        '⒨': 'm', '⒩': 'n', '⒪': 'o', '⒫': 'p', '⒬': 'q', '⒭': 'r',
+        '⒮': 's', '⒯': 't', '⒰': 'u', '⒱': 'v', '⒲': 'w', '⒳': 'x',
+        '⒴': 'y', '⒵': 'z',
     }
     
     result = []
@@ -609,6 +629,10 @@ def uwuify_text(text: str) -> str:
     """
     if not text:
         return text
+    
+    # FIRST: Normalize Unicode bypasses (boxed letters, special fonts, zalgo)
+    text = clean_zalgo(text)
+    text = normalize_unicode_fonts(text)
     
     # Extract and store links/emojis to preserve them
     preserved_items = []
@@ -855,6 +879,7 @@ def should_uwuify_message(message: discord.Message, bot: commands.Bot = None) ->
 async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot = None) -> bool:
     """Delete original message and resend via webhook with uwuified text.
     
+    Handles .txt file bypass: downloads .txt files, uwuifies content, and reposts.
     Returns True if successful, False otherwise.
     """
     if not should_uwuify_message(message, bot):
@@ -871,6 +896,35 @@ async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot
         # Uwuify the content
         uwu_content = uwuify_text(message.content)
         
+        # Check for .txt file bypass attempts
+        txt_file_content = ""
+        has_txt_bypass = False
+        
+        for attachment in message.attachments:
+            if attachment.filename.lower().endswith('.txt'):
+                try:
+                    # Download and read the .txt file
+                    file_data = await attachment.read()
+                    # Decode as UTF-8 text
+                    txt_content = file_data.decode('utf-8', errors='ignore')
+                    
+                    # Limit to reasonable size (10KB max to avoid spam)
+                    if len(txt_content) > 10000:
+                        txt_content = txt_content[:10000] + "\n\n*(twuncated - too wong!)*"
+                    
+                    # Uwuify the text file content
+                    uwuified_txt = uwuify_text(txt_content)
+                    txt_file_content += f"\n\n**📄 {attachment.filename}:**\n{uwuified_txt}"
+                    has_txt_bypass = True
+                    
+                    logger.info(f"Detected .txt bypass attempt from {message.author.display_name}, uwuifying content")
+                except Exception as e:
+                    logger.warning(f"Failed to read .txt file {attachment.filename}: {e}")
+        
+        # Add txt file content to the message
+        if has_txt_bypass:
+            uwu_content = (uwu_content + txt_file_content).strip()
+        
         # If this was a reply, add a reply indicator at the start
         if message.reference and message.reference.message_id:
             try:
@@ -882,14 +936,18 @@ async def uwuify_message_via_webhook(message: discord.Message, bot: commands.Bot
         
         # Build kwargs for webhook send
         kwargs = {
-            "content": uwu_content,
+            "content": uwu_content if uwu_content else "*(empty message)*",
             "username": message.author.display_name,
             "avatar_url": str(message.author.display_avatar.url) if message.author.display_avatar else None,
         }
         
-        # Handle attachments - try to re-upload them
+        # Handle non-txt attachments - re-upload them
         files = []
         for attachment in message.attachments:
+            # Skip .txt files since we already processed them
+            if attachment.filename.lower().endswith('.txt'):
+                continue
+                
             try:
                 file_data = await attachment.read()
                 files.append(discord.File(io.BytesIO(file_data), filename=attachment.filename))

@@ -640,22 +640,53 @@ class EventsController:
     async def _send_random_neko_dm(self, user: discord.User):
         """Send a random SFW neko image to the user via DM (5% chance on messages)."""
         try:
-            # Use nekos.life API for random neko images
+            # Use nekos.best API for random neko images (more reliable)
             async with aiohttp.ClientSession() as session:
-                # Get random neko GIF
+                # Try nekos.best first (SFW nekos)
+                async with session.get(
+                    "https://nekos.best/api/v2/neko",
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        results = data.get("results", [])
+                        if results and len(results) > 0:
+                            image_url = results[0].get("url")
+                            artist = results[0].get("artist_name", "Unknown")
+                            
+                            if image_url:
+                                # Send DM with the neko image
+                                embed = discord.Embed(
+                                    title="nya~",
+                                    description="Here's a random neko for you!",
+                                    color=0xFFC0CB  # Pink color
+                                )
+                                embed.set_image(url=image_url)
+                                if artist:
+                                    embed.set_footer(text=f"Art by: {artist}")
+                                
+                                await user.send(embed=embed)
+                                logger.info(f"Sent random neko DM to {user.display_name} ({user.id})")
+                                return
+                    
+                    # Fallback to nekos.life if nekos.best fails
+                    logger.warning(f"Nekos.best returned status {response.status}, trying fallback...")
+                    
+            # Fallback to nekos.life
+            async with aiohttp.ClientSession() as session:
                 async with session.get(
                     "https://nekos.life/api/v2/img/neko",
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     if response.status != 200:
-                        logger.warning(f"NekosAPI returned status {response.status}")
+                        logger.warning(f"Nekos.life fallback returned status {response.status}")
                         return
                     
                     data = await response.json()
                     image_url = data.get("url")
                     
                     if not image_url:
-                        logger.warning("NekosAPI returned no image URL")
+                        logger.warning("Nekos.life returned no image URL")
                         return
                     
                     # Send DM with the neko image
@@ -668,12 +699,12 @@ class EventsController:
                     embed.set_footer(text="Powered by nekos.life")
                     
                     await user.send(embed=embed)
-                    logger.info(f"Sent random neko DM to {user.display_name} ({user.id})")
+                    logger.info(f"Sent random neko DM (fallback) to {user.display_name} ({user.id})")
                     
         except discord.Forbidden:
             logger.info(f"Could not DM {user.display_name} - DMs disabled")
         except asyncio.TimeoutError:
-            logger.warning("NekosAPI request timed out")
+            logger.warning("Neko API request timed out")
         except Exception as e:
             logger.error(f"Error sending neko DM: {e}")
     
