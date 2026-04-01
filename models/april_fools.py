@@ -630,9 +630,12 @@ def uwuify_text(text: str) -> str:
     if not text:
         return text
     
-    # FIRST: Normalize Unicode bypasses (boxed letters, special fonts, zalgo)
-    text = clean_zalgo(text)
-    text = normalize_unicode_fonts(text)
+    # FIRST: Only normalize if text contains non-ASCII Unicode (bypasses)
+    # Check if text has any characters outside basic ASCII range
+    has_unicode_bypass = any(ord(char) > 127 for char in text)
+    if has_unicode_bypass:
+        text = clean_zalgo(text)
+        text = normalize_unicode_fonts(text)
     
     # Extract and store links/emojis to preserve them
     preserved_items = []
