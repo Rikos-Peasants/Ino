@@ -6,6 +6,7 @@ import logging
 import json
 import asyncio
 import aiohttp
+from pymongo.errors import PyMongoError
 from typing import Optional, Union
 from models.role_manager import RoleManager
 from models.mod_offline_manager import ModOfflineManager
@@ -23,6 +24,8 @@ class CommandsController:
         self.bot = bot
         self.start_time = datetime.utcnow()
         self.mod_offline_manager = ModOfflineManager()
+        self._youtube_verification_indexes_checked = False
+        self._youtube_sub_count_indexes_checked = False
     
     def get_bot_attr(self, attr_name: str) -> Optional[object]:
         """Safely get bot attribute"""
@@ -108,12 +111,17 @@ class CommandsController:
         if not leaderboard_manager or getattr(leaderboard_manager, 'db', None) is None:
             return None
         collection = leaderboard_manager.db['youtube_sub_verifications']
-        collection.create_index([("guild_id", 1), ("user_id", 1)], unique=True)
-        collection.create_index(
-            [("guild_id", 1), ("yt_channel_id", 1)],
-            unique=True,
-            partialFilterExpression={"yt_channel_id": {"$exists": True, "$ne": ""}}
-        )
+        if not self._youtube_verification_indexes_checked:
+            try:
+                collection.create_index([("guild_id", 1), ("user_id", 1)], unique=True)
+                collection.create_index(
+                    [("guild_id", 1), ("yt_channel_id", 1)],
+                    unique=True,
+                    partialFilterExpression={"yt_channel_id": {"$exists": True, "$ne": ""}}
+                )
+                self._youtube_verification_indexes_checked = True
+            except PyMongoError as e:
+                logger.warning(f"Could not ensure YouTube verification indexes; continuing without blocking role assignment: {e}")
         return collection
 
     def _get_youtube_id_claim(self, guild_id: int, user_channel_id: str) -> Optional[dict]:
@@ -136,13 +144,18 @@ class CommandsController:
         if collection is None:
             return
 
-        collection.create_index([("channel_id", 1), ("captured_at", -1)])
-        collection.insert_one({
-            "channel_id": Config.RAYEN_YOUTUBE_CHANNEL_ID,
-            "subscriber_count": sub_count,
-            "captured_at": discord.utils.utcnow(),
-            "source": "fixytcount live lookup",
-        })
+        try:
+            if not self._youtube_sub_count_indexes_checked:
+                collection.create_index([("channel_id", 1), ("captured_at", -1)])
+                self._youtube_sub_count_indexes_checked = True
+            collection.insert_one({
+                "channel_id": Config.RAYEN_YOUTUBE_CHANNEL_ID,
+                "subscriber_count": sub_count,
+                "captured_at": discord.utils.utcnow(),
+                "source": "fixytcount live lookup",
+            })
+        except PyMongoError as e:
+            logger.warning(f"Could not store YouTube subscriber-count snapshot: {e}")
 
     async def _youtube_api_get(self, endpoint: str, params: dict) -> dict:
         if not Config.YOUTUBE_API_KEY:
@@ -204,30 +217,33 @@ class CommandsController:
         if collection is None:
             return
 
-        collection.update_one(
-            {
-                "guild_id": str(member.guild.id),
-                "user_id": str(member.id),
-            },
-            {
-                "$set": {
+        try:
+            collection.update_one(
+                {
                     "guild_id": str(member.guild.id),
                     "user_id": str(member.id),
-                    "user_name": member.display_name,
-                    "yt_channel_id": user_channel_id,
-                    "subscribed_at": subscribed_at.isoformat(),
-                    "discord_joined_at": joined_at.isoformat() if joined_at else None,
-                    "assignment_basis": assignment_basis,
-                    "estimated_sub_count": estimated_sub_count,
-                    "assigned_sub_count": estimated_sub_count,
-                    "sub_count_source": sub_count_source,
-                    "role_id": int(tier["role_id"]),
-                    "tier_label": tier["label"],
-                    "updated_at": discord.utils.utcnow(),
-                }
-            },
-            upsert=True
-        )
+                },
+                {
+                    "$set": {
+                        "guild_id": str(member.guild.id),
+                        "user_id": str(member.id),
+                        "user_name": member.display_name,
+                        "yt_channel_id": user_channel_id,
+                        "subscribed_at": subscribed_at.isoformat(),
+                        "discord_joined_at": joined_at.isoformat() if joined_at else None,
+                        "assignment_basis": assignment_basis,
+                        "estimated_sub_count": estimated_sub_count,
+                        "assigned_sub_count": estimated_sub_count,
+                        "sub_count_source": sub_count_source,
+                        "role_id": int(tier["role_id"]),
+                        "tier_label": tier["label"],
+                        "updated_at": discord.utils.utcnow(),
+                    }
+                },
+                upsert=True
+            )
+        except PyMongoError as e:
+            logger.warning(f"Assigned YouTube subscriber role but could not store verification for {member.id}: {e}")
 
     async def _resolve_youtube_sub_role_for_date(self, target_date: datetime) -> tuple[Optional[int], Optional[str], Optional[dict], str]:
         sub_count, sub_count_source = self._estimate_sub_count_for_date(target_date)
@@ -274,18 +290,23 @@ class CommandsController:
         """Apply a stored YouTube subscriber-era role for a joining member."""
         collection = self._get_youtube_verification_collection()
         if collection is None:
-            return False, "youtube verification storage unavailable"
+            return await self.apply_youtube_sub_role_from_join_date(member)
 
-        record = collection.find_one({
-            "guild_id": str(member.guild.id),
-            "user_id": str(member.id),
-        })
+        try:
+            record = collection.find_one({
+                "guild_id": str(member.guild.id),
+                "user_id": str(member.id),
+            })
+        except PyMongoError as e:
+            logger.warning(f"Could not read YouTube verification for {member.id}; falling back to join date: {e}")
+            return await self.apply_youtube_sub_role_from_join_date(member)
+
         if not record:
             return await self.apply_youtube_sub_role_from_join_date(member)
 
         subscribed_at_raw = record.get("subscribed_at")
         if not subscribed_at_raw:
-            return False, "stored verification has no subscription date"
+            return await self.apply_youtube_sub_role_from_join_date(member)
 
         subscribed_at = datetime.fromisoformat(subscribed_at_raw.replace("Z", "+00:00"))
         sub_count, sub_count_source, tier, error = await self._resolve_youtube_sub_role_for_date(subscribed_at)

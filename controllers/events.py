@@ -67,7 +67,7 @@ class EventsController:
             if success:
                 logger.info(f"Applied YouTube subscriber role to {member.display_name}: {result}")
             else:
-                logger.debug(f"No YouTube subscriber role applied to {member.display_name}: {result}")
+                logger.warning(f"No YouTube subscriber role applied to {member.display_name}: {result}")
         except Exception as e:
             logger.error(f"Error applying stored YouTube subscriber role to {member.display_name}: {e}")
     
