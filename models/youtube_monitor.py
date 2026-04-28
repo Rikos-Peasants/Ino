@@ -23,6 +23,7 @@ from config import Config
 import discord
 from discord.ext import commands
 import aiohttp
+from models.gemini_utils import describe_gemini_response, extract_gemini_text
 
 if TYPE_CHECKING:
     from models.mongo_leaderboard_manager import MongoLeaderboardManager
@@ -609,12 +610,15 @@ Remember to include the correct role ping at the end based on video type!
                 config=generate_content_config,
             )
             
-            # Get the response text
-            if response and response.text:
-                return response.text.strip()
+            response_text = extract_gemini_text(response)
+            if response_text:
+                return response_text
             else:
                 # Fallback to context-aware template
-                logger.info("Using fallback Ino response template")
+                logger.info(
+                    "Using fallback Ino response template; empty Gemini response: %s",
+                    describe_gemini_response(response),
+                )
                 return self._get_fallback_response(video_title, is_rayen_channel, video_author, is_short)
             
         except Exception as e:

@@ -10,6 +10,7 @@ import discord
 from pymongo import MongoClient, DESCENDING
 from difflib import SequenceMatcher
 import json as _json
+from models.gemini_utils import describe_gemini_response, extract_gemini_text
 
 try:
     from google import genai
@@ -665,7 +666,7 @@ Respond with ONLY valid JSON (no markdown, no code fences):
                             max_output_tokens=200,
                         ),
                     )
-                    response_text = (response.text or "").strip()
+                    response_text = extract_gemini_text(response)
                     if response_text:
                         logger.info(f"Gemini moderation verification successful with model {model_name}")
                         break
@@ -674,7 +675,10 @@ Respond with ONLY valid JSON (no markdown, no code fences):
                     continue
             
             if not response_text:
-                logger.warning("Gemini returned empty response for moderation verification")
+                logger.warning(
+                    "Gemini returned empty response for moderation verification: %s",
+                    describe_gemini_response(response) if 'response' in locals() else "no response",
+                )
                 return None
             
             # Clean response — strip markdown fences if present

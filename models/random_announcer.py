@@ -16,6 +16,7 @@ import aiohttp
 import feedparser
 import json
 from datetime import datetime
+from models.gemini_utils import describe_gemini_response, extract_gemini_text
 
 logger = logging.getLogger(__name__)
 
@@ -78,22 +79,23 @@ class RandomAnnouncer:
 
                     # Test the connection
                     logger.info("🧪 Testing Gemini AI connection...")
-                    test_contents = [
-                        types.Content(
-                            role="user",
-                            parts=[types.Part.from_text(text="Say 'AI test successful'")],
-                        )
-                    ]
-                    test_cfg = types.GenerateContentConfig(max_output_tokens=10)
+                    test_cfg = types.GenerateContentConfig(
+                        max_output_tokens=32,
+                        response_mime_type="text/plain",
+                    )
                     test_response = self.gemini_client.models.generate_content(
                         model="gemini-flash-latest",
-                        contents=test_contents,
+                        contents="Reply with exactly: AI test successful",
                         config=test_cfg,
                     )
-                    if test_response and getattr(test_response, 'text', None):
+                    test_text = extract_gemini_text(test_response)
+                    if test_text:
                         logger.info("✅ Gemini AI test successful!")
                     else:
-                        logger.warning("⚠️ Gemini AI test returned empty response")
+                        logger.warning(
+                            "⚠️ Gemini AI test returned empty response: %s",
+                            describe_gemini_response(test_response),
+                        )
             except Exception as e:
                 logger.error(f"❌ Failed to configure Gemini AI: {e}")
                 self.gemini_client = None
@@ -355,12 +357,15 @@ Generate a short Ino announcement (10-20 words) that captures her {personality} 
                 config=generate_content_config,
             )
 
-            if response and getattr(response, 'text', None):
-                ai_response = response.text.strip()
+            ai_response = extract_gemini_text(response)
+            if ai_response:
                 logger.info(f"✅ AI generated response: {ai_response}")
                 return ai_response
             else:
-                logger.warning("❌ AI returned empty response; using fallback")
+                logger.warning(
+                    "❌ AI returned empty response; using fallback: %s",
+                    describe_gemini_response(response),
+                )
                 return self._get_fallback_announcement(video, personality)
         except Exception as e:
             logger.error(f"❌ Error generating AI announcement: {e}")

@@ -17,6 +17,7 @@ try:
 except Exception:
     genai = None
     types = None
+from models.gemini_utils import describe_gemini_response, extract_gemini_text
 
 logger = logging.getLogger(__name__)
 
@@ -489,11 +490,14 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
                             )
                         )
                         
-                        response_text = (response.text or "").strip()
+                        response_text = extract_gemini_text(response)
                         if response_text:
                             break  # Success, exit retry loop
                         
-                        logger.warning(f"{model_name} attempt {attempt + 1}/{max_retries}: Empty edit item response, retrying...")
+                        logger.warning(
+                            f"{model_name} attempt {attempt + 1}/{max_retries}: Empty edit item response, retrying: "
+                            f"{describe_gemini_response(response)}"
+                        )
                         if attempt < max_retries - 1:
                             await asyncio.sleep(1)
                             
@@ -558,7 +562,7 @@ Rules:
                     system_instruction=[types.Part.from_text(text=self.art_system_prompt)]
                 )
             )
-            response_text = (response.text or "").strip().replace("```json", "").replace("```", "").strip()
+            response_text = extract_gemini_text(response).replace("```json", "").replace("```", "").strip()
             data = json.loads(response_text)
             if isinstance(data, dict) and data.get("name") and data.get("tag"):
                 return {"name": data["name"], "tag": data["tag"]}
@@ -617,7 +621,7 @@ Rules:
                     system_instruction=[types.Part.from_text(text=self.art_system_prompt)]
                 )
             )
-            response_text = (response.text or "").strip().replace("```json", "").replace("```", "").strip()
+            response_text = extract_gemini_text(response).replace("```json", "").replace("```", "").strip()
             data = json.loads(response_text)
             colors = data.get("colors", []) if isinstance(data, dict) else []
             if isinstance(data, dict) and data.get("name") and isinstance(colors, list) and len(colors) == 5:
@@ -651,7 +655,7 @@ Rules:
                     system_instruction=[types.Part.from_text(text=self.art_system_prompt)]
                 )
             )
-            response_text = (response.text or "").strip().replace("```json", "").replace("```", "").strip()
+            response_text = extract_gemini_text(response).replace("```json", "").replace("```", "").strip()
             data = json.loads(response_text)
             if isinstance(data, dict) and data.get("direction") in ["future", "past"] and data.get("instruction"):
                 return {"direction": data["direction"], "instruction": data["instruction"]}
@@ -964,24 +968,16 @@ Please verify if this submission includes all the required elements.
                         )
                     
                         # Parse the response
-                        response_text = (response.text or "").strip()
+                        response_text = extract_gemini_text(response)
                         
                         if response_text:
                             logger.info(f"Gemini verification successful with model {model_name}")
                             break  # Success, exit retry loop
                         
-                        # Log detailed info about empty response for debugging
-                        if hasattr(response, 'candidates') and response.candidates:
-                            for i, candidate in enumerate(response.candidates):
-                                finish_reason = getattr(candidate, 'finish_reason', 'unknown')
-                                logger.warning(f"{model_name} attempt {attempt + 1}: Candidate {i} finish_reason: {finish_reason}")
-                                if hasattr(candidate, 'safety_ratings'):
-                                    logger.warning(f"{model_name} attempt {attempt + 1}: Safety ratings: {candidate.safety_ratings}")
-                        
-                        if hasattr(response, 'prompt_feedback'):
-                            logger.warning(f"{model_name} attempt {attempt + 1}: Prompt feedback: {response.prompt_feedback}")
-                        
-                        logger.warning(f"{model_name} attempt {attempt + 1}/{max_retries}: Empty verification response, retrying...")
+                        logger.warning(
+                            f"{model_name} attempt {attempt + 1}/{max_retries}: Empty verification response, retrying: "
+                            f"{describe_gemini_response(response)}"
+                        )
                         
                         if attempt < max_retries - 1:
                             await asyncio.sleep(1)  # Brief delay before retry
