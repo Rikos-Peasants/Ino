@@ -86,7 +86,7 @@ class RandomAnnouncer:
                     ]
                     test_cfg = types.GenerateContentConfig(max_output_tokens=10)
                     test_response = self.gemini_client.models.generate_content(
-                        model="gemini-2.5-flash",
+                        model="gemini-flash-latest",
                         contents=test_contents,
                         config=test_cfg,
                     )
@@ -350,7 +350,7 @@ Generate a short Ino announcement (10-20 words) that captures her {personality} 
             logger.info(f"📝 Sending conversational prompt to Gemini AI (personality: {personality})")
 
             response = self.gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-flash-latest",
                 contents=contents,
                 config=generate_content_config,
             )

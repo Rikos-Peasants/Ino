@@ -467,8 +467,8 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
             max_retries = 3
             response_text = ""
             
-            # Try different models if one fails - gemini-2.0-flash is more stable
-            models_to_try = ["gemini-2.0-flash", "gemini-2.5-flash"]
+            # Prefer the unified model ID
+            models_to_try = ["gemini-flash-latest"]
             
             for model_name in models_to_try:
                 if response_text:
@@ -477,7 +477,7 @@ Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Not
                 for attempt in range(max_retries):
                     try:
                         response = client.models.generate_content(
-                            model=model_name,
+                                    model=model_name,
                             contents=contents,
                             config=types.GenerateContentConfig(
                                 temperature=1.2,  # Higher temperature for more creative and varied suggestions
@@ -546,8 +546,8 @@ Rules:
 - Avoid child-only/loli characters
 - Keep tag query concise
 """
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                response = client.models.generate_content(
+                    model="gemini-flash-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.4,
@@ -606,7 +606,7 @@ Rules:
 - Keep hex uppercase format
 """
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-flash-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.5,
@@ -640,7 +640,7 @@ Rules:
 - Never mention minors
 """
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-flash-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.3,
@@ -937,8 +937,8 @@ Please verify if this submission includes all the required elements.
             response_text = ""
             last_error = None
             
-            # Try different models if one fails - gemini-2.0-flash is more stable
-            models_to_try = ["gemini-2.0-flash", "gemini-2.5-flash"]
+            # Prefer the unified model ID
+            models_to_try = ["gemini-flash-latest"]
             
             for model_name in models_to_try:
                 if response_text:
@@ -1650,7 +1650,7 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             ]
             
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-flash-latest",
                 contents=contents,
                 config=types.GenerateContentConfig(
                     temperature=0.5

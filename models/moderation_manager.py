@@ -649,8 +649,8 @@ Respond with ONLY valid JSON (no markdown, no code fences):
 
             client = genai.Client(api_key=self.gemini_api_key)
             
-            # Try models in order of preference
-            models_to_try = ["gemini-2.0-flash", "gemini-2.5-flash"]
+            # Use unified model identifier
+            models_to_try = ["gemini-flash-latest"]
             response_text = ""
             
             for model_name in models_to_try:

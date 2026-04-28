@@ -33,7 +33,7 @@
 | Feature | Description |
 |---------|-------------|
 | **🖌️ AI Art Challenges** | Automated art challenges using the Serika.art API |
-| **🤖 AI Verification** | Gemini 2.5 Flash-powered submission verification |
+| **🤖 AI Verification** | gemini-flash-latest-powered submission verification |
 | **🏅 Challenge Types** | Remake, Tags, Mixed, and Edit challenges |
 | **📅 Scheduled Drops** | Challenges drop at 02:00, 08:00, 14:00, and 20:00 UTC |
 | **💰 Point Rewards** | Earn 50 base points per completed challenge |
@@ -279,7 +279,7 @@ Ino/
 |-----------|------------|
 | **Discord Library** | discord.py 2.3.0+ |
 | **Database** | MongoDB with PyMongo |
-| **AI Models** | Google Gemini 2.5 Flash |
+| **AI Models** | gemini-flash-latest |
 | **Content Moderation** | OpenAI API, Google Natural Language API |
 | **Art API** | Serika.art API |
 | **YouTube** | YouTube Data API v3, RSS feeds |

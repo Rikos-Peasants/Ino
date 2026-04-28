@@ -604,7 +604,7 @@ Remember to include the correct role ping at the end based on video type!
             
             # Generate response using the new API (non-streaming)
             response = self.gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-flash-latest",
                 contents=contents,
                 config=generate_content_config,
             )
