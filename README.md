@@ -59,7 +59,7 @@
 | Feature | Description |
 |---------|-------------|
 | **🔔 Video Announcements** | Automatic notifications for new YouTube uploads |
-| **📱 Shorts Detection** | Separate role pings for YouTube Shorts (≤60 seconds) |
+| **📱 Shorts Detection** | Separate role pings for videos up to 1m30s |
 | **🦊 AI Announcements** | Ino's personality-driven video announcements using Gemini AI |
 | **📡 RSS Monitoring** | Real-time YouTube channel monitoring |
 
@@ -307,7 +307,7 @@ Used for the art challenge system:
 Used for video monitoring:
 - Channel activity monitoring
 - Video metadata retrieval
-- Shorts detection (≤60 seconds)
+- Shorts detection (≤1m30s)
 
 ### Content Moderation APIs
 Dual-layer content moderation:

@@ -107,7 +107,69 @@ class Config:
     
     # YouTube monitoring roles
     YOUTUBE_ROLE_ID = 1375737416325009552  # Default role for YouTube videos
-    SHORTS_ROLE_ID = 1392619703603822773  # Role to ping for YouTube Shorts (≤60 seconds)
+    SHORTS_ROLE_ID = 1392619703603822773  # Role to ping for short videos
+    SHORT_VIDEO_MAX_SECONDS = 90  # Videos up to 1m30s use the short-video ping
+
+    # Rayen YouTube subscriber-era roles
+    RAYEN_YOUTUBE_CHANNEL_ID = "UChhMeymAOC5PNbbnqxD_w4g"
+    YOUTUBE_SUB_ROLE_TIERS = [
+        {"min_subs": 0, "max_subs": 49, "role_id": 1498718228707410132, "label": "0 - 50 subs"},
+        {"min_subs": 50, "max_subs": 99, "role_id": 1498720787224330292, "label": "50 - 100 subs"},
+        {"min_subs": 100, "max_subs": 499, "role_id": 1498720952614256711, "label": "100 - 500 subs"},
+        {"min_subs": 500, "max_subs": 999, "role_id": 1498720952614256711, "label": "500 - 1000 subs"},
+        {"min_subs": 1000, "max_subs": 1999, "role_id": 1498721031810973696, "label": "1000 - 2000 subs"},
+        {"min_subs": 2000, "max_subs": 4999, "role_id": 1498721488914616360, "label": "2000 - 5000 subs"},
+        {"min_subs": 5000, "max_subs": 9999, "role_id": 1498721627712782478, "label": "5000 - 10000 subs"},
+        {"min_subs": 10000, "max_subs": 19999, "role_id": 1498721717462503514, "label": "10000 - 20000 subs"},
+        {"min_subs": 20000, "max_subs": 49999, "role_id": 1498721915458814053, "label": "20000 - 50000 subs"},
+        {"min_subs": 50000, "max_subs": None, "role_id": 1498723293044146228, "label": "50000+ subs"},
+    ]
+    # Historical milestones. Null dates are ignored until filled in.
+    YOUTUBE_SUB_MILESTONE_DATES = [
+        {"subs": 100, "reached_at": None},
+        {"subs": 200, "reached_at": None},
+        {"subs": 300, "reached_at": None},
+        {"subs": 400, "reached_at": None},
+        {"subs": 500, "reached_at": None},
+        {"subs": 600, "reached_at": None},
+        {"subs": 700, "reached_at": None},
+        {"subs": 800, "reached_at": None},
+        {"subs": 900, "reached_at": None},
+        {"subs": 1000, "reached_at": None},
+        {"subs": 2000, "reached_at": None},
+        {"subs": 3000, "reached_at": None},
+        {"subs": 4000, "reached_at": None},
+        {"subs": 5000, "reached_at": None},
+        {"subs": 6000, "reached_at": None},
+        {"subs": 7000, "reached_at": None},
+        {"subs": 8000, "reached_at": None},
+        {"subs": 9000, "reached_at": None},
+        {"subs": 10000, "reached_at": None},
+        {"subs": 11000, "reached_at": None},
+        {"subs": 12000, "reached_at": None},
+        {"subs": 13000, "reached_at": "2025-09-30T00:00:00Z"},
+        {"subs": 14000, "reached_at": "2025-12-15T00:00:00Z"},
+        {"subs": 15000, "reached_at": "2026-01-05T00:00:00Z"},
+        {"subs": 16000, "reached_at": "2026-01-12T00:00:00Z"},
+        {"subs": 17000, "reached_at": "2026-01-19T00:00:00Z"},
+        {"subs": 18000, "reached_at": "2026-01-19T00:00:00Z"},
+        {"subs": 19000, "reached_at": "2026-01-19T00:00:00Z"},
+        {"subs": 20000, "reached_at": "2026-01-19T00:00:00Z"},
+        {"subs": 21000, "reached_at": "2026-01-19T00:00:00Z"},
+        {"subs": 22000, "reached_at": "2026-01-26T00:00:00Z"},
+        {"subs": 23000, "reached_at": "2026-01-26T00:00:00Z"},
+        {"subs": 24000, "reached_at": "2026-01-26T00:00:00Z"},
+        {"subs": 25000, "reached_at": "2026-02-02T00:00:00Z"},
+        {"subs": 26000, "reached_at": "2026-02-02T00:00:00Z"},
+        {"subs": 27000, "reached_at": "2026-02-09T00:00:00Z"},
+        {"subs": 28000, "reached_at": "2026-02-16T00:00:00Z"},
+        {"subs": 29000, "reached_at": "2026-02-23T00:00:00Z"},
+        {"subs": 30000, "reached_at": "2026-04-06T00:00:00Z"},
+        {"subs": 31000, "reached_at": "2026-04-12T00:00:00Z"},
+        {"subs": 32000, "reached_at": "2026-04-17T00:00:00Z"},
+        {"subs": 33000, "reached_at": "2026-04-23T00:00:00Z"},
+        {"subs": 34000, "reached_at": "2026-04-25T00:00:00Z"},
+    ]
     
     # Warning log channel (can be configured with /setlogchannel)
     WARNING_LOG_CHANNEL_ID: Optional[int] = None  # Will be set dynamically

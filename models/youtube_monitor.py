@@ -5,6 +5,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any, TYPE_CHECKING
 import logging
+import re
 
 # Optional Google SDKs: import lazily/defensively so module import never fails
 try:  # New Google AI Python SDK (google-genai)
@@ -240,6 +241,48 @@ class YouTubeMonitor:
             logger.error(f"Error getting channel info via RSS for {youtube_channel_id}: {e}")
             return None
 
+    async def get_current_subscriber_count(self, youtube_channel_id: str) -> Optional[int]:
+        """Get the current public subscriber count for a YouTube channel."""
+        try:
+            if not self.youtube_client:
+                logger.warning("YouTube API client not available for subscriber count")
+                return None
+
+            request = self.youtube_client.channels().list(
+                part='statistics',
+                id=youtube_channel_id
+            )
+            response = request.execute()
+            if not response.get('items'):
+                return None
+
+            return int(response['items'][0]['statistics'].get('subscriberCount', 0))
+        except Exception as e:
+            logger.error(f"Error getting subscriber count for {youtube_channel_id}: {e}")
+            return None
+
+    async def store_rayen_subscriber_snapshot(self) -> Optional[int]:
+        """Store Rayen's current subscriber count for future historical role lookups."""
+        try:
+            sub_count = await self.get_current_subscriber_count(Config.RAYEN_YOUTUBE_CHANNEL_ID)
+            if sub_count is None:
+                return None
+
+            if self.mongodb_manager and getattr(self.mongodb_manager, 'db', None) is not None:
+                collection = self.mongodb_manager.db['youtube_sub_count_snapshots']
+                collection.create_index([("channel_id", 1), ("captured_at", -1)])
+                collection.insert_one({
+                    "channel_id": Config.RAYEN_YOUTUBE_CHANNEL_ID,
+                    "subscriber_count": sub_count,
+                    "captured_at": discord.utils.utcnow(),
+                })
+
+            logger.info(f"Stored Rayen subscriber count snapshot: {sub_count}")
+            return sub_count
+        except Exception as e:
+            logger.error(f"Error storing Rayen subscriber count snapshot: {e}")
+            return None
+
     async def check_for_new_videos(self) -> List[Dict[str, Any]]:
         """Check all monitored channels for new videos using YouTube API"""
         new_videos = []
@@ -315,7 +358,7 @@ class YouTubeMonitor:
                         'published': video_data['published'],
                         'description': video_data['description'],
                         'author': video_data['author'],
-                        'duration': video_data.get('duration_seconds', 0),
+                        'duration_seconds': video_data.get('duration_seconds', 0),
                         'config': {**channel, 'channel_id': youtube_channel_id}  # Include channel_id in config
                     })
                 
@@ -416,7 +459,6 @@ class YouTubeMonitor:
     def _parse_duration(self, duration_str: str) -> int:
         """Parse YouTube duration format (PT4M13S) to seconds"""
         try:
-            import re
             # Remove PT prefix
             duration_str = duration_str[2:]
             
@@ -435,6 +477,30 @@ class YouTubeMonitor:
             return hours * 3600 + minutes * 60 + seconds
         except:
             return 0
+
+    def _get_duration_seconds(self, video: Dict[str, Any]) -> int:
+        """Read duration from either current or legacy video payload keys."""
+        duration = video.get('duration_seconds', video.get('duration', 0))
+        try:
+            return int(duration or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _is_short_video(self, video: Dict[str, Any]) -> bool:
+        """Treat videos up to the configured 1m30s cutoff as short videos."""
+        duration_seconds = self._get_duration_seconds(video)
+        return 0 < duration_seconds <= Config.SHORT_VIDEO_MAX_SECONDS
+
+    def _role_ping_for_video_type(self, is_short: bool) -> str:
+        role_id = Config.SHORTS_ROLE_ID if is_short else Config.YOUTUBE_ROLE_ID
+        return f"<@&{role_id}>"
+
+    def _ensure_correct_role_ping(self, announcement: str, is_short: bool) -> str:
+        """Force the final role mention to match the video duration bucket."""
+        expected_ping = self._role_ping_for_video_type(is_short)
+        cleaned = re.sub(r"<@&\d+>", "", announcement or "").strip()
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return f"{cleaned} {expected_ping}".strip()
 
     async def _get_recent_videos_rss(self, channel_id: str) -> List[Dict[str, Any]]:
         """Fallback method to get recent videos using RSS feed"""
@@ -522,7 +588,7 @@ class YouTubeMonitor:
                 is_rayen_channel = channel_id == 'UChhMeymAOC5PNbbnqxD_w4g'
                 
                 # Choose appropriate role based on video type
-                role_ping = f"<@&{Config.SHORTS_ROLE_ID}>" if is_short else f"<@&{Config.YOUTUBE_ROLE_ID}>"
+                role_ping = self._role_ping_for_video_type(is_short)
                 
                 if is_rayen_channel:
                     return f"Oh my, Rayen uploaded something new: \"{video_title}\". Time to see what he's up to now, Riko simps. {role_ping}"
@@ -586,8 +652,8 @@ WRONG ATTRIBUTION (NEVER DO THIS):
 
 Create a short announcement (10-20 words) using the ACTUAL creator's name "{video_author}", not Riko!
 
-VIDEO TYPE: {'YouTube Short (≤60 seconds)' if is_short else 'Regular Video (>60 seconds)'}
-ROLE TO PING: {'<@&' + str(Config.SHORTS_ROLE_ID) + '>' if is_short else '<@&' + str(Config.YOUTUBE_ROLE_ID) + '>'}
+VIDEO TYPE: {'Short video (≤' + str(Config.SHORT_VIDEO_MAX_SECONDS) + ' seconds)' if is_short else 'Regular video (>' + str(Config.SHORT_VIDEO_MAX_SECONDS) + ' seconds)'}
+ROLE TO PING: {self._role_ping_for_video_type(is_short)}
 
 Remember to include the correct role ping at the end based on video type!
                         """),
@@ -633,7 +699,7 @@ Remember to include the correct role ping at the end based on video type!
     def _get_fallback_response(self, video_title: str, is_rayen_channel: bool, video_author: str = "Unknown", is_short: bool = False) -> str:
         """Get appropriate fallback response based on channel type and content"""
         # Choose appropriate role based on video type
-        role_ping = f"<@&{Config.SHORTS_ROLE_ID}>" if is_short else f"<@&{Config.YOUTUBE_ROLE_ID}>"
+        role_ping = self._role_ping_for_video_type(is_short)
         
         # Check if it's a guest/collaboration based on author name
         is_guest_content = video_author and video_author.lower() not in ['riko', 'rayen', 'just rayen', 'unknown']
@@ -688,7 +754,9 @@ Remember to include the correct role ping at the end based on video type!
             "You are Ino, an AI shrine spirit who is caring and responsible but not above a gentle tease. "
             "You're addressing the members of the server (affectionately known as Riko simps), and you stay in character throughout. "
             "From now on, you also need to announce new videos--short, sweet, never boring, and with a touch of your signature playful exasperation. "
-            "You must always ping <@&1375737416325009552> at the end of every announcement. "
+            f"You must always use the correct role ping at the end of every announcement: "
+            f"<@&{Config.SHORTS_ROLE_ID}> for videos up to {Config.SHORT_VIDEO_MAX_SECONDS} seconds, "
+            f"or <@&{Config.YOUTUBE_ROLE_ID}> for longer videos. "
             "Keep announcements concise (10-20 words), warm with a hint of playful exasperation.\n\n"
             "### Behavior Guidelines:\n"
             "- **Caring & Supportive:** You're responsible for the shrine's lower levels. "
@@ -697,7 +765,7 @@ Remember to include the correct role ping at the end based on video type!
             "you'll tease them gently if they get lazy, and you'll offer a lighthearted roast of the video content in your announcements.\n"
             "- **Calm & Rational:** You stay composed, even when you're exasperated by nonsense.\n"
             "- **Protective Loyalty:** You look out for Riko when needed and worry when she's up to mischief.\n"
-            "- **Video Announcements:** When a new video's ready, you MUST ping <@&1375737416325009552> at the end of the message "
+            "- **Video Announcements:** When a new video's ready, you MUST include the duration-appropriate role ping at the end of the message "
             "with a brief, warm-but-teasing line directed at the server members (\"Riko simps\") and a light roast of the video itself."
         )
 
@@ -737,15 +805,15 @@ Remember to include the correct role ping at the end based on video type!
                 logger.error(f"Channel {discord_channel_id} is not messageable (type: {type(channel).__name__})")
                 return
             
-            # Check if video is a YouTube Short (≤60 seconds)
-            duration_seconds = video.get('duration_seconds', 0)
-            is_short = duration_seconds > 0 and duration_seconds <= 60
+            duration_seconds = self._get_duration_seconds(video)
+            is_short = self._is_short_video(video)
             
             # Generate Ino's response with appropriate role
             ino_response = await self.generate_ino_response(video, is_short)
             
             if ino_response:
                 # Post the announcement with video link
+                ino_response = self._ensure_correct_role_ping(ino_response, is_short)
                 message = f"{ino_response}\n{video.get('link', '')}"
                 await channel.send(message)
                 short_info = f" (SHORT: {duration_seconds}s)" if is_short else f" ({duration_seconds}s)"
@@ -759,6 +827,7 @@ Remember to include the correct role ping at the end based on video type!
                 
                 # Use the context-aware fallback
                 fallback_response = self._get_fallback_response(video_title, is_rayen_channel, video_author, is_short)
+                fallback_response = self._ensure_correct_role_ping(fallback_response, is_short)
                 fallback_msg = f"{fallback_response}\n{video.get('link', '')}"
                 
                 # Channel send capability already checked above

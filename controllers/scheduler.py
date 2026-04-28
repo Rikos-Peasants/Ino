@@ -54,6 +54,9 @@ class SchedulerController:
         
         if not self.check_youtube_videos.is_running():
             self.check_youtube_videos.start()
+
+        if not self.store_youtube_subscriber_count.is_running():
+            self.store_youtube_subscriber_count.start()
         
         if not self.check_historical_reactions.is_running():
             self.check_historical_reactions.start()
@@ -83,6 +86,9 @@ class SchedulerController:
         
         if self.check_youtube_videos.is_running():
             self.check_youtube_videos.cancel()
+
+        if self.store_youtube_subscriber_count.is_running():
+            self.store_youtube_subscriber_count.cancel()
         
         if self.check_historical_reactions.is_running():
             self.check_historical_reactions.cancel()
@@ -466,6 +472,24 @@ class SchedulerController:
     @check_youtube_videos.before_loop
     async def before_youtube_videos_task(self):
         """Wait for bot to be ready before starting YouTube monitoring"""
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(minutes=10)
+    async def store_youtube_subscriber_count(self):
+        """Store Rayen's live YouTube subscriber count for future historical lookups."""
+        try:
+            youtube_monitor = getattr(self.bot, 'youtube_monitor', None)
+            if not youtube_monitor:
+                logger.warning("YouTube monitor not available for subscriber count snapshot")
+                return
+
+            await youtube_monitor.store_rayen_subscriber_snapshot()
+        except Exception as e:
+            logger.error(f"Error storing YouTube subscriber count snapshot: {e}")
+
+    @store_youtube_subscriber_count.before_loop
+    async def before_store_youtube_subscriber_count(self):
+        """Wait for the bot to be ready before storing subscriber count snapshots."""
         await self.bot.wait_until_ready()
     
     @tasks.loop(minutes=30)  # Check every 30 minutes for historical reactions

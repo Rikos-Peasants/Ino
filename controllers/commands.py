@@ -5,9 +5,11 @@ from datetime import datetime, timedelta
 import logging
 import json
 import asyncio
+import aiohttp
 from typing import Optional, Union
 from models.role_manager import RoleManager
 from models.mod_offline_manager import ModOfflineManager
+from models.inorep_status import INOREP_TIERS
 from views.embeds import EmbedViews, PurgeConfirmationView, QuestView, QuestSelectionView
 from config import Config
 from controllers.security import CommandSecurity, SecurityLevel, public_command, moderator_command, admin_command, owner_command
@@ -41,6 +43,193 @@ class CommandsController:
     def get_random_announcer(self):
         """Safely get random announcer"""
         return getattr(self.bot, 'random_announcer', None)
+
+    def _get_youtube_sub_role_tier(self, sub_count: int) -> Optional[dict]:
+        for tier in Config.YOUTUBE_SUB_ROLE_TIERS:
+            max_subs = tier.get("max_subs")
+            if sub_count >= tier["min_subs"] and (max_subs is None or sub_count <= max_subs):
+                return tier
+        return None
+
+    def _iter_config_youtube_milestones(self):
+        for milestone in Config.YOUTUBE_SUB_MILESTONE_DATES:
+            reached_at_raw = milestone.get("reached_at")
+            if not reached_at_raw:
+                continue
+            yield {
+                "subs": int(milestone["subs"]),
+                "captured_at": datetime.fromisoformat(reached_at_raw.replace("Z", "+00:00")),
+                "source": "configured milestone",
+            }
+
+    def _get_youtube_sub_count_samples(self) -> list[dict]:
+        samples = list(self._iter_config_youtube_milestones())
+        collection = self._get_youtube_sub_count_collection()
+        if collection is not None:
+            for snapshot in collection.find({"channel_id": Config.RAYEN_YOUTUBE_CHANNEL_ID}):
+                captured_at = snapshot.get("captured_at")
+                if not captured_at:
+                    continue
+                if captured_at.tzinfo is None:
+                    captured_at = captured_at.replace(tzinfo=discord.utils.utcnow().tzinfo)
+                samples.append({
+                    "subs": int(snapshot["subscriber_count"]),
+                    "captured_at": captured_at,
+                    "source": "stored live snapshot",
+                })
+        return sorted(samples, key=lambda item: item["captured_at"])
+
+    def _estimate_sub_count_for_date(self, joined_at: datetime) -> tuple[Optional[int], Optional[str]]:
+        samples = self._get_youtube_sub_count_samples()
+        joined_at_aware = joined_at if joined_at.tzinfo else joined_at.replace(tzinfo=discord.utils.utcnow().tzinfo)
+        if samples and joined_at_aware > samples[-1]["captured_at"]:
+            return None, None
+
+        estimated = None
+        source = None
+        for sample in samples:
+            if sample["captured_at"] <= joined_at_aware:
+                estimated = sample["subs"]
+                source = sample["source"]
+            else:
+                break
+        return estimated, source
+
+    def _can_use_live_sub_count_for_date(self, joined_at: datetime) -> bool:
+        samples = self._get_youtube_sub_count_samples()
+        if not samples:
+            return True
+
+        joined_at_aware = joined_at if joined_at.tzinfo else joined_at.replace(tzinfo=discord.utils.utcnow().tzinfo)
+        return joined_at_aware >= samples[-1]["captured_at"]
+
+    def _get_youtube_verification_collection(self):
+        leaderboard_manager = self.get_leaderboard_manager()
+        if not leaderboard_manager or getattr(leaderboard_manager, 'db', None) is None:
+            return None
+        return leaderboard_manager.db['youtube_sub_verifications']
+
+    def _get_youtube_sub_count_collection(self):
+        leaderboard_manager = self.get_leaderboard_manager()
+        if not leaderboard_manager or getattr(leaderboard_manager, 'db', None) is None:
+            return None
+        return leaderboard_manager.db['youtube_sub_count_snapshots']
+
+    def _store_youtube_sub_count_snapshot(self, sub_count: int) -> None:
+        collection = self._get_youtube_sub_count_collection()
+        if collection is None:
+            return
+
+        collection.create_index([("channel_id", 1), ("captured_at", -1)])
+        collection.insert_one({
+            "channel_id": Config.RAYEN_YOUTUBE_CHANNEL_ID,
+            "subscriber_count": sub_count,
+            "captured_at": discord.utils.utcnow(),
+            "source": "fixytcount live lookup",
+        })
+
+    async def _youtube_api_get(self, endpoint: str, params: dict) -> dict:
+        if not Config.YOUTUBE_API_KEY:
+            raise RuntimeError("YouTube API key is not configured.")
+
+        params = {**params, "key": Config.YOUTUBE_API_KEY}
+        url = f"https://www.googleapis.com/youtube/v3/{endpoint}"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params) as response:
+                data = await response.json(content_type=None)
+                if response.status != 200:
+                    error = data.get("error", {}).get("message", f"HTTP {response.status}")
+                    raise RuntimeError(error)
+                return data
+
+    async def _get_public_rayen_subscription(self, user_channel_id: str) -> Optional[dict]:
+        data = await self._youtube_api_get(
+            "subscriptions",
+            {
+                "part": "snippet",
+                "channelId": user_channel_id,
+                "forChannelId": Config.RAYEN_YOUTUBE_CHANNEL_ID,
+                "maxResults": 1,
+            }
+        )
+        items = data.get("items", [])
+        return items[0] if items else None
+
+    async def _get_current_rayen_subscriber_count(self) -> Optional[int]:
+        youtube_monitor = getattr(self.bot, 'youtube_monitor', None)
+        if youtube_monitor:
+            return await youtube_monitor.get_current_subscriber_count(Config.RAYEN_YOUTUBE_CHANNEL_ID)
+
+        data = await self._youtube_api_get(
+            "channels",
+            {
+                "part": "statistics",
+                "id": Config.RAYEN_YOUTUBE_CHANNEL_ID,
+                "maxResults": 1,
+            }
+        )
+        items = data.get("items", [])
+        if not items:
+            return None
+        return int(items[0].get("statistics", {}).get("subscriberCount", 0))
+
+    async def _store_youtube_sub_verification(
+        self,
+        member: discord.Member,
+        user_channel_id: str,
+        subscribed_at: datetime,
+        estimated_sub_count: int,
+        tier: dict,
+        sub_count_source: str
+    ) -> None:
+        collection = self._get_youtube_verification_collection()
+        if collection is None:
+            return
+
+        collection.update_one(
+            {
+                "guild_id": str(member.guild.id),
+                "user_id": str(member.id),
+            },
+            {
+                "$set": {
+                    "guild_id": str(member.guild.id),
+                    "user_id": str(member.id),
+                    "user_name": member.display_name,
+                    "yt_channel_id": user_channel_id,
+                    "subscribed_at": subscribed_at.isoformat(),
+                    "estimated_sub_count": estimated_sub_count,
+                    "assigned_sub_count": estimated_sub_count,
+                    "sub_count_source": sub_count_source,
+                    "role_id": int(tier["role_id"]),
+                    "tier_label": tier["label"],
+                    "updated_at": discord.utils.utcnow(),
+                }
+            },
+            upsert=True
+        )
+
+    async def _assign_youtube_sub_role(self, member: discord.Member, tier: dict) -> tuple[bool, str]:
+        target_role = member.guild.get_role(int(tier["role_id"]))
+        if not target_role:
+            return False, f"Role `{tier['role_id']}` was not found in this server."
+
+        managed_role_ids = {int(item["role_id"]) for item in Config.YOUTUBE_SUB_ROLE_TIERS}
+        roles_to_remove = [
+            role for role in member.roles
+            if role.id in managed_role_ids and role.id != target_role.id
+        ]
+
+        try:
+            if roles_to_remove:
+                await member.remove_roles(*roles_to_remove, reason="Updating YouTube subscriber-era role")
+            if target_role not in member.roles:
+                await member.add_roles(target_role, reason="Verified YouTube subscriber-era role")
+            return True, target_role.mention
+        except discord.Forbidden:
+            return False, "I do not have permission to manage that role. My bot role may need to be moved higher."
+        except discord.HTTPException as e:
+            return False, f"Discord rejected the role update: {e}"
     
     async def _delete_after(self, message: discord.Message, delay: int):
         """Helper to delete a message after a delay (for followup messages)"""
@@ -78,6 +267,210 @@ class CommandsController:
             except Exception as e:
                 logger.error(f"Error in patreon command: {e}")
                 await ctx.send("❌ An error occurred while fetching Patreon information.")
+
+        @self.bot.hybrid_command(
+            name="fixytcount",
+            aliases=["fixYTCount"],
+            description="Verify your Rayen YouTube sub era role using your YouTube channel ID"
+        )
+        @public_command
+        async def fix_yt_count_command(ctx, ytid: str):
+            """Assign a YouTube subscriber-era role from a public YouTube subscription."""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer(ephemeral=True)
+
+                if not ctx.guild or not isinstance(ctx.author, discord.Member):
+                    await ctx.send("❌ This command can only be used in the server.", ephemeral=True)
+                    return
+
+                user_channel_id = ytid.strip()
+                if not user_channel_id.startswith("UC"):
+                    await ctx.send(
+                        "❌ That does not look like a YouTube channel ID. "
+                        "If you cannot find it, make your subscriptions public and get the ID from "
+                        "https://www.tunepocket.com/youtube-channel-id-finder/#channle-id-finder-form",
+                        ephemeral=True
+                    )
+                    return
+
+                subscription = await self._get_public_rayen_subscription(user_channel_id)
+                if not subscription:
+                    await ctx.send(
+                        "❌ I could not verify that channel as publicly subscribed to Rayen.\n\n"
+                        "Please make your YouTube subscriptions public, then get your channel ID from "
+                        "https://www.tunepocket.com/youtube-channel-id-finder/#channle-id-finder-form "
+                        "and run `/fixytcount YTID` again.",
+                        ephemeral=True
+                    )
+                    return
+
+                subscribed_at_raw = subscription.get("snippet", {}).get("publishedAt")
+                subscribed_at = datetime.fromisoformat(subscribed_at_raw.replace("Z", "+00:00"))
+                historical_sub_count, sub_count_source = self._estimate_sub_count_for_date(subscribed_at)
+
+                if historical_sub_count is None:
+                    if not self._can_use_live_sub_count_for_date(subscribed_at):
+                        await ctx.send(
+                            "❌ I found your public subscription date, but it is older than our earliest known subscriber-count sample.\n\n"
+                            "A server admin needs to fill earlier `Config.YOUTUBE_SUB_MILESTONE_DATES` entries before I can assign the accurate role.",
+                            ephemeral=True
+                        )
+                        return
+
+                    current_sub_count = await self._get_current_rayen_subscriber_count()
+                    if current_sub_count is None:
+                        await ctx.send(
+                            "❌ I found your public subscription date, but I could not fetch Rayen's current subscriber count.",
+                            ephemeral=True
+                        )
+                        return
+                    historical_sub_count = current_sub_count
+                    sub_count_source = "live current count"
+                    self._store_youtube_sub_count_snapshot(current_sub_count)
+
+                tier = self._get_youtube_sub_role_tier(historical_sub_count)
+                if not tier:
+                    await ctx.send("❌ I could not match that subscriber count to a role tier.", ephemeral=True)
+                    return
+
+                success, role_result = await self._assign_youtube_sub_role(ctx.author, tier)
+                if not success:
+                    await ctx.send(f"❌ {role_result}", ephemeral=True)
+                    return
+
+                await self._store_youtube_sub_verification(
+                    ctx.author,
+                    user_channel_id,
+                    subscribed_at,
+                    historical_sub_count,
+                    tier,
+                    sub_count_source or "unknown"
+                )
+
+                embed = discord.Embed(
+                    title="✅ YouTube Subscriber Role Updated",
+                    description=f"Assigned {role_result} for **{tier['label']}**.",
+                    color=discord.Color.green(),
+                    timestamp=discord.utils.utcnow()
+                )
+                embed.add_field(name="Subscribed Since", value=subscribed_at.strftime("%Y-%m-%d"), inline=True)
+                embed.add_field(name="Count Used", value=f"{historical_sub_count:,} subs", inline=True)
+                embed.add_field(name="YouTube Channel ID", value=f"`{user_channel_id}`", inline=False)
+                embed.add_field(
+                    name="How this was calculated",
+                    value=f"Your public YouTube subscription date was matched using **{sub_count_source}**.",
+                    inline=False
+                )
+                await ctx.send(embed=embed, ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error in fixytcount command: {e}")
+                await ctx.send(
+                    "❌ I could not verify that YouTube ID. Make sure your subscriptions are public, then get the ID from "
+                    "https://www.tunepocket.com/youtube-channel-id-finder/#channle-id-finder-form",
+                    ephemeral=True
+                )
+
+        @self.bot.hybrid_command(
+            name="backlogytcount",
+            description="[ADMIN] Re-apply YouTube subscriber-era roles for all verified users"
+        )
+        @public_command
+        async def backlog_yt_count_command(ctx):
+            """Backfill YouTube subscriber-era roles for stored verified users."""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer(ephemeral=True)
+
+                if not ctx.guild:
+                    await ctx.send("❌ This command can only be used in the server.", ephemeral=True)
+                    return
+
+                if not isinstance(ctx.author, discord.Member) or not ctx.author.guild_permissions.administrator:
+                    await ctx.send("❌ Only server administrators can run this command.", ephemeral=True)
+                    return
+
+                collection = self._get_youtube_verification_collection()
+                if collection is None:
+                    await ctx.send("❌ MongoDB is not available for YouTube verification records.", ephemeral=True)
+                    return
+
+                records = list(collection.find({"guild_id": str(ctx.guild.id)}))
+                if not records:
+                    await ctx.send(
+                        "No verified YouTube subscriber records found yet. Users need to run `/fixytcount YTID` first.",
+                        ephemeral=True
+                    )
+                    return
+
+                updated = 0
+                skipped = 0
+                failed = 0
+
+                for record in records:
+                    member = ctx.guild.get_member(int(record["user_id"]))
+                    if not member:
+                        skipped += 1
+                        continue
+
+                    subscribed_at_raw = record.get("subscribed_at")
+                    if not subscribed_at_raw:
+                        skipped += 1
+                        continue
+
+                    subscribed_at = datetime.fromisoformat(subscribed_at_raw.replace("Z", "+00:00"))
+                    historical_sub_count, sub_count_source = self._estimate_sub_count_for_date(subscribed_at)
+                    if historical_sub_count is None:
+                        if not self._can_use_live_sub_count_for_date(subscribed_at):
+                            failed += 1
+                            continue
+
+                        current_sub_count = await self._get_current_rayen_subscriber_count()
+                        if current_sub_count is None:
+                            failed += 1
+                            continue
+                        historical_sub_count = current_sub_count
+                        sub_count_source = "live current count"
+                        self._store_youtube_sub_count_snapshot(current_sub_count)
+
+                    tier = self._get_youtube_sub_role_tier(historical_sub_count)
+                    if not tier:
+                        failed += 1
+                        continue
+
+                    success, _ = await self._assign_youtube_sub_role(member, tier)
+                    if success:
+                        updated += 1
+                        await self._store_youtube_sub_verification(
+                            member,
+                            record.get("yt_channel_id", ""),
+                            subscribed_at,
+                            historical_sub_count,
+                            tier,
+                            sub_count_source or "unknown"
+                        )
+                    else:
+                        failed += 1
+
+                embed = discord.Embed(
+                    title="✅ YouTube Subscriber Role Backlog Complete",
+                    color=discord.Color.green(),
+                    timestamp=discord.utils.utcnow()
+                )
+                embed.add_field(name="Updated", value=str(updated), inline=True)
+                embed.add_field(name="Skipped", value=str(skipped), inline=True)
+                embed.add_field(name="Failed", value=str(failed), inline=True)
+                embed.add_field(
+                    name="Note",
+                    value="Only users who previously verified with `/fixytcount YTID` can be backlogged.",
+                    inline=False
+                )
+                await ctx.send(embed=embed, ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error in backlogytcount command: {e}")
+                await ctx.send(f"❌ Failed to backlog YouTube roles: {str(e)}", ephemeral=True)
         
         # Define the hybrid command
         @self.bot.hybrid_command(name="uptime", description="Check how long the bot has been running")
@@ -4908,13 +5301,14 @@ class CommandsController:
             """InoRep command group"""
             if ctx.invoked_subcommand is None:
                 await ctx.send("💭 **InoRep System** - Track who's been rude to Ino (just for fun!)\n\n"
-                              "**Commands:**\n"
-                              "• `/inorep check [@user]` - Check InoRep score\n"
-                              "• `/inorep warn @user [reason]` - Warn for rudeness (-1 rep)\n"
-                              "• `/inorep leaderboard [worst:True]` - View leaderboard\n"
-                              "• `/inorep add @user amount reason` - [MODS] Add rep\n"
-                              "• `/inorep remove @user amount reason` - [MODS] Remove rep", 
-                              ephemeral=True)
+                               "**Commands:**\n"
+                               "• `/inorep check [@user]` - Check InoRep score\n"
+                               "• `/inorep statuses` - List all InoRep statuses\n"
+                               "• `/inorep warn @user [amount] [reason]` - [STAFF] Warn and remove InoRep\n"
+                               "• `/inorep leaderboard [worst:True]` - View leaderboard\n"
+                               "• `/inorep add @user amount reason` - [MODS] Add rep\n"
+                               "• `/inorep remove @user amount reason` - [MODS] Remove rep",
+                               ephemeral=True)
         
         @inorep_group.command(name='check', description='Check your or someone else\'s InoRep')
         @public_command
@@ -4947,10 +5341,53 @@ class CommandsController:
             except Exception as e:
                 logger.error(f"Error checking InoRep: {e}")
                 await ctx.send(f"❌ Failed to check InoRep: {str(e)}", ephemeral=True)
-        
-        @inorep_group.command(name='warn', description='Warn someone for being rude to Ino (-1 rep)')
+
+        @inorep_group.command(name='statuses', description='List all available InoRep statuses')
         @public_command
-        async def inorep_warn_cmd(ctx, user: discord.Member, *, reason: str = "Being rude to Ino"):
+        async def inorep_statuses_cmd(ctx):
+            """List every InoRep status tier."""
+            try:
+                positive_tiers = [tier for tier in INOREP_TIERS if int(tier["threshold"]) > 0]
+                neutral_tiers = [tier for tier in INOREP_TIERS if int(tier["threshold"]) == 0]
+                negative_tiers = [tier for tier in INOREP_TIERS if int(tier["threshold"]) < 0]
+
+                def format_tiers(tiers):
+                    return "\n".join(
+                        f"**{int(tier['threshold']):+d}** - {tier['status']}"
+                        for tier in tiers
+                    )
+
+                embeds = []
+                for title, tiers, color in [
+                    ("🌟 Positive InoRep Statuses", positive_tiers, discord.Color.green()),
+                    ("😐 Neutral InoRep Status", neutral_tiers, discord.Color.light_grey()),
+                    ("💀 Negative InoRep Statuses", negative_tiers, discord.Color.dark_red()),
+                ]:
+                    lines = format_tiers(tiers)
+                    chunks = []
+                    while lines:
+                        chunks.append(lines[:3900])
+                        lines = lines[3900:]
+                    for index, chunk in enumerate(chunks or ["No statuses configured."]):
+                        embed = discord.Embed(
+                            title=title if index == 0 else f"{title} continued",
+                            description=chunk,
+                            color=color,
+                            timestamp=discord.utils.utcnow()
+                        )
+                        embed.set_footer(text="Use /inorep check to see your current status.")
+                        embeds.append(embed)
+
+                for embed in embeds:
+                    await ctx.send(embed=embed, ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error listing InoRep statuses: {e}")
+                await ctx.send(f"❌ Failed to list InoRep statuses: {str(e)}", ephemeral=True)
+
+        @inorep_group.command(name='warn', description='[STAFF] Warn someone and remove custom InoRep')
+        @moderator_command
+        async def inorep_warn_cmd(ctx, user: discord.Member, amount: int = 1, *, reason: str = "Being rude to Ino"):
             """Warn a user for being rude to Ino"""
             try:
                 leaderboard_manager = self.get_leaderboard_manager()
@@ -4967,6 +5404,14 @@ class CommandsController:
                 if user.bot:
                     await ctx.send("❌ You can't warn bots!", ephemeral=True)
                     return
+
+                if amount <= 0:
+                    await ctx.send("❌ Amount must be positive. InoRep warn always removes that amount.", ephemeral=True)
+                    return
+
+                if amount > 1000:
+                    await ctx.send("❌ Maximum warning penalty is 1000 InoRep at once. Even Ino likes paperwork in batches.", ephemeral=True)
+                    return
                 
                 # Check rank protection - can't warn higher-ranked staff
                 from controllers.security import CommandSecurity
@@ -4975,12 +5420,12 @@ class CommandsController:
                     await ctx.send(error_msg, ephemeral=True)
                     return
                 
-                # Add -1 rep
+                penalty = -amount
                 success = await leaderboard_manager.inorep_manager.add_rep(
                     user_id=str(user.id),
                     guild_id=str(ctx.guild.id),
                     user_name=user.display_name,
-                    amount=-1,
+                    amount=penalty,
                     reason=reason,
                     moderator_id=str(ctx.author.id),
                     moderator_name=ctx.author.display_name
@@ -4997,7 +5442,7 @@ class CommandsController:
                 )
                 
                 # Create embed
-                embed = EmbedViews.inorep_warned_embed(user, ctx.author, new_rep)
+                embed = EmbedViews.inorep_warned_embed(user, ctx.author, new_rep, penalty, reason)
                 await ctx.send(embed=embed)
                 
             except Exception as e:

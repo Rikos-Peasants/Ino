@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 import asyncio
 import logging
+from models.inorep_status import INOREP_TIERS, get_inorep_tier, get_next_inorep_threshold, get_previous_inorep_threshold
 
 logger = logging.getLogger(__name__)
 
@@ -1192,6 +1193,53 @@ class EmbedViews:
     @staticmethod
     def inorep_check_embed(user: discord.Member, rep: int) -> discord.Embed:
         """Create an embed for checking InoRep with expanded relationship tiers"""
+        tier = get_inorep_tier(rep, user.id)
+        color = int(tier["color"])
+        status = str(tier["status"])
+        relationship = str(tier["relationship"])
+        message = str(tier["message"])
+
+        embed = discord.Embed(
+            title=f"🎭 InoRep Score",
+            description=f"**{user.display_name}'s** reputation with Ino",
+            color=color,
+            timestamp=datetime.utcnow()
+        )
+
+        embed.add_field(name="📊 Current Rep", value=f"**{rep:+d}**", inline=True)
+        embed.add_field(name="🏷️ Status", value=status, inline=True)
+        embed.add_field(name="💕 Relationship", value=relationship, inline=True)
+        embed.add_field(name="💭 Message", value=message, inline=False)
+
+        if rep > 0:
+            previous_tier = get_previous_inorep_threshold(rep) or 0
+            next_tier = get_next_inorep_threshold(rep)
+            if next_tier is not None:
+                progress = ((rep - previous_tier) / (next_tier - previous_tier)) * 100
+                bar_length = 10
+                filled = max(0, min(bar_length, int((progress / 100) * bar_length)))
+                bar = "🟩" * filled + "⬜" * (bar_length - filled)
+                embed.add_field(
+                    name=f"📈 Progress to Next Tier ({next_tier:+d})",
+                    value=f"{bar} {progress:.1f}%",
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="🏁 Peak Tier",
+                    value="You've reached the top listed InoRep status. Ino is pretending this is normal.",
+                    inline=False
+                )
+        elif rep < 0:
+            next_recovery_tier = get_next_inorep_threshold(rep)
+            recovery_text = "Post images, say nice things about Ino, and STOP chatting in image channels!"
+            if next_recovery_tier is not None:
+                recovery_text += f"\nNext recovery tier: **{next_recovery_tier:+d}**"
+            embed.add_field(name="⚠️ Recovery Tip", value=recovery_text, inline=False)
+
+        embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
+        embed.set_footer(text="InoRep System • Track your relationship with Ino!")
+        return embed
         
         # Expanded relationship tiers based on rep score (47 total tiers!)
         # Special Riko tier - exclusive to one user
@@ -1479,7 +1527,13 @@ class EmbedViews:
         return embed
     
     @staticmethod
-    def inorep_warned_embed(warned_user: discord.Member, warner: discord.Member, new_rep: int) -> discord.Embed:
+    def inorep_warned_embed(
+        warned_user: discord.Member,
+        warner: discord.Member,
+        new_rep: int,
+        amount: int = -1,
+        reason: str = "Being rude to Ino"
+    ) -> discord.Embed:
         """Create an embed for InoRep warning"""
         embed = discord.Embed(
             title="⚠️ InoRep Warning!",
@@ -1490,9 +1544,9 @@ class EmbedViews:
         
         embed.add_field(name="👤 Warned User", value=f"{warned_user.mention}", inline=True)
         embed.add_field(name="👮 Warned By", value=f"{warner.mention}", inline=True)
-        embed.add_field(name="📉 Rep Change", value="**-1**", inline=True)
+        embed.add_field(name="📉 Rep Change", value=f"**{amount:+d}**", inline=True)
         embed.add_field(name="📊 New Rep", value=f"**{new_rep:+d}**", inline=True)
-        embed.add_field(name="💬 Reason", value="Being rude to Ino", inline=False)
+        embed.add_field(name="💬 Reason", value=reason, inline=False)
         
         embed.set_thumbnail(url=warned_user.display_avatar.url if warned_user.display_avatar else None)
         embed.set_footer(text="Be nicer to Ino! (This is just for fun)")

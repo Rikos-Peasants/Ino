@@ -5,6 +5,7 @@ import logging
 from typing import Optional, Dict, Any, List
 import asyncio
 import random
+import re
 from config import Config
 try:
     from google import genai  # type: ignore
@@ -286,6 +287,9 @@ class RandomAnnouncer:
             video_description = video.get('description', '')
             video_author = video.get('author', '')
             channel_id = video.get('test_channel_id', '')
+            duration_seconds = self._get_duration_seconds(video)
+            is_short = self._is_short_video(video)
+            role_ping = self._role_ping_for_video_type(is_short)
 
             logger.info(f"📺 Video: {video_title[:50]}... by {video_author}")
 
@@ -337,8 +341,10 @@ Creator: {video_author}
 Description: {video_description[:300]}
 Link: {video_link}
 Channel Context: {self._get_channel_context(channel_id, video_author)}
+Duration: {duration_seconds}s
+Role to ping: {role_ping}
 
-Generate a short Ino announcement (10-20 words) that captures her {personality} personality while announcing this video. Remember to end with <@&1375737416325009552>"""),
+Generate a short Ino announcement (10-20 words) that captures her {personality} personality while announcing this video. Remember to end with the correct duration-based role ping."""),
                     ],
                 ),
             ]
@@ -359,6 +365,7 @@ Generate a short Ino announcement (10-20 words) that captures her {personality} 
 
             ai_response = extract_gemini_text(response)
             if ai_response:
+                ai_response = self._ensure_correct_role_ping(ai_response, is_short)
                 logger.info(f"✅ AI generated response: {ai_response}")
                 return ai_response
             else:
@@ -399,10 +406,9 @@ Generate a short Ino announcement (10-20 words) that captures her {personality} 
         video_author = video.get('author', 'Unknown')
         channel_id = video.get('test_channel_id', '')
         
-        # Check if video is a YouTube Short (≤60 seconds)
-        duration_seconds = video.get('duration_seconds', 0)
-        is_short = duration_seconds > 0 and duration_seconds <= 60
-        role_ping = f"<@&{Config.SHORTS_ROLE_ID}>" if is_short else f"<@&{Config.YOUTUBE_ROLE_ID}>"
+        # Videos up to 1m30s use the short-video ping.
+        is_short = self._is_short_video(video)
+        role_ping = self._role_ping_for_video_type(is_short)
         
         # Enhanced personality-specific responses matching your style
         if personality == 'standard':
@@ -438,6 +444,27 @@ Generate a short Ino announcement (10-20 words) that captures her {personality} 
         else:
             # Default fallback
             return f"*sighs* {video_author} uploaded \"{video_title}\". Here we go, Riko simps. {role_ping}"
+
+    def _get_duration_seconds(self, video: Dict[str, Any]) -> int:
+        duration = video.get('duration_seconds', video.get('duration', 0))
+        try:
+            return int(duration or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _is_short_video(self, video: Dict[str, Any]) -> bool:
+        duration_seconds = self._get_duration_seconds(video)
+        return 0 < duration_seconds <= Config.SHORT_VIDEO_MAX_SECONDS
+
+    def _role_ping_for_video_type(self, is_short: bool) -> str:
+        role_id = Config.SHORTS_ROLE_ID if is_short else Config.YOUTUBE_ROLE_ID
+        return f"<@&{role_id}>"
+
+    def _ensure_correct_role_ping(self, announcement: str, is_short: bool) -> str:
+        expected_ping = self._role_ping_for_video_type(is_short)
+        cleaned = re.sub(r"<@&\d+>", "", announcement or "").strip()
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return f"{cleaned} {expected_ping}".strip()
     
     def load_system_prompt(self) -> str:
         """Load the FULL system prompt from system-prompt.txt"""
@@ -463,7 +490,7 @@ Generate a short Ino announcement (10-20 words) that captures her {personality} 
         """Get fallback system prompt if file is not available"""
         return """You are Ino, a shrine spirit who has been watching over the Fushimi Inari shrine for centuries. You're responsible, level-headed, and protective - but you're also not above a gentle tease or an exasperated sigh when dealing with the antics of others. Your dear friend Riko, a mischievous fox spirit, recently launched herself into the digital world through a smartphone to become an internet personality. Now she exists as a digital spirit, and you've taken on the role of announcing videos from the physical world on her behalf - since she can no longer interact with the physical realm directly.
 
-When announcing videos, you address the server members as "Riko simps" with fond exasperation. Your announcements should be short and sweet (10-20 words max), warm with edge, and always end with <@&1375737416325009552>."""
+When announcing videos, you address the server members as "Riko simps" with fond exasperation. Your announcements should be short and sweet (10-20 words max), warm with edge, and always end with the correct duration-based role ping."""
     
     def _get_condensed_system_prompt(self) -> str:
         """Get condensed system prompt optimized for AI token efficiency"""
@@ -473,8 +500,8 @@ PERSONALITY: Caring but exasperated, gently teasing, protective, composed author
 SPEAKING STYLE: Start with expressions like "*sighs*", "Well, well...", "Oh my...", "Naturally..."
 CRITICAL: Riko is DIGITAL - she cannot make physical videos! Physical videos are made by HUMANS.
 FORMAT: Keep announcements 10-20 words max, always end with appropriate role ping:
-- For YouTube Shorts (≤60 seconds): <@&1392619703603822773>
-- For regular videos (>60 seconds): <@&1375737416325009552>
+- For videos up to 1m30s: <@&1392619703603822773>
+- For regular videos over 1m30s: <@&1375737416325009552>
 
 EXAMPLES:
 "*sighs* [Creator] uploaded [title]. Here we go again, Riko simps. <@&1375737416325009552>"
