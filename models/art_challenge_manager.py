@@ -11,8 +11,12 @@ from pymongo import MongoClient, DESCENDING
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from pymongo.collection import Collection
 from pymongo.database import Database
-from google import genai
-from google.genai import types
+try:
+    from google import genai
+    from google.genai import types
+except Exception:
+    genai = None
+    types = None
 
 logger = logging.getLogger(__name__)
 
