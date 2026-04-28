@@ -107,7 +107,23 @@ class CommandsController:
         leaderboard_manager = self.get_leaderboard_manager()
         if not leaderboard_manager or getattr(leaderboard_manager, 'db', None) is None:
             return None
-        return leaderboard_manager.db['youtube_sub_verifications']
+        collection = leaderboard_manager.db['youtube_sub_verifications']
+        collection.create_index([("guild_id", 1), ("user_id", 1)], unique=True)
+        collection.create_index(
+            [("guild_id", 1), ("yt_channel_id", 1)],
+            unique=True,
+            partialFilterExpression={"yt_channel_id": {"$exists": True, "$ne": ""}}
+        )
+        return collection
+
+    def _get_youtube_id_claim(self, guild_id: int, user_channel_id: str) -> Optional[dict]:
+        collection = self._get_youtube_verification_collection()
+        if collection is None:
+            return None
+        return collection.find_one({
+            "guild_id": str(guild_id),
+            "yt_channel_id": user_channel_id,
+        })
 
     def _get_youtube_sub_count_collection(self):
         leaderboard_manager = self.get_leaderboard_manager()
@@ -371,6 +387,15 @@ class CommandsController:
                         "❌ That does not look like a YouTube channel ID. "
                         "If you cannot find it, make your subscriptions public and get the ID from "
                         "https://www.tunepocket.com/youtube-channel-id-finder/#channle-id-finder-form",
+                        ephemeral=True
+                    )
+                    return
+
+                existing_claim = self._get_youtube_id_claim(ctx.guild.id, user_channel_id)
+                if existing_claim and existing_claim.get("user_id") != str(ctx.author.id):
+                    await ctx.send(
+                        "❌ That YouTube channel ID is already linked to another Discord user. "
+                        "If this is wrong, ask a server admin to review the stored YouTube verification record.",
                         ephemeral=True
                     )
                     return
