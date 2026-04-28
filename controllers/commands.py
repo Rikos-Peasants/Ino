@@ -352,7 +352,6 @@ class CommandsController:
 
         @self.bot.hybrid_command(
             name="fixytcount",
-            aliases=["fixYTCount"],
             description="Verify your Rayen YouTube sub era role using your YouTube channel ID"
         )
         @public_command
