@@ -55,6 +55,21 @@ class EventsController:
         if commands_controller:
             return getattr(commands_controller, 'mod_offline_manager', None)
         return None
+
+    async def _apply_youtube_sub_role_on_join(self, member: discord.Member) -> None:
+        """Apply a YouTube subscriber-era role when a member joins."""
+        try:
+            commands_controller = getattr(self.bot, 'commands_controller', None)
+            if not commands_controller or not hasattr(commands_controller, 'apply_stored_youtube_sub_role'):
+                return
+
+            success, result = await commands_controller.apply_stored_youtube_sub_role(member)
+            if success:
+                logger.info(f"Applied YouTube subscriber role to {member.display_name}: {result}")
+            else:
+                logger.debug(f"No YouTube subscriber role applied to {member.display_name}: {result}")
+        except Exception as e:
+            logger.error(f"Error applying stored YouTube subscriber role to {member.display_name}: {e}")
     
     def register_events(self):
         """Register all Discord events"""
@@ -149,6 +164,7 @@ class EventsController:
                     logger.error(f"NSFWBAN role not found when trying to reapply to {member.display_name}")
             
             # Send welcome message if enabled
+            await self._apply_youtube_sub_role_on_join(member)
             await self._send_welcome_message(member)
             await self.user_safety_monitor.handle_member_join(member)
                     

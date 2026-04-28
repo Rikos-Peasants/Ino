@@ -180,7 +180,9 @@ class CommandsController:
         subscribed_at: datetime,
         estimated_sub_count: int,
         tier: dict,
-        sub_count_source: str
+        sub_count_source: str,
+        assignment_basis: str = "youtube_subscription_date",
+        joined_at: Optional[datetime] = None
     ) -> None:
         collection = self._get_youtube_verification_collection()
         if collection is None:
@@ -198,6 +200,8 @@ class CommandsController:
                     "user_name": member.display_name,
                     "yt_channel_id": user_channel_id,
                     "subscribed_at": subscribed_at.isoformat(),
+                    "discord_joined_at": joined_at.isoformat() if joined_at else None,
+                    "assignment_basis": assignment_basis,
                     "estimated_sub_count": estimated_sub_count,
                     "assigned_sub_count": estimated_sub_count,
                     "sub_count_source": sub_count_source,
@@ -208,6 +212,25 @@ class CommandsController:
             },
             upsert=True
         )
+
+    async def _resolve_youtube_sub_role_for_date(self, target_date: datetime) -> tuple[Optional[int], Optional[str], Optional[dict], str]:
+        sub_count, sub_count_source = self._estimate_sub_count_for_date(target_date)
+        if sub_count is None:
+            if not self._can_use_live_sub_count_for_date(target_date):
+                return None, None, None, "date is older than known subscriber-count samples"
+
+            current_sub_count = await self._get_current_rayen_subscriber_count()
+            if current_sub_count is None:
+                return None, None, None, "could not fetch live subscriber count"
+            sub_count = current_sub_count
+            sub_count_source = "live current count"
+            self._store_youtube_sub_count_snapshot(current_sub_count)
+
+        tier = self._get_youtube_sub_role_tier(sub_count)
+        if not tier:
+            return None, sub_count_source, None, "subscriber count did not match a configured tier"
+
+        return sub_count, sub_count_source, tier, ""
 
     async def _assign_youtube_sub_role(self, member: discord.Member, tier: dict) -> tuple[bool, str]:
         target_role = member.guild.get_role(int(tier["role_id"]))
@@ -230,6 +253,65 @@ class CommandsController:
             return False, "I do not have permission to manage that role. My bot role may need to be moved higher."
         except discord.HTTPException as e:
             return False, f"Discord rejected the role update: {e}"
+
+    async def apply_stored_youtube_sub_role(self, member: discord.Member) -> tuple[bool, str]:
+        """Apply a stored YouTube subscriber-era role for a joining member."""
+        collection = self._get_youtube_verification_collection()
+        if collection is None:
+            return False, "youtube verification storage unavailable"
+
+        record = collection.find_one({
+            "guild_id": str(member.guild.id),
+            "user_id": str(member.id),
+        })
+        if not record:
+            return await self.apply_youtube_sub_role_from_join_date(member)
+
+        subscribed_at_raw = record.get("subscribed_at")
+        if not subscribed_at_raw:
+            return False, "stored verification has no subscription date"
+
+        subscribed_at = datetime.fromisoformat(subscribed_at_raw.replace("Z", "+00:00"))
+        sub_count, sub_count_source, tier, error = await self._resolve_youtube_sub_role_for_date(subscribed_at)
+        if not tier:
+            return False, error
+
+        success, result = await self._assign_youtube_sub_role(member, tier)
+        if success:
+            await self._store_youtube_sub_verification(
+                member,
+                record.get("yt_channel_id", ""),
+                subscribed_at,
+                sub_count,
+                tier,
+                sub_count_source or "unknown",
+                "youtube_subscription_date",
+                member.joined_at
+            )
+        return success, result
+
+    async def apply_youtube_sub_role_from_join_date(self, member: discord.Member) -> tuple[bool, str]:
+        """Apply a subscriber-era role from the Discord server join date."""
+        if not member.joined_at:
+            return False, "member has no Discord join date"
+
+        sub_count, sub_count_source, tier, error = await self._resolve_youtube_sub_role_for_date(member.joined_at)
+        if not tier:
+            return False, error
+
+        success, result = await self._assign_youtube_sub_role(member, tier)
+        if success:
+            await self._store_youtube_sub_verification(
+                member,
+                "",
+                member.joined_at,
+                sub_count,
+                tier,
+                sub_count_source or "unknown",
+                "discord_join_date",
+                member.joined_at
+            )
+        return success, result
     
     async def _delete_after(self, message: discord.Message, delay: int):
         """Helper to delete a message after a delay (for followup messages)"""
@@ -307,31 +389,9 @@ class CommandsController:
 
                 subscribed_at_raw = subscription.get("snippet", {}).get("publishedAt")
                 subscribed_at = datetime.fromisoformat(subscribed_at_raw.replace("Z", "+00:00"))
-                historical_sub_count, sub_count_source = self._estimate_sub_count_for_date(subscribed_at)
-
-                if historical_sub_count is None:
-                    if not self._can_use_live_sub_count_for_date(subscribed_at):
-                        await ctx.send(
-                            "❌ I found your public subscription date, but it is older than our earliest known subscriber-count sample.\n\n"
-                            "A server admin needs to fill earlier `Config.YOUTUBE_SUB_MILESTONE_DATES` entries before I can assign the accurate role.",
-                            ephemeral=True
-                        )
-                        return
-
-                    current_sub_count = await self._get_current_rayen_subscriber_count()
-                    if current_sub_count is None:
-                        await ctx.send(
-                            "❌ I found your public subscription date, but I could not fetch Rayen's current subscriber count.",
-                            ephemeral=True
-                        )
-                        return
-                    historical_sub_count = current_sub_count
-                    sub_count_source = "live current count"
-                    self._store_youtube_sub_count_snapshot(current_sub_count)
-
-                tier = self._get_youtube_sub_role_tier(historical_sub_count)
+                historical_sub_count, sub_count_source, tier, resolve_error = await self._resolve_youtube_sub_role_for_date(subscribed_at)
                 if not tier:
-                    await ctx.send("❌ I could not match that subscriber count to a role tier.", ephemeral=True)
+                    await ctx.send(f"❌ {resolve_error}", ephemeral=True)
                     return
 
                 success, role_result = await self._assign_youtube_sub_role(ctx.author, tier)
@@ -345,7 +405,9 @@ class CommandsController:
                     subscribed_at,
                     historical_sub_count,
                     tier,
-                    sub_count_source or "unknown"
+                    sub_count_source or "unknown",
+                    "youtube_subscription_date",
+                    ctx.author.joined_at
                 )
 
                 embed = discord.Embed(
@@ -420,21 +482,7 @@ class CommandsController:
                         continue
 
                     subscribed_at = datetime.fromisoformat(subscribed_at_raw.replace("Z", "+00:00"))
-                    historical_sub_count, sub_count_source = self._estimate_sub_count_for_date(subscribed_at)
-                    if historical_sub_count is None:
-                        if not self._can_use_live_sub_count_for_date(subscribed_at):
-                            failed += 1
-                            continue
-
-                        current_sub_count = await self._get_current_rayen_subscriber_count()
-                        if current_sub_count is None:
-                            failed += 1
-                            continue
-                        historical_sub_count = current_sub_count
-                        sub_count_source = "live current count"
-                        self._store_youtube_sub_count_snapshot(current_sub_count)
-
-                    tier = self._get_youtube_sub_role_tier(historical_sub_count)
+                    historical_sub_count, sub_count_source, tier, _ = await self._resolve_youtube_sub_role_for_date(subscribed_at)
                     if not tier:
                         failed += 1
                         continue
@@ -448,7 +496,9 @@ class CommandsController:
                             subscribed_at,
                             historical_sub_count,
                             tier,
-                            sub_count_source or "unknown"
+                            sub_count_source or "unknown",
+                            record.get("assignment_basis", "youtube_subscription_date"),
+                            member.joined_at
                         )
                     else:
                         failed += 1
