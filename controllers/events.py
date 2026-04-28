@@ -777,18 +777,20 @@ class EventsController:
                 )
             
             # Determine threshold based on InoRep
+            # If user's InoRep is positive, do not send chat-reminder messages at all
+            if user_inorep > 0:
+                return
+
             # Negative InoRep: stricter (trigger at 8 messages)
-            # Low InoRep (0-50): moderate (trigger at 12 messages)
-            # Normal InoRep (51-299): lenient (trigger at 18 messages)
-            # High InoRep (300+): immune - never get the warning
-            if user_inorep >= 300:
-                return  # High rep users are immune from image channel warnings
-            elif user_inorep < 0:
-                text_threshold = 8
-                history_limit = 12
-            elif user_inorep <= 50:
+            # Low InoRep (0-50) is no longer applicable because positives are returned above
+            # Normal InoRep (0 to -299): lenient (trigger at 18 messages)
+            # Very negative users get stricter handling
+            if user_inorep < 0 and user_inorep > -500:
                 text_threshold = 12
                 history_limit = 16
+            elif user_inorep <= -500:
+                text_threshold = 8
+                history_limit = 12
             else:
                 text_threshold = 18
                 history_limit = 22
@@ -865,7 +867,8 @@ class EventsController:
             timeout_applied = False
             timeout_duration = None
             
-            if user_inorep < 0:
+            # Only very negative users (<= -500) get random timeout chance events
+            if user_inorep <= -500:
                 # 1/100 chance for 10 minute timeout (check this first since it's rarer)
                 if random.randint(1, 100) == 1:
                     timeout_duration = timedelta(minutes=10)
