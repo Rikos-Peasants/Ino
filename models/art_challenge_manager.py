@@ -550,8 +550,8 @@ Rules:
 - Avoid child-only/loli characters
 - Keep tag query concise
 """
-                response = client.models.generate_content(
-                    model="gemini-flash-latest",
+            response = client.models.generate_content(
+                model="gemini-flash-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.4,
