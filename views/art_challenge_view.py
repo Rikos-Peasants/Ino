@@ -561,8 +561,13 @@ class SubmitArtworkModal(Modal):
             )
             return
         
-        # Defer the response since verification takes time
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        # Defer quickly, then create a real status message so Discord's thinking state is not the only feedback.
+        await interaction.response.defer(ephemeral=True)
+        status_message = await interaction.followup.send(
+            "🔄 **Verifying your submission...** This may take a moment.",
+            ephemeral=True,
+            wait=True
+        )
         
         try:
             result = await self.art_manager.submit_entry(
@@ -574,19 +579,14 @@ class SubmitArtworkModal(Modal):
             
             if result.get("success"):
                 embed = ArtChallengeEmbed.create_submission_result_embed(result, interaction.user)
+                await status_message.edit(content="✅ Verification complete.")
                 await interaction.followup.send(embed=embed, ephemeral=False)
             else:
-                await interaction.followup.send(
-                    f"❌ {result.get('error', 'Failed to submit entry')}",
-                    ephemeral=True
-                )
+                await status_message.edit(content=f"❌ {result.get('error', 'Failed to submit entry')}")
                 
         except Exception as e:
             logger.error(f"Error in artwork submission modal: {e}")
-            await interaction.followup.send(
-                "❌ An error occurred while submitting your artwork.",
-                ephemeral=True
-            )
+            await status_message.edit(content="❌ An error occurred while submitting your artwork.")
 
 
 class ArtChallengeView(View):
