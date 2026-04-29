@@ -85,6 +85,8 @@ class CommandsController:
     def _estimate_sub_count_for_date(self, joined_at: datetime) -> tuple[Optional[int], Optional[str]]:
         samples = self._get_youtube_sub_count_samples()
         joined_at_aware = joined_at if joined_at.tzinfo else joined_at.replace(tzinfo=discord.utils.utcnow().tzinfo)
+        if samples and joined_at_aware < samples[0]["captured_at"]:
+            return samples[0]["subs"], samples[0]["source"]
         if samples and joined_at_aware > samples[-1]["captured_at"]:
             return None, None
 
@@ -313,6 +315,7 @@ class CommandsController:
         if not tier:
             return False, error
 
+        assignment_basis = record.get("assignment_basis", "youtube_subscription_date")
         success, result = await self._assign_youtube_sub_role(member, tier)
         if success:
             await self._store_youtube_sub_verification(
@@ -322,7 +325,7 @@ class CommandsController:
                 sub_count,
                 tier,
                 sub_count_source or "unknown",
-                "youtube_subscription_date",
+                assignment_basis,
                 member.joined_at
             )
         return success, result
@@ -481,11 +484,14 @@ class CommandsController:
 
         @self.bot.hybrid_command(
             name="backlogytcount",
-            description="[ADMIN] Re-apply YouTube subscriber-era roles for all verified users"
+            description="[ADMIN] Re-apply YouTube subscriber-era roles"
         )
         @public_command
-        async def backlog_yt_count_command(ctx):
-            """Backfill YouTube subscriber-era roles for stored verified users."""
+        @app_commands.describe(
+            all_members="Apply roles to every non-bot server member using join date when no verification exists"
+        )
+        async def backlog_yt_count_command(ctx, all_members: bool = False):
+            """Backfill YouTube subscriber-era roles for verified users or all server members."""
             try:
                 if hasattr(ctx, 'defer'):
                     await ctx.defer(ephemeral=True)
@@ -498,69 +504,92 @@ class CommandsController:
                     await ctx.send("❌ Only server administrators can run this command.", ephemeral=True)
                     return
 
-                collection = self._get_youtube_verification_collection()
-                if collection is None:
-                    await ctx.send("❌ MongoDB is not available for YouTube verification records.", ephemeral=True)
-                    return
-
-                records = list(collection.find({"guild_id": str(ctx.guild.id)}))
-                if not records:
-                    await ctx.send(
-                        "No verified YouTube subscriber records found yet. Users need to run `/fixytcount YTID` first.",
-                        ephemeral=True
-                    )
-                    return
-
                 updated = 0
                 skipped = 0
                 failed = 0
 
-                for record in records:
-                    member = ctx.guild.get_member(int(record["user_id"]))
-                    if not member:
-                        skipped += 1
-                        continue
+                if all_members:
+                    try:
+                        members = [member async for member in ctx.guild.fetch_members(limit=None)]
+                    except (discord.Forbidden, discord.HTTPException) as e:
+                        logger.warning(f"Could not fetch all guild members for YouTube backlog; using cache: {e}")
+                        members = list(ctx.guild.members)
 
-                    subscribed_at_raw = record.get("subscribed_at")
-                    if not subscribed_at_raw:
-                        skipped += 1
-                        continue
+                    for member in members:
+                        if member.bot:
+                            skipped += 1
+                            continue
 
-                    subscribed_at = datetime.fromisoformat(subscribed_at_raw.replace("Z", "+00:00"))
-                    historical_sub_count, sub_count_source, tier, _ = await self._resolve_youtube_sub_role_for_date(subscribed_at)
-                    if not tier:
-                        failed += 1
-                        continue
+                        success, _ = await self.apply_stored_youtube_sub_role(member)
+                        if success:
+                            updated += 1
+                        else:
+                            failed += 1
+                else:
+                    collection = self._get_youtube_verification_collection()
+                    if collection is None:
+                        await ctx.send("❌ MongoDB is not available for YouTube verification records.", ephemeral=True)
+                        return
 
-                    success, _ = await self._assign_youtube_sub_role(member, tier)
-                    if success:
-                        updated += 1
-                        await self._store_youtube_sub_verification(
-                            member,
-                            record.get("yt_channel_id", ""),
-                            subscribed_at,
-                            historical_sub_count,
-                            tier,
-                            sub_count_source or "unknown",
-                            record.get("assignment_basis", "youtube_subscription_date"),
-                            member.joined_at
+                    records = list(collection.find({"guild_id": str(ctx.guild.id)}))
+                    if not records:
+                        await ctx.send(
+                            "No verified YouTube subscriber records found yet. Users need to run `/fixytcount YTID` first.",
+                            ephemeral=True
                         )
-                    else:
-                        failed += 1
+                        return
+
+                    for record in records:
+                        member = ctx.guild.get_member(int(record["user_id"]))
+                        if not member:
+                            skipped += 1
+                            continue
+
+                        subscribed_at_raw = record.get("subscribed_at")
+                        if not subscribed_at_raw:
+                            skipped += 1
+                            continue
+
+                        subscribed_at = datetime.fromisoformat(subscribed_at_raw.replace("Z", "+00:00"))
+                        historical_sub_count, sub_count_source, tier, _ = await self._resolve_youtube_sub_role_for_date(subscribed_at)
+                        if not tier:
+                            failed += 1
+                            continue
+
+                        success, _ = await self._assign_youtube_sub_role(member, tier)
+                        if success:
+                            updated += 1
+                            await self._store_youtube_sub_verification(
+                                member,
+                                record.get("yt_channel_id", ""),
+                                subscribed_at,
+                                historical_sub_count,
+                                tier,
+                                sub_count_source or "unknown",
+                                record.get("assignment_basis", "youtube_subscription_date"),
+                                member.joined_at
+                            )
+                        else:
+                            failed += 1
+
+                note = (
+                    "Processed every non-bot server member. Existing `/fixytcount YTID` records use the "
+                    "verified YouTube subscription date; everyone else uses their Discord server join date."
+                    if all_members else
+                    "Only users with stored YouTube subscriber records were backlogged. Use `all_members: true` "
+                    "to also assign roles from Discord server join dates."
+                )
 
                 embed = discord.Embed(
                     title="✅ YouTube Subscriber Role Backlog Complete",
                     color=discord.Color.green(),
                     timestamp=discord.utils.utcnow()
                 )
+                embed.add_field(name="Mode", value="All server members" if all_members else "Stored records", inline=False)
                 embed.add_field(name="Updated", value=str(updated), inline=True)
                 embed.add_field(name="Skipped", value=str(skipped), inline=True)
                 embed.add_field(name="Failed", value=str(failed), inline=True)
-                embed.add_field(
-                    name="Note",
-                    value="Only users who previously verified with `/fixytcount YTID` can be backlogged.",
-                    inline=False
-                )
+                embed.add_field(name="Note", value=note, inline=False)
                 await ctx.send(embed=embed, ephemeral=True)
 
             except Exception as e:
