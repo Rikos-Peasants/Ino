@@ -27,6 +27,7 @@ AI_MODERATION_TIMEOUT_DURATION = timedelta(minutes=5)
 INO_INSULT_ROAST_CHANCE = 5
 INO_INSULT_TIMEOUT_CHANCE = 100
 INO_INSULT_TIMEOUT_DURATION = timedelta(minutes=1)
+IMAGE_CHANNEL_REMINDER_IMAGE_URL = "https://i.ibb.co/B2W5WQ2Y/ef4f7402-aa4b-4440-9ae9-ef1415824688.png"
 
 # Ping spam detection constants
 PING_SPAM_SAME_USER_LIMIT = 3       # 3 pings to the same person
@@ -814,7 +815,20 @@ class EventsController:
             timeout_applied = False
             timeout_duration = None
 
-            if user_inorep <= -500:
+            if user_inorep <= -10000:
+                if random.randint(1, 1000) == 1:
+                    timeout_duration = timedelta(hours=1)
+                    timeout_applied = True
+                    logger.info(f"Rolling 1 hour timeout for {message.author.display_name} (InoRep: {user_inorep})")
+                elif random.randint(1, 10) == 1:
+                    timeout_duration = timedelta(minutes=10)
+                    timeout_applied = True
+                    logger.info(f"Rolling 10 min timeout for {message.author.display_name} (InoRep: {user_inorep})")
+                elif random.randint(1, 3) == 1:
+                    timeout_duration = timedelta(minutes=1)
+                    timeout_applied = True
+                    logger.info(f"Rolling 1 min timeout for {message.author.display_name} (InoRep: {user_inorep})")
+            elif user_inorep <= -1000:
                 if random.randint(1, 100) == 1:
                     timeout_duration = timedelta(minutes=10)
                     timeout_applied = True
@@ -823,7 +837,13 @@ class EventsController:
                     timeout_duration = timedelta(minutes=1)
                     timeout_applied = True
                     logger.info(f"Rolling 1 min timeout for {message.author.display_name} (InoRep: {user_inorep})")
-                
+            elif user_inorep <= -100:
+                if random.randint(1, 3) == 1:
+                    timeout_duration = timedelta(minutes=1)
+                    timeout_applied = True
+                    logger.info(f"Rolling 1 min timeout for {message.author.display_name} (InoRep: {user_inorep})")
+
+            if user_inorep <= -100:
                 if timeout_applied and timeout_duration:
                     try:
                         await message.author.timeout(
@@ -838,12 +858,58 @@ class EventsController:
                         logger.error(f"Error timing out user: {e}")
                         timeout_applied = False
 
+            if timeout_applied and timeout_duration:
+                timeout_mins = int(timeout_duration.total_seconds() / 60)
+                reminder_variations = [
+                    f"{message.author.mention}\n\n...That's enough.\nTimed out for {timeout_mins} minute{'s' if timeout_mins > 1 else ''}.\nNext time, use {chat_channels_text} for chatting.",
+                    f"{message.author.mention}\n\nConsider this a lesson.\n{timeout_mins} minute{'s' if timeout_mins > 1 else ''} of quiet time for ignoring the image channel rules.\nChat belongs in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nI warned you.\nTimed out for {timeout_mins} minute{'s' if timeout_mins > 1 else ''}.\nImages here. Conversation in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nThe shrine has chosen silence.\n{timeout_mins} minute{'s' if timeout_mins > 1 else ''} timeout.\nUse {chat_channels_text} when you return.",
+                    f"{message.author.mention}\n\nRule ignored. Patience expired.\nTimed out for {timeout_mins} minute{'s' if timeout_mins > 1 else ''}.\nMove chat to {chat_channels_text}.",
+                    f"{message.author.mention}\n\nYour image-channel monologue has been paused for {timeout_mins} minute{'s' if timeout_mins > 1 else ''}.\nResume in {chat_channels_text}, not here.",
+                ]
+            elif user_inorep < 0:
+                reminder_variations = [
+                    f"{message.author.mention}\n\n...You again?\nThis channel is for images only.\nMove the conversation to {chat_channels_text}.",
+                    f"{message.author.mention}\n\nI've noticed a pattern.\nImages here. Chat in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nYour reputation precedes you, and it brought paperwork.\nUse {chat_channels_text} for talking.",
+                    f"{message.author.mention}\n\n...Troublemaker.\nThis is an image channel.\nTake the chatter to {chat_channels_text}.",
+                    f"{message.author.mention}\n\nThis. Is. An. Image. Channel.\nWords go in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nI am being very patient for someone with logs.\nPlease move chat to {chat_channels_text}.",
+                    f"{message.author.mention}\n\nThe image channel is not your diary.\nUse {chat_channels_text}.",
+                    f"{message.author.mention}\n\nYou are testing a shrine maiden's patience.\nImages here, chat there: {chat_channels_text}.",
+                    f"{message.author.mention}\n\nYour text has wandered into the wrong channel.\nEscort it to {chat_channels_text}.",
+                    f"{message.author.mention}\n\nKeep this channel clean for images.\nChat belongs in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nI admire the confidence. I reject the location.\nMove to {chat_channels_text}.",
+                    f"{message.author.mention}\n\nImage channel rules are not decorative.\nUse {chat_channels_text}.",
+                ]
+            else:
+                reminder_variations = [
+                    f"{message.author.mention}\n\nThis channel is for images only.\nConversations belong in {chat_channels_text}.",
+                    f"{message.author.mention}\n\n...Wrong channel.\nImages here. Chat in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nA gentle reminder: this space is reserved for images.\nPlease move discussion to {chat_channels_text}.",
+                    f"{message.author.mention}\n\nAs shrine maintenance, I must keep this channel tidy.\nPlease use {chat_channels_text} for chatting.",
+                    f"{message.author.mention}\n\nThis isn't the place for idle chatter.\nYour words belong in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nImage channel detected. Text conversation detected.\nPlease resolve this in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nPlease keep this channel focused on images.\nChat can continue in {chat_channels_text}.",
+                    f"{message.author.mention}\n\nThe gallery is for pictures.\nThe conversation goes to {chat_channels_text}.",
+                    f"{message.author.mention}\n\nSmall correction: images here, conversation there: {chat_channels_text}.",
+                    f"{message.author.mention}\n\nPlease relocate the chat before the image channel gets cluttered.\nUse {chat_channels_text}.",
+                    f"{message.author.mention}\n\nThis channel has one job: images.\nFor chat, use {chat_channels_text}.",
+                    f"{message.author.mention}\n\nThank you for your cooperation in moving chat to {chat_channels_text}.",
+                ]
+
             reminder_embed = discord.Embed(
-                title="Image Channel",
-                description=f"{message.author.mention}, please keep chat in {chat_channels_text}.",
-                color=discord.Color.orange(),
+                description=random.choice(reminder_variations),
+                color=0x8B0000 if user_inorep < 0 else discord.Color.orange(),
                 timestamp=datetime.utcnow()
             )
+            reminder_embed.set_image(url=IMAGE_CHANNEL_REMINDER_IMAGE_URL)
+            footer_text = "Image Channel Reminder • This message will be deleted in 60 seconds"
+            if user_inorep < 0:
+                footer_text = f"Image Channel Reminder • InoRep: {user_inorep} • This message will be deleted in 60 seconds"
+            reminder_embed.set_footer(text=footer_text)
+
             if timeout_applied and timeout_duration:
                 timeout_mins = int(timeout_duration.total_seconds() / 60)
                 reminder_embed.add_field(
