@@ -34,6 +34,10 @@ PING_SPAM_SAME_USER_LIMIT = 3       # 3 pings to the same person
 PING_SPAM_MASS_USER_LIMIT = 7       # 7 unique user pings
 PING_SPAM_WINDOW = timedelta(minutes=2)  # within 2 minutes
 PING_SPAM_TIMEOUT_DURATION = timedelta(minutes=5)
+REPEATED_MESSAGE_SPAM_LIMIT = 3
+REPEATED_MESSAGE_SPAM_WINDOW = timedelta(seconds=10)
+REPEATED_MESSAGE_SPAM_TIMEOUT_DURATION = timedelta(minutes=5)
+REPEATED_MESSAGE_SPAM_INOREP_PENALTY = -1000
 
 DISCORD_INVITE_REGEX = re.compile(
     r"https?://(?:www\.)?(?:discord\.gg|discord(?:app)?\.com/invite)/[A-Za-z0-9-]+",
@@ -52,6 +56,9 @@ class EventsController:
         self._ping_history: Dict[int, List[tuple]] = {}
         # Track which authors have been timed out recently to avoid re-triggering
         self._ping_timeout_cooldown: Dict[int, datetime] = {}
+        # Repeated message spam tracking: {(author_id, channel_id, normalized_content): [timestamps, ...]}
+        self._repeated_message_history: Dict[tuple, List[datetime]] = {}
+        self._repeated_message_timeout_cooldown: Dict[int, datetime] = {}
         # Image-channel reminders are channel-wide: warn once, then every 40 ignored text messages.
         self._image_channel_text_since_reminder: Dict[int, int] = {}
     
@@ -483,6 +490,9 @@ class EventsController:
         if await self._handle_discord_invite_link(message):
             return
 
+        if await self._check_repeated_message_spam(message):
+            return
+
         await self.user_safety_monitor.handle_message(message)
         
         # Check for ping spam (repeated pings to same user / mass pings)
@@ -634,6 +644,93 @@ class EventsController:
             logger.info(f"Could not DM {message.author.display_name} about invite link removal (DMs disabled)")
         except Exception as e:
             logger.error(f"Error sending Discord invite warning DM: {e}")
+
+        return True
+
+    def _normalize_repeated_message_content(self, content: str) -> str:
+        """Normalize message text for repeated-spam detection."""
+        return re.sub(r"\s+", " ", (content or "").strip().lower())
+
+    async def _check_repeated_message_spam(self, message: discord.Message) -> bool:
+        """Timeout users who spam the same text in the same channel."""
+        if not message.guild or message.author.bot:
+            return False
+
+        content = self._normalize_repeated_message_content(message.content)
+        if not content or len(content) < 3:
+            return False
+
+        if content.startswith(getattr(Config, 'COMMAND_PREFIX', 'R!').lower()) or content.startswith('/'):
+            return False
+
+        now = datetime.utcnow()
+        cooldown_until = self._repeated_message_timeout_cooldown.get(message.author.id)
+        if cooldown_until and now < cooldown_until:
+            return False
+
+        key = (message.author.id, message.channel.id, content)
+        cutoff = now - REPEATED_MESSAGE_SPAM_WINDOW
+        recent_messages = [
+            timestamp for timestamp in self._repeated_message_history.get(key, [])
+            if timestamp > cutoff
+        ]
+        recent_messages.append(now)
+        self._repeated_message_history[key] = recent_messages
+
+        if len(recent_messages) < REPEATED_MESSAGE_SPAM_LIMIT:
+            return False
+
+        self._repeated_message_timeout_cooldown[message.author.id] = now + REPEATED_MESSAGE_SPAM_TIMEOUT_DURATION
+        keys_to_clear = [
+            history_key for history_key in self._repeated_message_history
+            if history_key[0] == message.author.id and history_key[1] == message.channel.id
+        ]
+        for history_key in keys_to_clear:
+            self._repeated_message_history.pop(history_key, None)
+
+        try:
+            await message.author.timeout(
+                REPEATED_MESSAGE_SPAM_TIMEOUT_DURATION,
+                reason=f"Repeated message spam in #{getattr(message.channel, 'name', message.channel.id)}"
+            )
+            logger.info(
+                f"Timed out {message.author.display_name} for repeated message spam "
+                f"({len(recent_messages)} repeats in {REPEATED_MESSAGE_SPAM_WINDOW})"
+            )
+        except discord.Forbidden:
+            logger.warning(f"Missing permission to timeout {message.author.display_name} for repeated message spam")
+            return False
+        except Exception as e:
+            logger.error(f"Error timing out {message.author.display_name} for repeated message spam: {e}")
+            return False
+
+        try:
+            if hasattr(self.bot, 'leaderboard_manager') and hasattr(self.bot.leaderboard_manager, 'inorep_manager'):
+                inorep_manager = self.bot.leaderboard_manager.inorep_manager
+                if inorep_manager:
+                    await inorep_manager.add_rep(
+                        user_id=str(message.author.id),
+                        guild_id=str(message.guild.id),
+                        user_name=message.author.display_name,
+                        amount=REPEATED_MESSAGE_SPAM_INOREP_PENALTY,
+                        reason="Repeated same-message spam",
+                        moderator_id="0",
+                        moderator_name="Ino's Spam Detection"
+                    )
+                    logger.info(
+                        f"Applied InoRep penalty ({REPEATED_MESSAGE_SPAM_INOREP_PENALTY}) "
+                        f"to {message.author.display_name} for repeated message spam"
+                    )
+        except Exception as e:
+            logger.error(f"Error applying InoRep penalty for repeated message spam: {e}")
+
+        try:
+            await message.channel.send(
+                f"{message.author.mention}, please calm down and take a 5 minute break.",
+                delete_after=30
+            )
+        except Exception as e:
+            logger.error(f"Error sending repeated message spam notification: {e}")
 
         return True
     
