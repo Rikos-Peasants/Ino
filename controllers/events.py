@@ -2486,9 +2486,50 @@ class EventsController:
                     )
                     return True
 
+            profanity_terms = "|".join([
+                "suck", "sucks", "sucked", "sucking", "ass", "shit", "shitty", "crap", "crappy",
+                "dogshit", "bullshit", "bitch", "hoe", "whore", "slut", "fuck(?:ing)?", "fuk",
+                "fk", "mf", "motherfucker", "piece\\s+of\\s+shit", "dumpster\\s+fire"
+            ])
+            harsh_terms = "|".join([
+                "trash", "garbage", "useless", "stupid", "dumb", "idiotic", "moronic", "worthless",
+                "pathetic", "loser", "disgusting", "gross", "nasty", "repulsive", "vile", "awful",
+                "terrible", "horrible", "dogwater", "braindead", "clown(?:ish)?"
+            ])
+            mild_negative_terms = "|".join([
+                "bad", "annoying", "irritating", "cringe", "cringey", "lame", "boring", "weak",
+                "mid", "overrated", "underwhelming", "disappointing", "embarrassing", "shameful",
+                "confusing", "complicated", "goofy", "goofy\\s+ahh", "cooked", "washed", "fraud",
+                "a\\s+joke", "a\\s+meme", "unfunny", "obnoxious", "insufferable", "pointless",
+                "worthless", "terrible", "awful"
+            ])
+            tech_negative_terms = "|".join([
+                "broken", "buggy", "glitchy", "laggy", "slow", "unusable", "useless",
+                "does(?:n'?t|\\s+not)\\s+work", "failed", "fails", "malfunctioning",
+                "error(?:ing)?", "crashing", "crashes", "offline"
+            ])
+            all_negative_terms = "|".join([
+                profanity_terms,
+                harsh_terms,
+                mild_negative_terms,
+                tech_negative_terms,
+            ])
+            intensifier = r"(?:so|really|very|super|kinda|kind\s+of|pretty|extremely|absolutely|literally|lowkey|highkey|mega|ultra|fucking|freaking|fricking|af|as\s+fuck)\s+"
+
             negative_regex_patterns = [
                 (r"\b(?:i|we)\s+(?:hate|dislike|despise)\s+ino\b", -50, "harsh"),
                 (r"\b(?:fuck|fuk|fk)\s+(?:you\s+)?ino\b", -50, "profanity"),
+                (rf"\bino\b.{0,35}\b(?:is|was|be|being|seems|sounds|looks|feels|acts)\s+(?:{intensifier})?(?:{profanity_terms})\b", -50, "profanity"),
+                (rf"\bino\b.{0,35}\b(?:is|was|be|being|seems|sounds|looks|feels|acts)\s+(?:{intensifier})?(?:{harsh_terms})\b", -50, "harsh"),
+                (rf"\bino\b.{0,35}\b(?:is|was|be|being|seems|sounds|looks|feels|acts)\s+(?:{intensifier})?(?:{mild_negative_terms})\b", -50, "mild"),
+                (rf"\bino\b.{0,35}\b(?:is|was|be|being|seems|sounds|looks|feels|acts)\s+(?:{intensifier})?(?:{tech_negative_terms})\b", -50, "tech"),
+                (rf"\bino\s*(?:=|:|-|->)\s*(?:{intensifier})?(?:{all_negative_terms})\b", -50, "mild"),
+                (rf"\b(?:{all_negative_terms})\s+ino\b", -50, "mild"),
+                (rf"\bino\b.{0,30}\b(?:can|should|needs\s+to|deserves\s+to)\s+(?:die|disappear|leave|go\s+away|shut\s+up|get\s+deleted|get\s+removed|get\s+banned|get\s+kicked|be\s+deleted|be\s+removed|be\s+banned|be\s+kicked)\b", -50, "dismissive"),
+                (rf"\b(?:delete|remove|ban|kick|mute|silence|disable|deactivate|uninstall|turn\s+off|kill)\s+ino\b", -50, "dismissive"),
+                (rf"\bino\b.{0,30}\b(?:makes\s+me|made\s+me)\s+(?:mad|angry|annoyed|irritated|cringe|sick)\b", -50, "mild"),
+                (rf"\bino\b.{0,30}\b(?:ruins?|ruined|is\s+ruining)\b", -50, "harsh"),
+                (rf"\b(?:bad|trash|garbage|awful|terrible|horrible|cringe|mid|lame|useless)\s+(?:bot|waifu|girl|assistant)\s+ino\b", -50, "mild"),
                 (r"\bino\b.{0,30}\b(?:suck|sucks|sucked|sucking|trash|garbage|useless|stupid|dumb|worthless|pathetic|loser|bitch|hoe|ass|shit|crap|dogshit|bullshit)\b", -50, "profanity"),
                 (r"\bino\b.{0,30}\b(?:bad|awful|terrible|horrible|annoying|irritating|cringe|lame|boring|ugly|gross|nasty|mid|overrated|fraud|washed|cooked)\b", -50, "mild"),
                 (r"\bino\b.{0,30}\b(?:broken|buggy|glitchy|laggy|slow|does(?:n'?t| not) work|failed|fails)\b", -50, "tech"),
