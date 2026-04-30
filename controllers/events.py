@@ -37,7 +37,7 @@ PING_SPAM_TIMEOUT_DURATION = timedelta(minutes=5)
 REPEATED_MESSAGE_SPAM_LIMIT = 3
 REPEATED_MESSAGE_SPAM_WINDOW = timedelta(seconds=10)
 REPEATED_MESSAGE_SPAM_TIMEOUT_DURATION = timedelta(minutes=5)
-REPEATED_MESSAGE_SPAM_INOREP_PENALTY = -1000
+REPEATED_MESSAGE_SPAM_INOREP_PENALTY = -100
 
 DISCORD_INVITE_REGEX = re.compile(
     r"https?://(?:www\.)?(?:discord\.gg|discord(?:app)?\.com/invite)/[A-Za-z0-9-]+",
