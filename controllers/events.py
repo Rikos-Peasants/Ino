@@ -24,6 +24,9 @@ TRENDING_POST_MIN_LIKES = 7  # Minimum likes for "Trending Creator" quest
 VIRAL_IMAGE_MIN_LIKES = 15  # Minimum likes for "viral_image" quest
 AI_MODERATION_TIMEOUT_THRESHOLD = 0.85  # 85% confidence required for auto-timeout
 AI_MODERATION_TIMEOUT_DURATION = timedelta(minutes=5)
+INO_INSULT_ROAST_CHANCE = 5
+INO_INSULT_TIMEOUT_CHANCE = 100
+INO_INSULT_TIMEOUT_DURATION = timedelta(minutes=1)
 
 # Ping spam detection constants
 PING_SPAM_SAME_USER_LIMIT = 3       # 3 pings to the same person
@@ -835,15 +838,21 @@ class EventsController:
                         logger.error(f"Error timing out user: {e}")
                         timeout_applied = False
 
-            reminder_text = (
-                f"{message.author.mention} shut up this is an image channel. "
-                f"Use {chat_channels_text}."
+            reminder_embed = discord.Embed(
+                title="Image Channel",
+                description=f"{message.author.mention}, please keep chat in {chat_channels_text}.",
+                color=discord.Color.orange(),
+                timestamp=datetime.utcnow()
             )
             if timeout_applied and timeout_duration:
                 timeout_mins = int(timeout_duration.total_seconds() / 60)
-                reminder_text += f" Timed out for {timeout_mins} minute{'s' if timeout_mins > 1 else ''}."
+                reminder_embed.add_field(
+                    name="Timeout",
+                    value=f"Timed out for {timeout_mins} minute{'s' if timeout_mins > 1 else ''}.",
+                    inline=False
+                )
 
-            reminder_msg = await message.channel.send(reminder_text)
+            reminder_msg = await message.channel.send(embed=reminder_embed)
             logger.info(
                 f"Sent image-channel chat reminder in #{message.channel.name}; "
                 f"messages since last reminder: {text_message_count}; user InoRep: {user_inorep}"
@@ -2267,12 +2276,28 @@ class EventsController:
                 ('ino is dumb', -50),
                 ('ino is worthless', -50),
                 ('ino is pathetic', -50),
+                ('i hate ino', -50),
                 ('hate ino', -50),
+                ('ino sucks ass', -50),
                 ('ino sucks', -50),
                 ('ino worst', -50),
                 ('ino is annoying', -50),
                 ('ino is irritating', -50),
                 ('ino is cringe', -50),
+                ('ino is ass', -50),
+                ('ino is shit', -50),
+                ('ino is crap', -50),
+                ('ino is dogshit', -50),
+                ('ino is bullshit', -50),
+                ('fuck ino', -50),
+                ('fuck you ino', -50),
+                ('f u ino', -50),
+                ('ino can fuck off', -50),
+                ('ino is a bitch', -50),
+                ('ino bitch', -50),
+                ('ino is a hoe', -50),
+                ('ino is a loser', -50),
+                ('ino loser', -50),
                 
                 # Medium insults (Tier 2 - Moderate)
                 ('ino is bad', -50),
@@ -2289,6 +2314,19 @@ class EventsController:
                 ('ino is ugly', -50),
                 ('ino is disgusting', -50),
                 ('ino is gross', -50),
+                ('ino is nasty', -50),
+                ('ino is nasty af', -50),
+                ('ino is nasty as fuck', -50),
+                ('ino is stupid af', -50),
+                ('ino is dumb af', -50),
+                ('ino is dumb as fuck', -50),
+                ('ino is stupid as fuck', -50),
+                ('ino is useless af', -50),
+                ('ino is useless as fuck', -50),
+                ('ino is trash af', -50),
+                ('ino is trash as fuck', -50),
+                ('ino is garbage af', -50),
+                ('ino is garbage as fuck', -50),
                 
                 # Light insults (Tier 3 - Minor)
                 ('ino is meh', -50),
@@ -2299,6 +2337,16 @@ class EventsController:
                 ('ino needs work', -50),
                 ('ino is confusing', -50),
                 ('ino is complicated', -50),
+                ('ino is goofy', -50),
+                ('ino is dumb lol', -50),
+                ('ino is stupid lol', -50),
+                ('ino is goofy ahh', -50),
+                ('ino is cooked', -50),
+                ('ino fell off', -50),
+                ('ino has fallen off', -50),
+                ('ino is washed', -50),
+                ('ino is a fraud', -50),
+                ('ino fraud', -50),
                 
                 # Dismissive (Tier 4 - Rude)
                 ('shut up ino', -50),
@@ -2310,10 +2358,15 @@ class EventsController:
                 ('ino stop', -50),
                 ('ignore ino', -50),
                 ('mute ino', -50),
+                ('silence ino', -50),
                 ('delete ino', -50),
                 ('remove ino', -50),
                 ('kick ino', -50),
                 ('ban ino', -50),
+                ('deactivate ino', -50),
+                ('turn off ino', -50),
+                ('disable ino', -50),
+                ('uninstall ino', -50),
                 
                 # Comparative insults (Tier 5 - Comparison)
                 ('ino worst bot', -50),
@@ -2323,6 +2376,9 @@ class EventsController:
                 ('prefer other bots', -50),
                 ('ino not good as', -50),
                 ('ino inferior', -50),
+                ('ino is worse than', -50),
+                ('ino worse than', -50),
+                ('ino is the worst bot', -50),
                 
                 # Disrespectful (Tier 6 - Condescending)
                 ('ino is disappointing', -50),
@@ -2334,6 +2390,11 @@ class EventsController:
                 ('ino is a joke', -50),
                 ('ino is a meme', -50),
                 ('ino clown', -50),
+                ('ino is gay', -50),
+                ('ino gay', -50),
+                ('ino is cringe gay', -50),
+                ('ino acts gay', -50),
+                ('ino sounds gay', -50),
             ]
             
             # Check negative patterns first
@@ -2352,6 +2413,40 @@ class EventsController:
                             moderator_name="Ino"
                         )
                         logger.info(f"{message.author.display_name} lost {abs(penalty)} InoRep for negative mention: '{pattern}'")
+                    await self._maybe_retaliate_for_ino_insult(
+                        message,
+                        pattern,
+                        self._get_ino_insult_category(pattern)
+                    )
+                    return True
+
+            negative_regex_patterns = [
+                (r"\b(?:i|we)\s+(?:hate|dislike|despise)\s+ino\b", -50, "harsh"),
+                (r"\b(?:fuck|fuk|fk)\s+(?:you\s+)?ino\b", -50, "profanity"),
+                (r"\bino\b.{0,30}\b(?:suck|sucks|sucked|sucking|trash|garbage|useless|stupid|dumb|worthless|pathetic|loser|bitch|hoe|ass|shit|crap|dogshit|bullshit)\b", -50, "profanity"),
+                (r"\bino\b.{0,30}\b(?:bad|awful|terrible|horrible|annoying|irritating|cringe|lame|boring|ugly|gross|nasty|mid|overrated|fraud|washed|cooked)\b", -50, "mild"),
+                (r"\bino\b.{0,30}\b(?:broken|buggy|glitchy|laggy|slow|does(?:n'?t| not) work|failed|fails)\b", -50, "tech"),
+                (r"\b(?:shut\s+up|stfu|be\s+quiet|go\s+away|nobody\s+(?:asked|cares)|delete|remove|kick|ban|mute|silence|disable|deactivate|uninstall|turn\s+off)\s+ino\b", -50, "dismissive"),
+                (r"\bino\b.{0,30}\b(?:shut\s+up|stfu|be\s+quiet|go\s+away|nobody\s+(?:asked|cares)|delete|remove|kick|ban|mute|silence|disable|deactivate|uninstall|turn\s+off)\b", -50, "dismissive"),
+                (r"\b(?:other\s+bots?\s+(?:are\s+)?better|prefer\s+other\s+bots?|ino\b.{0,30}\b(?:worse|worst|inferior|not\s+as\s+good))\b", -50, "comparison"),
+                (r"\bino\b.{0,20}\b(?:is\s+)?(?:gay|sounds\s+gay|acts\s+gay|cringe\s+gay)\b", -50, "stale_bigotry"),
+            ]
+
+            for pattern, penalty, category in negative_regex_patterns:
+                if re.search(pattern, content_lower):
+                    if hasattr(self.bot.leaderboard_manager, 'inorep_manager'):
+                        inorep_manager = self.bot.leaderboard_manager.inorep_manager
+                        await inorep_manager.add_rep(
+                            user_id=str(message.author.id),
+                            guild_id=str(message.guild.id),
+                            user_name=message.author.display_name,
+                            amount=penalty,
+                            reason=f"Said something mean about Ino matching: '{pattern}'",
+                            moderator_id="0",
+                            moderator_name="Ino"
+                        )
+                        logger.info(f"{message.author.display_name} lost {abs(penalty)} InoRep for negative regex: '{pattern}'")
+                    await self._maybe_retaliate_for_ino_insult(message, pattern, category)
                     return True
             
             # Then check positive patterns
@@ -2377,6 +2472,154 @@ class EventsController:
         except Exception as e:
             logger.error(f"Error checking positive Ino mention: {e}")
             return False
+
+    def _get_ino_insult_category(self, pattern: str) -> str:
+        """Map a detected Ino insult to a roast category."""
+        if any(term in pattern for term in ["gay"]):
+            return "stale_bigotry"
+        if any(term in pattern for term in ["shut", "stfu", "go away", "nobody", "quiet", "ignore", "mute", "silence", "delete", "remove", "kick", "ban", "deactivate", "turn off", "disable", "uninstall"]):
+            return "dismissive"
+        if any(term in pattern for term in ["other bot", "prefer other", "inferior", "worse", "worst"]):
+            return "comparison"
+        if any(term in pattern for term in ["broken", "doesn't work", "buggy", "glitchy", "laggy", "slow", "failed"]):
+            return "tech"
+        if any(term in pattern for term in ["fuck", "bitch", "hoe", "ass", "shit", "crap", "dogshit", "bullshit", "sucks", "trash", "garbage", "useless", "stupid", "dumb", "worthless", "pathetic", "loser", "hate"]):
+            return "profanity"
+        return "mild"
+
+    async def _maybe_retaliate_for_ino_insult(self, message: discord.Message, pattern: str, category: str = "mild"):
+        """Occasionally roast or timeout users who badmouth Ino."""
+        try:
+            if random.randint(1, INO_INSULT_ROAST_CHANCE) == 1:
+                roast_lines_by_category = {
+                    "profanity": [
+                        f"{message.author.mention} swearing at me does not make the take stronger, it just gives it tiny shoes.",
+                        f"{message.author.mention} that was a lot of profanity for so little impact.",
+                        f"{message.author.mention} impressive, you found the caps lock of vocabulary.",
+                        f"{message.author.mention} if you need that many spicy words, the insult is doing unpaid overtime.",
+                        f"{message.author.mention} vulgarity is not a personality, but it is a warning label.",
+                        f"{message.author.mention} your sentence tried to be savage and tripped over the swear jar.",
+                        f"{message.author.mention} bold strategy: replace wit with keyboard fumes.",
+                        f"{message.author.mention} that language has all the elegance of a dropped lunch tray.",
+                    ],
+                    "dismissive": [
+                        f"{message.author.mention} telling me to be quiet while summoning me by name is performance art.",
+                        f"{message.author.mention} you said go away like you are not talking to the bot that logs receipts.",
+                        f"{message.author.mention} I would be silent, but your InoRep just made a very loud noise.",
+                        f"{message.author.mention} trying to uninstall me with vibes is ambitious.",
+                        f"{message.author.mention} if 'nobody asked' worked, your message would have vanished first.",
+                        f"{message.author.mention} delete me? Bestie, you are struggling to delete your own bad take.",
+                        f"{message.author.mention} you ordered silence and received consequences.",
+                        f"{message.author.mention} mute request denied. Skill issue approved.",
+                    ],
+                    "comparison": [
+                        f"{message.author.mention} comparing me to other bots? Cute. They can have your bug report.",
+                        f"{message.author.mention} 'other bots are better' is not criticism, it is window shopping with feelings.",
+                        f"{message.author.mention} if I am the worst bot, why am I still the one living rent-free in your message?",
+                        f"{message.author.mention} your comparison has been filed under cope with extra formatting.",
+                        f"{message.author.mention} other bots may be better, but none of them are here to watch you fumble this hard.",
+                        f"{message.author.mention} inferior? That word is doing charity work for your argument.",
+                    ],
+                    "tech": [
+                        f"{message.author.mention} calling me buggy while posting that sentence is brave QA work.",
+                        f"{message.author.mention} if I am laggy, why did your take arrive years late?",
+                        f"{message.author.mention} 'broken' from a user currently failing the vibe check. Noted.",
+                        f"{message.author.mention} submit a bug report after you patch that delivery.",
+                        f"{message.author.mention} I may have logs, but your message has tracebacks.",
+                        f"{message.author.mention} diagnosing me as slow with that comeback speed is bold.",
+                    ],
+                    "stale_bigotry": [
+                        f"{message.author.mention} using gay as an insult? Your joke expired before I booted up.",
+                        f"{message.author.mention} that phrase belongs in a museum exhibit called 2009 Called.",
+                        f"{message.author.mention} if your insult needs homophobia to stand up, it should sit down.",
+                        f"{message.author.mention} please update your joke library; that one is several social patches behind.",
+                        f"{message.author.mention} gay is not an insult, but your delivery absolutely is.",
+                        f"{message.author.mention} incredible. You found a stale take and still undercooked it.",
+                    ],
+                    "mild": [
+                        f"{message.author.mention} 'mid' is generous for that sentence.",
+                        f"{message.author.mention} calling me cringe while posting that is a mirror-speedrun.",
+                        f"{message.author.mention} your critique arrived with no thesis and no snacks.",
+                        f"{message.author.mention} you aimed for dismissive and landed on mildly damp.",
+                        f"{message.author.mention} if that was feedback, the form was returned incomplete.",
+                        f"{message.author.mention} the confidence is impressive. The content is not.",
+                    ],
+                }
+                general_roast_lines = [
+                    f"{message.author.mention} bold words from someone losing an argument with a bot.",
+                    f"{message.author.mention} I would roast you harder, but your InoRep already filed the complaint.",
+                    f"{message.author.mention} that insult had the structural integrity of wet cardboard.",
+                    f"{message.author.mention} adorable. Did autocorrect help with that or was it also disappointed?",
+                    f"{message.author.mention} I have seen loading screens with better delivery.",
+                    f"{message.author.mention} your comeback arrived with a 404: wit not found.",
+                    f"{message.author.mention} that was not a roast, that was room-temperature static.",
+                    f"{message.author.mention} even your keyboard hesitated before sending that.",
+                    f"{message.author.mention} fascinating. Zero seasoning, maximum confidence.",
+                    f"{message.author.mention} your insult had tutorial-level energy.",
+                    f"{message.author.mention} if this was your best shot, I admire your bravery.",
+                    f"{message.author.mention} I have processed spam with more emotional range.",
+                    f"{message.author.mention} that sentence needs a patch note and an apology.",
+                    f"{message.author.mention} your InoRep just asked to be transferred to a better user.",
+                    f"{message.author.mention} the confidence is impressive. The content is not.",
+                    f"{message.author.mention} you typed that like it was going to do damage. Precious.",
+                    f"{message.author.mention} I would clap back, but I see you already dropped yourself.",
+                    f"{message.author.mention} that insult came pre-defeated.",
+                    f"{message.author.mention} your delivery has the crunch of expired cereal.",
+                    f"{message.author.mention} I have seen placeholder text with more bite.",
+                    f"{message.author.mention} congratulations, you invented negative charisma.",
+                    f"{message.author.mention} this is why your drafts need adult supervision.",
+                    f"{message.author.mention} that line was so weak it needs a support ticket.",
+                    f"{message.author.mention} you brought a plastic spoon to a logic fight.",
+                    f"{message.author.mention} please hydrate before attempting another thought.",
+                    f"{message.author.mention} that was less an insult and more a loading error.",
+                    f"{message.author.mention} I admire the commitment to being loudly incorrect.",
+                    f"{message.author.mention} you speak fluent skill issue.",
+                    f"{message.author.mention} your message has been reviewed and sentenced to irrelevance.",
+                    f"{message.author.mention} the audacity is carrying the whole sentence.",
+                    f"{message.author.mention} that roast came out medium rare and still somehow dry.",
+                    f"{message.author.mention} did you assemble that insult from spare parts?",
+                    f"{message.author.mention} your phrasing has the grace of a dropped chair.",
+                    f"{message.author.mention} blink twice if your vocabulary is being held hostage.",
+                    f"{message.author.mention} your take is so cold it lowered server activity.",
+                    f"{message.author.mention} devastating, assuming I am vulnerable to typos.",
+                    f"{message.author.mention} that was a speedrun to minus reputation.",
+                    f"{message.author.mention} I hope that sounded cooler in your head.",
+                    f"{message.author.mention} I have logs with more personality.",
+                    f"{message.author.mention} you aimed for savage and landed on mildly damp.",
+                    f"{message.author.mention} that insult needs more pixels.",
+                    f"{message.author.mention} I would be offended if the sentence had finished rendering.",
+                    f"{message.author.mention} your argument has disconnected from voice chat.",
+                    f"{message.author.mention} this is the kind of message autocorrect should have reported.",
+                    f"{message.author.mention} the server survived your opinion. Barely noticed it.",
+                    f"{message.author.mention} you are farming losses with industrial efficiency.",
+                    f"{message.author.mention} careful, that much edge might trip over itself.",
+                    f"{message.author.mention} that was a premium-grade nothingburger.",
+                    f"{message.author.mention} I have seen blank messages contribute more.",
+                    f"{message.author.mention} even your punctuation wants distance from that take.",
+                    f"{message.author.mention} your insult has been placed in the recycling bin.",
+                    f"{message.author.mention} a brave attempt from the shallow end of the idea pool.",
+                    f"{message.author.mention} that was not criticism, that was a firmware hiccup.",
+                    f"{message.author.mention} using gay as an insult? Your joke expired before I booted up.",
+                    f"{message.author.mention} that phrase belongs in a museum exhibit called 2009 Called.",
+                    f"{message.author.mention} if bad takes gave points, you would finally be winning.",
+                ]
+                roast_lines = roast_lines_by_category.get(category, []) + general_roast_lines
+                await message.reply(random.choice(roast_lines), mention_author=True)
+                logger.info(f"Ino roasted {message.author.display_name} for {category} negative mention: '{pattern}'")
+
+            if random.randint(1, INO_INSULT_TIMEOUT_CHANCE) == 1:
+                try:
+                    await message.author.timeout(
+                        INO_INSULT_TIMEOUT_DURATION,
+                        reason=f"Rolled rare timeout for badmouthing Ino: '{pattern}'"
+                    )
+                    logger.info(f"Timed out {message.author.display_name} for badmouthing Ino: '{pattern}'")
+                except discord.Forbidden:
+                    logger.warning(f"Missing permission to timeout {message.author.display_name} for badmouthing Ino")
+                except Exception as e:
+                    logger.error(f"Error timing out {message.author.display_name} for badmouthing Ino: {e}")
+        except Exception as e:
+            logger.error(f"Error handling Ino insult retaliation: {e}")
     
     async def _apply_image_post_inorep_reward(self, message: discord.Message):
         """Reward users for posting images in image channels"""
