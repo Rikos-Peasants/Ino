@@ -27,6 +27,7 @@ AI_MODERATION_TIMEOUT_DURATION = timedelta(minutes=5)
 INO_INSULT_ROAST_CHANCE = 5
 INO_INSULT_TIMEOUT_CHANCE = 100
 INO_INSULT_TIMEOUT_DURATION = timedelta(minutes=1)
+INO_INSULT_ROAST_COOLDOWN = timedelta(minutes=10)
 IMAGE_CHANNEL_REMINDER_IMAGE_URL = "https://i.ibb.co/B2W5WQ2Y/ef4f7402-aa4b-4440-9ae9-ef1415824688.png"
 
 # Ping spam detection constants
@@ -61,6 +62,8 @@ class EventsController:
         self._repeated_message_timeout_cooldown: Dict[int, datetime] = {}
         # Image-channel reminders are channel-wide: warn once, then every 40 ignored text messages.
         self._image_channel_text_since_reminder: Dict[int, int] = {}
+        # Keep Ino's insult replies from becoming a reply loop.
+        self._ino_insult_roast_cooldown: Dict[tuple, datetime] = {}
     
     def get_mod_offline_manager(self) -> Optional[ModOfflineManager]:
         """Get the mod offline manager from the commands controller"""
@@ -428,6 +431,39 @@ class EventsController:
             logger.error(f"HTTP error sending welcome for member join: {e}")
         except Exception as e:
             logger.error(f"Error handling member join message: {e}")
+
+    def _message_has_media(self, message: discord.Message, include_video: bool = True) -> bool:
+        """Check whether a message contains image/video media."""
+        image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+        video_extensions = ('.mp4', '.mov', '.webm', '.avi', '.mkv')
+        allowed_extensions = image_extensions + video_extensions if include_video else image_extensions
+
+        for attachment in message.attachments:
+            if attachment.filename.lower().endswith(allowed_extensions):
+                return True
+
+        for embed in message.embeds:
+            if embed.image or embed.thumbnail:
+                return True
+            if include_video and embed.video:
+                return True
+
+        return False
+
+    async def _is_reply_to_media_message(self, message: discord.Message, include_video: bool = True) -> bool:
+        """Return True when this message replies to a message that contains media."""
+        if not message.reference or not message.reference.message_id:
+            return False
+
+        try:
+            referenced_msg = await message.channel.fetch_message(message.reference.message_id)
+        except (discord.NotFound, discord.Forbidden):
+            return False
+        except Exception as e:
+            logger.debug(f"Could not fetch referenced message {message.reference.message_id}: {e}")
+            return False
+
+        return self._message_has_media(referenced_msg, include_video=include_video)
     
     async def _handle_member_update(self, before: discord.Member, after: discord.Member):
         """Handle member role updates"""
@@ -883,6 +919,9 @@ class EventsController:
     async def _check_for_chat_reminder(self, message: discord.Message):
         """Send sparse image-channel chat reminders for users below 200 InoRep."""
         try:
+            if await self._is_reply_to_media_message(message):
+                return
+
             user_inorep = 0
             if hasattr(self.bot.leaderboard_manager, 'inorep_manager') and self.bot.leaderboard_manager.inorep_manager:
                 user_inorep = await self.bot.leaderboard_manager.inorep_manager.get_user_rep(
@@ -2694,7 +2733,12 @@ class EventsController:
     async def _maybe_retaliate_for_ino_insult(self, message: discord.Message, pattern: str, category: str = "mild"):
         """Occasionally roast or timeout users who badmouth Ino."""
         try:
-            if random.randint(1, INO_INSULT_ROAST_CHANCE) == 1:
+            now = datetime.utcnow()
+            cooldown_key = (message.author.id, category)
+            roast_cooldown_until = self._ino_insult_roast_cooldown.get(cooldown_key)
+            can_roast = not roast_cooldown_until or roast_cooldown_until <= now
+
+            if can_roast and random.randint(1, INO_INSULT_ROAST_CHANCE) == 1:
                 roast_lines_by_category = {
                     "profanity": [
                         f"{message.author.mention} swearing at me does not make the take stronger, it just gives it tiny shoes.",
@@ -2809,6 +2853,7 @@ class EventsController:
                 ]
                 roast_lines = roast_lines_by_category.get(category, []) + general_roast_lines
                 await message.reply(random.choice(roast_lines), mention_author=True)
+                self._ino_insult_roast_cooldown[cooldown_key] = now + INO_INSULT_ROAST_COOLDOWN
                 logger.info(f"Ino roasted {message.author.display_name} for {category} negative mention: '{pattern}'")
 
             if random.randint(1, INO_INSULT_TIMEOUT_CHANCE) == 1:
@@ -2896,30 +2941,9 @@ class EventsController:
             if message.content.startswith(getattr(Config, 'COMMAND_PREFIX', 'R!')) or message.content.startswith('/'):
                 return
             
-            # Don't penalize replies to messages with images (unless they insult Ino)
-            if message.reference and message.reference.message_id:
-                try:
-                    # Fetch the referenced message
-                    referenced_msg = await message.channel.fetch_message(message.reference.message_id)
-                    
-                    # Check if the referenced message has images
-                    has_image = False
-                    for attachment in referenced_msg.attachments:
-                        if any(attachment.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
-                            has_image = True
-                            break
-                    
-                    if not has_image:
-                        for embed in referenced_msg.embeds:
-                            if embed.image or embed.thumbnail:
-                                has_image = True
-                                break
-                    
-                    # If replying to an image, don't penalize (unless insulting Ino, which is handled separately)
-                    if has_image:
-                        return
-                except:
-                    pass  # If we can't fetch the message, continue with penalty
+            # Don't penalize replies to messages with media (unless insulting Ino, which is handled separately)
+            if await self._is_reply_to_media_message(message):
+                return
             
             inorep_manager = self.bot.leaderboard_manager.inorep_manager
             
