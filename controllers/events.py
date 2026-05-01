@@ -709,9 +709,10 @@ class EventsController:
         if has_unspoilered_media:
             try:
                 await message.author.send(
-                    "copy with server rules YOU MUST spoiler a message\n\n"
-                    "Don't know How?\n"
-                    "https://support.discord.com/hc/en-us/articles/360022320632-Spoiler-Tags"
+                    "Hey there! 🚨 I noticed you just posted media in an NSFW channel without spoilering it.\n\n"
+                    "To **FOLLOW** the server rules and keep the community safe, **YOU MUST** spoiler any images or videos you post in these channels.\n\n"
+                    "**Don't know how to add a spoiler tag?**\n"
+                    "Check out this quick guide: https://support.discord.com/hc/en-us/articles/360022320632-Spoiler-Tags"
                 )
                 logger.info(f"Warned {message.author.display_name} about unspoilered image in NSFW channel")
             except discord.Forbidden:
