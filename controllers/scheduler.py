@@ -480,7 +480,7 @@ class SchedulerController:
         """Wait for bot to be ready before starting YouTube monitoring"""
         await self.bot.wait_until_ready()
 
-    @tasks.loop(minutes=2)
+    @tasks.loop(minutes=1)
     async def check_twitch_streams(self):
         """Check for new Twitch streams and announce them"""
         logger.info("Checking for live Twitch streams...")
