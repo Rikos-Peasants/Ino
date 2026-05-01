@@ -549,6 +549,9 @@ class EventsController:
         # Check for art challenge submissions (!submit command)
         await self._handle_art_challenge_submission(message)
         
+        # Enforce spoilers in NSFW channels
+        await self._check_nsfw_spoiler(message)
+        
         # Check if message is in image reaction channels
         if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
             return
@@ -682,6 +685,37 @@ class EventsController:
             logger.error(f"Error sending Discord invite warning DM: {e}")
 
         return True
+
+    async def _check_nsfw_spoiler(self, message: discord.Message):
+        """Check if message in NSFW channel has unspoilered images and warn user."""
+        is_nsfw = False
+        if hasattr(message.channel, 'is_nsfw'):
+            is_nsfw = message.channel.is_nsfw()
+        elif hasattr(message.channel, 'nsfw'):
+            is_nsfw = message.channel.nsfw
+            
+        if not is_nsfw:
+            return
+            
+        has_unspoilered_media = False
+        
+        # Check attachments
+        for attachment in message.attachments:
+            if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.mov', '.webm', '.avi', '.mkv')):
+                if not attachment.is_spoiler():
+                    has_unspoilered_media = True
+                    break
+                    
+        if has_unspoilered_media:
+            try:
+                await message.author.send(
+                    "copy with server rules YOU MUST spoiler a message\n\n"
+                    "Don't know How?\n"
+                    "https://support.discord.com/hc/en-us/articles/360022320632-Spoiler-Tags"
+                )
+                logger.info(f"Warned {message.author.display_name} about unspoilered image in NSFW channel")
+            except discord.Forbidden:
+                logger.warning(f"Could not DM {message.author.display_name} about NSFW spoiler rule")
 
     def _normalize_repeated_message_content(self, content: str) -> str:
         """Normalize message text for repeated-spam detection."""
