@@ -697,6 +697,11 @@ class EventsController:
         if not is_nsfw:
             return
             
+        # Ignore messages containing known GIF provider links
+        content_lower = message.content.lower()
+        if any(domain in content_lower for domain in ['tenor.com', 'giphy.com', 'klipy.co', 'klipy.com']):
+            return
+            
         has_unspoilered_media = False
         
         # Check attachments
