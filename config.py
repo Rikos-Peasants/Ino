@@ -29,6 +29,8 @@ class Config:
     YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')  # For YouTube Data API
     OPENAI_KEY = os.getenv('OPENAI_KEY')  # For content moderation (primary)
     GOOGLE_NL_API_KEY = os.getenv('GOOGLE_NL_API_KEY')  # For secondary moderation check
+    TWITCH_CLIENT = os.getenv('TWITCH_CLIENT')
+    TWITCH_SECRET = os.getenv('TWITCH_SECRET')
     
     # Moderation system default role IDs (can be configured per guild)
     DEFAULT_MODERATION_REVIEW_ROLE_ID = 1372477845997359244  # Seraphs role (default reviewers)

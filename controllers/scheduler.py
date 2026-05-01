@@ -54,6 +54,9 @@ class SchedulerController:
         
         if not self.check_youtube_videos.is_running():
             self.check_youtube_videos.start()
+            
+        if not self.check_twitch_streams.is_running():
+            self.check_twitch_streams.start()
 
         if not self.store_youtube_subscriber_count.is_running():
             self.store_youtube_subscriber_count.start()
@@ -86,6 +89,9 @@ class SchedulerController:
         
         if self.check_youtube_videos.is_running():
             self.check_youtube_videos.cancel()
+            
+        if self.check_twitch_streams.is_running():
+            self.check_twitch_streams.cancel()
 
         if self.store_youtube_subscriber_count.is_running():
             self.store_youtube_subscriber_count.cancel()
@@ -472,6 +478,45 @@ class SchedulerController:
     @check_youtube_videos.before_loop
     async def before_youtube_videos_task(self):
         """Wait for bot to be ready before starting YouTube monitoring"""
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(minutes=2)
+    async def check_twitch_streams(self):
+        """Check for new Twitch streams and announce them"""
+        logger.info("Checking for live Twitch streams...")
+        
+        try:
+            twitch_monitor = getattr(self.bot, 'twitch_monitor', None)
+            if not twitch_monitor:
+                logger.warning("Twitch monitor not available on bot instance")
+                return
+            
+            await twitch_monitor.load_monitored_channels()
+            
+            channel_count = len(twitch_monitor.monitored_channels)
+            logger.debug(f"Monitoring {channel_count} Twitch channels")
+            
+            if channel_count == 0:
+                return
+            
+            new_streams = await twitch_monitor.check_streams()
+            
+            if new_streams:
+                logger.info(f"🎮 Found {len(new_streams)} new Twitch streams to announce")
+                for stream in new_streams:
+                    try:
+                        await twitch_monitor.announce_stream(stream)
+                    except Exception as e:
+                        logger.error(f"❌ Failed to announce Twitch stream {stream.get('title', 'Unknown')}: {e}")
+            else:
+                logger.debug("No new Twitch streams found")
+                
+        except Exception as e:
+            logger.error(f"Error in Twitch stream checking task: {e}")
+
+    @check_twitch_streams.before_loop
+    async def before_twitch_streams_task(self):
+        """Wait for bot to be ready before starting Twitch monitoring"""
         await self.bot.wait_until_ready()
 
     @tasks.loop(minutes=10)

@@ -2865,6 +2865,188 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
 
+        # Twitch monitoring command group
+        @self.bot.hybrid_group(name="twitch", description="Manage Twitch stream monitoring")
+        @owner_command
+        async def twitch_group(ctx):
+            """Base group for Twitch monitoring commands"""
+            if ctx.invoked_subcommand is None:
+                await ctx.send_help(twitch_group)
+
+        @twitch_group.command(name="list", description="Show all monitored Twitch channels")
+        async def twitch_list(ctx):
+            """List all monitored Twitch channels"""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                guild = ctx.guild
+                if not guild or guild.id != Config.GUILD_ID:
+                    error_msg = "This command can only be used in the configured guild."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                twitch_monitor = getattr(self.bot, 'twitch_monitor', None)
+                if not twitch_monitor:
+                    error_msg = "Twitch monitoring is not initialized."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                channels = await twitch_monitor.get_monitored_channels_list()
+                
+                embed = discord.Embed(
+                    title="🎮 Twitch Monitoring Status",
+                    color=discord.Color.purple(),
+                    timestamp=datetime.utcnow()
+                )
+                
+                if channels:
+                    for i, channel in enumerate(channels[:10], 1):
+                        discord_channel = guild.get_channel(channel.get('discord_channel_id'))
+                        channel_name = discord_channel.name if discord_channel else "Unknown"
+                        
+                        role_id = channel.get('role_id')
+                        role_text = f"<@&{role_id}>" if role_id else "None"
+                        
+                        embed.add_field(
+                            name=f"{i}. {channel.get('twitch_username', 'Unknown')}",
+                            value=f"**Posts to:** #{channel_name}\n"
+                                  f"**Pings:** {role_text}\n"
+                                  f"**Status:** {'🟢 Active' if channel.get('enabled') else '🔴 Disabled'}",
+                            inline=False
+                        )
+                else:
+                    embed.add_field(
+                        name="No Channels Monitored",
+                        value="Use `/twitch add` to start monitoring channels",
+                        inline=False
+                    )
+                
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=embed)
+                else:
+                    await ctx.send(embed=embed)
+                    
+            except Exception as e:
+                error_embed = EmbedViews.error_embed(f"Failed to list Twitch channels: {str(e)}")
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.send(embed=error_embed)
+
+        @twitch_group.command(name="add", description="Add a Twitch channel to monitor")
+        async def twitch_add(ctx, twitch_username: str, discord_channel: discord.TextChannel, role: discord.Role = None):
+            """Add a Twitch channel to monitor"""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                guild = ctx.guild
+                if not guild or guild.id != Config.GUILD_ID:
+                    error_msg = "This command can only be used in the configured guild."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                twitch_monitor = getattr(self.bot, 'twitch_monitor', None)
+                if not twitch_monitor:
+                    error_msg = "Twitch monitoring is not initialized."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                role_id = role.id if role else 0
+                success = await twitch_monitor.add_monitored_channel(
+                    twitch_username=twitch_username.lower(),
+                    discord_channel_id=discord_channel.id,
+                    role_id=role_id,
+                    guild_id=guild.id
+                )
+                
+                if success:
+                    embed = discord.Embed(
+                        title="✅ Twitch Monitor Added",
+                        description=f"Now monitoring **{twitch_username}** for live streams",
+                        color=discord.Color.green(),
+                        timestamp=datetime.utcnow()
+                    )
+                    embed.add_field(name="Twitch Username", value=twitch_username, inline=True)
+                    embed.add_field(name="Discord Channel", value=discord_channel.mention, inline=True)
+                    if role:
+                        embed.add_field(name="Ping Role", value=role.mention, inline=True)
+                else:
+                    embed = EmbedViews.error_embed("Failed to add Twitch monitor. Check if the username is valid.")
+                
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=embed)
+                else:
+                    await ctx.send(embed=embed)
+                    
+            except Exception as e:
+                error_embed = EmbedViews.error_embed(f"Failed to add Twitch monitor: {str(e)}")
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.send(embed=error_embed)
+
+        @twitch_group.command(name="remove", description="Remove a Twitch channel from monitoring")
+        async def twitch_remove(ctx, twitch_username: str):
+            """Remove a Twitch channel from monitoring"""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer()
+                
+                guild = ctx.guild
+                if not guild or guild.id != Config.GUILD_ID:
+                    error_msg = "This command can only be used in the configured guild."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                twitch_monitor = getattr(self.bot, 'twitch_monitor', None)
+                if not twitch_monitor:
+                    error_msg = "Twitch monitoring is not initialized."
+                    if hasattr(ctx, 'followup'):
+                        await ctx.followup.send(error_msg, ephemeral=True)
+                    else:
+                        await ctx.send(error_msg)
+                    return
+                
+                success = await twitch_monitor.remove_monitored_channel(twitch_username.lower())
+                
+                if success:
+                    embed = discord.Embed(
+                        title="✅ Twitch Monitor Removed",
+                        description=f"Stopped monitoring **{twitch_username}**",
+                        color=discord.Color.green()
+                    )
+                else:
+                    embed = EmbedViews.error_embed(f"Twitch channel **{twitch_username}** is not currently being monitored.")
+                
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=embed)
+                else:
+                    await ctx.send(embed=embed)
+                    
+            except Exception as e:
+                error_embed = EmbedViews.error_embed(f"Failed to remove Twitch monitor: {str(e)}")
+                if hasattr(ctx, 'followup'):
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.send(embed=error_embed)
+
         # YouTube monitoring command group
         @self.bot.hybrid_group(name="youtube", description="Manage YouTube video monitoring")
         @owner_command
@@ -3664,6 +3846,10 @@ class CommandsController:
         self.warnings_command = warnings_command
         self.clearwarnings_command = clearwarnings_command
         self.setlogchannel_command = setlogchannel_command
+        self.twitch_group = twitch_group
+        self.twitch_list = twitch_list
+        self.twitch_add = twitch_add
+        self.twitch_remove = twitch_remove
         self.youtube_group = youtube_group
         self.youtube_list = youtube_list
         self.youtube_add = youtube_add

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from controllers.commands import CommandsController
     from controllers.scheduler import SchedulerController
     from models.youtube_monitor import YouTubeMonitor
+    from models.twitch_monitor import TwitchMonitor
 
 # Always import RandomAnnouncer for runtime use
 from models.random_announcer import RandomAnnouncer
@@ -67,6 +68,7 @@ class RikoBot(commands.Bot):
         self.commands_controller: Optional['CommandsController'] = None
         self.scheduler_controller: Optional['SchedulerController'] = None
         self.youtube_monitor: Optional['YouTubeMonitor'] = None
+        self.twitch_monitor: Optional['TwitchMonitor'] = None
         self.random_announcer: Optional['RandomAnnouncer'] = None
         self.moderation_view_manager: Optional[object] = None
         
@@ -101,6 +103,20 @@ class RikoBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Failed to initialize YouTube monitor: {e}")
             self.youtube_monitor = None
+        
+        # Initialize Twitch monitor
+        try:
+            from models.twitch_monitor import TwitchMonitor
+            from models.mongo_leaderboard_manager import MongoLeaderboardManager
+            if isinstance(self.leaderboard_manager, MongoLeaderboardManager):
+                self.twitch_monitor = TwitchMonitor(self.leaderboard_manager)
+            else:
+                self.twitch_monitor = TwitchMonitor(None)
+            self.twitch_monitor.bot = self
+            logger.info("✅ Twitch monitor initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Twitch monitor: {e}")
+            self.twitch_monitor = None
         
         # Initialize Random Announcer (TEMPORARY FOR RESEARCH)
         try:
