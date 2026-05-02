@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 logger = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MAX_DHASH_CANDIDATES = 1000
 
 
 @dataclass(frozen=True)
@@ -187,8 +189,14 @@ class ScamImageManager:
         cursor = self.signatures_collection.find(
             {"active": True, "dhash": {"$exists": True, "$ne": ""}},
             {"sha256": 1, "dhash": 1, "label": 1},
-        )
-        for signature in cursor:
+        ).limit(MAX_DHASH_CANDIDATES + 1)
+        for checked, signature in enumerate(cursor, start=1):
+            if checked > MAX_DHASH_CANDIDATES:
+                logger.warning(
+                    "Skipping scam image dHash scan because active signature count exceeds %s",
+                    MAX_DHASH_CANDIDATES,
+                )
+                return None
             distance = self.hamming_distance(candidate, signature["dhash"])
             if distance <= dhash_distance:
                 return ScamImageMatch(
@@ -239,14 +247,23 @@ class ScamImageManager:
         if active_only:
             filters["active"] = True
         if query:
+            safe_query = re.escape(query.strip())
             filters["$or"] = [
-                {"label": {"$regex": query, "$options": "i"}},
-                {"sha256": {"$regex": query, "$options": "i"}},
+                {"label": {"$regex": safe_query, "$options": "i"}},
+                {"sha256": {"$regex": safe_query, "$options": "i"}},
             ]
         return list(self.signatures_collection.find(filters).sort("created_at", DESCENDING).limit(limit))
 
     def set_signature_active(self, sha256_prefix: str, active: bool) -> tuple[bool, str]:
-        matches = list(self.signatures_collection.find({"sha256": {"$regex": f"^{sha256_prefix.lower()}"}}))
+        normalized_prefix = sha256_prefix.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{6,64}", normalized_prefix):
+            return False, "Use 6 to 64 hexadecimal SHA-256 characters."
+
+        matches = list(
+            self.signatures_collection.find(
+                {"sha256": {"$regex": f"^{re.escape(normalized_prefix)}"}}
+            )
+        )
         if len(matches) == 0:
             return False, "No signature matched that prefix."
         if len(matches) > 1:

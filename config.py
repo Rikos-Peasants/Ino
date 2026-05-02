@@ -34,8 +34,8 @@ class Config:
 
     # Scam image detection
     SCAM_IMAGE_DETECTION_ENABLED = os.getenv('SCAM_IMAGE_DETECTION_ENABLED', 'true').lower() == 'true'
-    SCAM_IMAGE_DELETE_MATCHES = os.getenv('SCAM_IMAGE_DELETE_MATCHES', 'true').lower() == 'true'
-    SCAM_IMAGE_DHASH_DISTANCE = get_int_env('SCAM_IMAGE_DHASH_DISTANCE', 8)
+    SCAM_IMAGE_DELETE_MATCHES = os.getenv('SCAM_IMAGE_DELETE_MATCHES', 'false').lower() == 'true'
+    SCAM_IMAGE_DHASH_DISTANCE = get_int_env('SCAM_IMAGE_DHASH_DISTANCE', 4)
     SCAM_IMAGE_MAX_ATTACHMENT_BYTES = get_int_env('SCAM_IMAGE_MAX_ATTACHMENT_BYTES', 8 * 1024 * 1024)
     
     # Moderation system default role IDs (can be configured per guild)

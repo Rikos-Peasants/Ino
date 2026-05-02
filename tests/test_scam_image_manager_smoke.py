@@ -1,5 +1,8 @@
+import io
 from pathlib import Path
 import sys
+
+from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -108,15 +111,17 @@ class FakeDb:
 
 def main():
     manager = ScamImageManager(FakeDb())
-    sample = Path(r"C:\Users\SUBSECT\Downloads\image.jpeg")
-    body = sample.read_bytes()
+    sample_name = "sample.jpeg"
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 32), "white").save(buf, format="JPEG")
+    body = buf.getvalue()
 
     signature = manager.build_signature(body, "fake neobox bonus page")
-    created, action = manager.add_signature(signature, source=str(sample), added_by_id=1, added_by_name="tester")
+    created, action = manager.add_signature(signature, source=sample_name, added_by_id=1, added_by_name="tester")
     assert created is True
     assert action == "created"
 
-    match = manager.find_match(sample.name, body)
+    match = manager.find_match(sample_name, body)
     assert match is not None
     assert match.kind == "sha256"
     assert match.label == "fake neobox bonus page"
@@ -132,7 +137,11 @@ def main():
     ok, message = manager.set_signature_active(signature.sha256[:12], False)
     assert ok is True
     assert "disabled" in message
-    assert manager.find_match(sample.name, body) is None
+    assert manager.find_match(sample_name, body) is None
+
+    ok, message = manager.set_signature_active("not-regex.*", True)
+    assert ok is False
+    assert "hexadecimal" in message
 
     seeded = manager.seed_default_signatures()
     assert seeded["total"] == 3

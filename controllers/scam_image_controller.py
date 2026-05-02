@@ -1,5 +1,9 @@
+import asyncio
+import ipaddress
 import logging
+import socket
 from typing import Optional
+from urllib.parse import urlparse
 
 import aiohttp
 import discord
@@ -18,9 +22,10 @@ class ScamImageController:
         self.bot = bot
         self.manager = manager
         self.enabled = getattr(Config, "SCAM_IMAGE_DETECTION_ENABLED", True)
-        self.delete_matches = getattr(Config, "SCAM_IMAGE_DELETE_MATCHES", True)
-        self.dhash_distance = getattr(Config, "SCAM_IMAGE_DHASH_DISTANCE", 8)
+        self.delete_matches = getattr(Config, "SCAM_IMAGE_DELETE_MATCHES", False)
+        self.dhash_distance = getattr(Config, "SCAM_IMAGE_DHASH_DISTANCE", 4)
         self.max_attachment_bytes = getattr(Config, "SCAM_IMAGE_MAX_ATTACHMENT_BYTES", 8 * 1024 * 1024)
+        self.allowed_url_content_types = {"image/jpeg", "image/png", "image/webp"}
 
     def register_commands(self):
         group = app_commands.Group(
@@ -34,7 +39,7 @@ class ScamImageController:
                 await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
                 return
 
-            counts = self.manager.counts()
+            counts = await asyncio.to_thread(self.manager.counts)
             embed = discord.Embed(title="Scam Image Detection", color=discord.Color.blurple())
             embed.add_field(name="Enabled", value=str(self.enabled), inline=True)
             embed.add_field(name="Delete Matches", value=str(self.delete_matches), inline=True)
@@ -58,11 +63,18 @@ class ScamImageController:
                 await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
                 return
 
+            if image.size > self.max_attachment_bytes:
+                await interaction.response.send_message(
+                    "That attachment is larger than the configured limit.",
+                    ephemeral=True,
+                )
+                return
+
             await interaction.response.defer(ephemeral=True)
             body = await image.read(use_cached=True)
-            match = self.manager.find_match(image.filename, body, self.dhash_distance)
+            match = await asyncio.to_thread(self.manager.find_match, image.filename, body, self.dhash_distance)
             try:
-                signature = self.manager.build_signature(body, "scan only")
+                signature = await asyncio.to_thread(self.manager.build_signature, body, "scan only")
             except Exception:
                 await interaction.followup.send("That attachment is not a readable image.", ephemeral=True)
                 return
@@ -94,12 +106,13 @@ class ScamImageController:
 
             body = await image.read(use_cached=True)
             try:
-                signature = self.manager.build_signature(body, label)
+                signature = await asyncio.to_thread(self.manager.build_signature, body, label)
             except Exception:
                 await interaction.followup.send("That attachment is not a readable image.", ephemeral=True)
                 return
 
-            created, action = self.manager.add_signature(
+            created, action = await asyncio.to_thread(
+                self.manager.add_signature,
                 signature,
                 source=f"discord attachment:{image.filename}",
                 added_by_id=interaction.user.id,
@@ -146,8 +159,9 @@ class ScamImageController:
                         continue
                     try:
                         body = await attachment.read(use_cached=True)
-                        signature = self.manager.build_signature(body, label)
-                        self.manager.add_signature(
+                        signature = await asyncio.to_thread(self.manager.build_signature, body, label)
+                        await asyncio.to_thread(
+                            self.manager.add_signature,
                             signature,
                             source=f"discord message:{message.id}/{attachment.filename}",
                             added_by_id=interaction.user.id,
@@ -194,7 +208,7 @@ class ScamImageController:
                 await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
                 return
             await interaction.response.defer(ephemeral=True)
-            result = self.manager.seed_default_signatures()
+            result = await asyncio.to_thread(self.manager.seed_default_signatures)
             await interaction.followup.send(
                 (
                     "Default scam signatures imported. "
@@ -203,10 +217,14 @@ class ScamImageController:
                 ephemeral=True,
             )
 
-        self.bot.tree.add_command(group)
+        self.bot.tree.add_command(group, guild=discord.Object(id=Config.GUILD_ID))
 
     async def can_manage_scam_images(self, interaction: discord.Interaction) -> bool:
-        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+        if (
+            not interaction.guild
+            or interaction.guild.id != Config.GUILD_ID
+            or not isinstance(interaction.user, discord.Member)
+        ):
             return False
 
         if await self.bot.is_owner(interaction.user):
@@ -234,11 +252,11 @@ class ScamImageController:
                 logger.warning(f"Could not read attachment {attachment.filename} from message {message.id}")
                 continue
 
-            match = self.manager.find_match(attachment.filename, body, self.dhash_distance)
+            match = await asyncio.to_thread(self.manager.find_match, attachment.filename, body, self.dhash_distance)
             if not match:
                 continue
 
-            detection_id = self.manager.record_detection(message, attachment, match)
+            detection_id = await asyncio.to_thread(self.manager.record_detection, message, attachment, match)
             logger.warning(
                 "Scam image match kind=%s label=%s user=%s channel=%s attachment=%s",
                 match.kind,
@@ -251,16 +269,23 @@ class ScamImageController:
             if self.delete_matches:
                 try:
                     await message.delete()
-                    self.manager.update_detection_delete_result(detection_id, deleted=True, delete_error=None)
+                    await asyncio.to_thread(
+                        self.manager.update_detection_delete_result,
+                        detection_id,
+                        deleted=True,
+                        delete_error=None,
+                    )
                     return True
                 except discord.Forbidden:
-                    self.manager.update_detection_delete_result(
+                    await asyncio.to_thread(
+                        self.manager.update_detection_delete_result,
                         detection_id,
                         deleted=False,
                         delete_error="missing Manage Messages permission",
                     )
                 except discord.HTTPException as e:
-                    self.manager.update_detection_delete_result(
+                    await asyncio.to_thread(
+                        self.manager.update_detection_delete_result,
                         detection_id,
                         deleted=False,
                         delete_error=str(e),
@@ -275,23 +300,45 @@ class ScamImageController:
 
         await interaction.response.defer(ephemeral=True)
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
+            await self._validate_fetch_url(url)
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, allow_redirects=False) as response:
                     if response.status != 200:
                         await interaction.followup.send(f"Could not fetch URL: HTTP {response.status}", ephemeral=True)
                         return
-                    body = await response.read()
+
+                    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                    if content_type not in self.allowed_url_content_types:
+                        await interaction.followup.send("That URL did not return a supported image type.", ephemeral=True)
+                        return
+
+                    if response.content_length and response.content_length > self.max_attachment_bytes:
+                        await interaction.followup.send(
+                            "That URL returned an image larger than the configured limit.",
+                            ephemeral=True,
+                        )
+                        return
+
+                    body = await response.content.read(self.max_attachment_bytes + 1)
+                    if len(body) > self.max_attachment_bytes:
+                        await interaction.followup.send(
+                            "That URL returned an image larger than the configured limit.",
+                            ephemeral=True,
+                        )
+                        return
         except Exception as e:
             await interaction.followup.send(f"Could not fetch URL: `{e}`", ephemeral=True)
             return
 
         try:
-            signature = self.manager.build_signature(body, label)
+            signature = await asyncio.to_thread(self.manager.build_signature, body, label)
         except Exception:
             await interaction.followup.send("That URL did not return a readable image.", ephemeral=True)
             return
 
-        self.manager.add_signature(
+        await asyncio.to_thread(
+            self.manager.add_signature,
             signature,
             source=url,
             added_by_id=interaction.user.id,
@@ -299,13 +346,42 @@ class ScamImageController:
         )
         await interaction.followup.send(embed=signature_embed("Signature Added", signature), ephemeral=True)
 
+    async def _validate_fetch_url(self, url: str):
+        parsed = urlparse(url.strip())
+        if parsed.scheme.lower() != "https":
+            raise ValueError("Only https:// image URLs are allowed.")
+        if not parsed.hostname:
+            raise ValueError("URL must include a hostname.")
+
+        hostname = parsed.hostname.strip().lower()
+        if hostname in {"localhost", "127.0.0.1", "::1"} or hostname.endswith(".localhost") or hostname.endswith(".local"):
+            raise ValueError("Local URLs are not allowed.")
+
+        try:
+            addresses = [ipaddress.ip_address(hostname)]
+        except ValueError:
+            loop = asyncio.get_running_loop()
+            resolved = await loop.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
+            addresses = [ipaddress.ip_address(item[4][0]) for item in resolved]
+
+        for address in addresses:
+            if (
+                address.is_private
+                or address.is_loopback
+                or address.is_link_local
+                or address.is_multicast
+                or address.is_reserved
+                or address.is_unspecified
+            ):
+                raise ValueError("Private or local network URLs are not allowed.")
+
     async def send_signature_list(
         self,
         interaction: discord.Interaction,
         query: Optional[str] = None,
         active_only: bool = True,
     ):
-        rows = self.manager.list_signatures(query=query, active_only=active_only, limit=10)
+        rows = await asyncio.to_thread(self.manager.list_signatures, query=query, active_only=active_only, limit=10)
         if not rows:
             responder = interaction.response.send_message if not interaction.response.is_done() else interaction.followup.send
             await responder("No scam image signatures found.", ephemeral=True)
@@ -327,7 +403,7 @@ class ScamImageController:
         await responder(embed=embed, ephemeral=True)
 
     async def send_recent_detections(self, interaction: discord.Interaction, limit: int = 5):
-        rows = self.manager.recent_detections(limit=limit)
+        rows = await asyncio.to_thread(self.manager.recent_detections, limit=limit)
         if not rows:
             responder = interaction.response.send_message if not interaction.response.is_done() else interaction.followup.send
             await responder("No scam image detections recorded yet.", ephemeral=True)
@@ -348,5 +424,5 @@ class ScamImageController:
         if not await self.can_manage_scam_images(interaction):
             await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
             return
-        ok, message = self.manager.set_signature_active(sha256_prefix, active)
+        ok, message = await asyncio.to_thread(self.manager.set_signature_active, sha256_prefix, active)
         await interaction.response.send_message(("✅ " if ok else "❌ ") + message, ephemeral=True)
