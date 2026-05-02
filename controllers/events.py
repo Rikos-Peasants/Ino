@@ -523,6 +523,9 @@ class EventsController:
         if not message.guild or message.guild.id != Config.GUILD_ID:
             return
 
+        if await self._handle_scam_image_detection(message):
+            return
+
         if await self._handle_discord_invite_link(message):
             return
 
@@ -1575,6 +1578,17 @@ class EventsController:
             
         # Delete the image message from MongoDB if it exists
         await self.bot.leaderboard_manager.delete_image_message(str(message.id))
+
+    async def _handle_scam_image_detection(self, message: discord.Message) -> bool:
+        """Scan image attachments against known scam signatures."""
+        scam_image_controller = getattr(self.bot, 'scam_image_controller', None)
+        if not scam_image_controller:
+            return False
+        try:
+            return await scam_image_controller.scan_message(message)
+        except Exception as e:
+            logger.error(f"Error in scam image detection: {e}")
+            return False
     
     async def _handle_command_error(self, ctx: commands.Context, error: commands.CommandError):
         """Handle command errors"""

@@ -71,12 +71,21 @@ class RikoBot(commands.Bot):
         self.twitch_monitor: Optional['TwitchMonitor'] = None
         self.random_announcer: Optional['RandomAnnouncer'] = None
         self.moderation_view_manager: Optional[object] = None
+        self.scam_image_manager: Optional[object] = None
+        self.scam_image_controller: Optional[object] = None
         
         # Initialize leaderboard manager first (required by other components)
         try:
             from models.mongo_leaderboard_manager import MongoLeaderboardManager
             self.leaderboard_manager = MongoLeaderboardManager()
             logger.info("✅ MongoDB leaderboard manager initialized successfully")
+            try:
+                from models.scam_image_manager import ScamImageManager
+                self.scam_image_manager = ScamImageManager(self.leaderboard_manager.db)
+                logger.info("✅ Scam image manager initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize scam image manager: {e}")
+                self.scam_image_manager = None
         except Exception as e:
             logger.error(f"❌ Failed to initialize MongoDB leaderboard manager: {e}")
             # Fallback to JSON-based leaderboard manager
@@ -134,6 +143,15 @@ class RikoBot(commands.Bot):
         self.events_controller = EventsController(self)
         self.commands_controller = CommandsController(self)
         self.scheduler_controller = SchedulerController(self)
+
+        if self.scam_image_manager:
+            try:
+                from controllers.scam_image_controller import ScamImageController
+                self.scam_image_controller = ScamImageController(self, self.scam_image_manager)
+                logger.info("✅ Scam image controller initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize scam image controller: {e}")
+                self.scam_image_controller = None
         
         # Initialize moderation view manager
         try:
@@ -170,6 +188,8 @@ class RikoBot(commands.Bot):
             self.events_controller.register_events()
         if self.commands_controller:
             self.commands_controller.register_commands()
+        if self.scam_image_controller:
+            self.scam_image_controller.register_commands()
         
         # Initialize quest manager after bot is ready
         if self.events_controller:
