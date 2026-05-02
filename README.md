@@ -51,6 +51,7 @@
 |---------|-------------|
 | **🔒 NSFWBAN System** | Persistent NSFW content bans with automatic role reapplication |
 | **👁️ Content Moderation** | AI-powered content moderation using OpenAI and Google NL APIs |
+| **🖼️ Scam Image Detection** | Mongo-backed SHA-256 and perceptual dHash detection for known scam images |
 | **📝 Audit Logging** | Complete logging of all moderation actions |
 | **🚫 Role Management** | Automatic role restriction enforcement |
 | **💬 DM Notifications** | Users receive detailed ban/unban notifications |
@@ -157,6 +158,12 @@ YOUTUBE_API_KEY=your_youtube_api_key         # YouTube Data API
 SERIKA_ART_KEY=your_serika_api_key           # Serika.art API access
 SERIKA_ART_URL_BASE=https://serika.art/api/v1
 
+# Scam Image Detection
+SCAM_IMAGE_DETECTION_ENABLED=true
+SCAM_IMAGE_DELETE_MATCHES=false
+SCAM_IMAGE_DHASH_DISTANCE=4
+SCAM_IMAGE_MAX_ATTACHMENT_BYTES=8388608
+
 # Patreon Integration
 PATREON_ROLE_ID=your_patreon_role_id         # Role for Patreon supporters
 ```
@@ -204,6 +211,16 @@ Enable these intents in the Discord Developer Portal:
 | `/nsfwunban <user>` | Remove NSFW ban from user | Moderators/Admins |
 | `/warn <user> <reason>` | Issue a warning to a user | Moderators/Admins |
 | `/purge <amount>` | Delete messages in bulk | Admins |
+| `/scamimage status` | View scam image detector status | Moderators/Admins |
+| `/scamimage scan <image>` | Scan an image without adding it | Moderators/Admins |
+| `/scamimage add <image> <label>` | Add an image signature | Moderators/Admins |
+| `/scamimage add_url` | Add an image signature from a URL modal | Moderators/Admins |
+| `/scamimage bulk_recent <label> [limit] [channel]` | Bulk-add recent channel images | Moderators/Admins |
+| `/scamimage list [query] [active_only]` | List scam image signatures | Moderators/Admins |
+| `/scamimage enable <sha256_prefix>` | Re-enable a signature | Moderators/Admins |
+| `/scamimage disable <sha256_prefix>` | Disable a signature | Moderators/Admins |
+| `/scamimage recent [limit]` | View recent detections and delete status | Moderators/Admins |
+| `/scamimage seed_defaults` | Import bundled known scam image signatures | Moderators/Admins |
 
 ### Owner Commands
 
@@ -251,6 +268,7 @@ Ino/
 │   ├── 📄 random_announcer.py          # AI-powered random announcements
 │   ├── 📄 role_manager.py              # Role management logic
 │   ├── 📄 moderation_manager.py        # Content moderation system
+│   ├── 📄 scam_image_manager.py        # Scam image signature detection
 │   ├── 📄 mod_offline_manager.py       # Offline moderation queue
 │   └── 📄 inorep_manager.py            # Reputation system
 │
@@ -258,6 +276,7 @@ Ino/
 │   ├── 📄 embeds.py                    # Discord embed templates
 │   ├── 📄 art_challenge_view.py        # Art challenge UI components
 │   ├── 📄 moderation_view.py           # Moderation UI components
+│   ├── 📄 scam_image_view.py           # Scam image management UI
 │   ├── 📄 forum_thread_view.py         # Forum thread UI
 │   ├── 📄 ask_staff_topic_view.py      # Staff request UI
 │   ├── 📄 combined_leaderboard_view.py # Leaderboard pagination
@@ -265,6 +284,7 @@ Ino/
 │
 ├── 📁 controllers/                     # Event handlers & command routing
 │   ├── 📄 commands.py                  # All bot commands (hybrid)
+│   ├── 📄 scam_image_controller.py     # Scam image commands and message scanner
 │   ├── 📄 events.py                    # Discord event handlers
 │   ├── 📄 scheduler.py                 # Scheduled tasks (best images, challenges)
 │   └── 📄 security.py                  # Command permission decorators

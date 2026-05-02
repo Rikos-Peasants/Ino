@@ -31,6 +31,12 @@ class Config:
     GOOGLE_NL_API_KEY = os.getenv('GOOGLE_NL_API_KEY')  # For secondary moderation check
     TWITCH_CLIENT = os.getenv('TWITCH_CLIENT')
     TWITCH_SECRET = os.getenv('TWITCH_SECRET')
+
+    # Scam image detection
+    SCAM_IMAGE_DETECTION_ENABLED = os.getenv('SCAM_IMAGE_DETECTION_ENABLED', 'true').lower() == 'true'
+    SCAM_IMAGE_DELETE_MATCHES = os.getenv('SCAM_IMAGE_DELETE_MATCHES', 'false').lower() == 'true'
+    SCAM_IMAGE_DHASH_DISTANCE = get_int_env('SCAM_IMAGE_DHASH_DISTANCE', 4)
+    SCAM_IMAGE_MAX_ATTACHMENT_BYTES = get_int_env('SCAM_IMAGE_MAX_ATTACHMENT_BYTES', 8 * 1024 * 1024)
     
     # Moderation system default role IDs (can be configured per guild)
     DEFAULT_MODERATION_REVIEW_ROLE_ID = 1372477845997359244  # Seraphs role (default reviewers)

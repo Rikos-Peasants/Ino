@@ -1,0 +1,29 @@
+[
+  {
+    "sha256": "98202cbee51431dacb84cabfb18e0e4a4f47888fec8bd59f981d25450c4b0980",
+    "dhash": "600775618f4f3f3f",
+    "label": "mrbeast fake crypto casino tweet",
+    "bytes": 211974,
+    "width": 651,
+    "height": 1002,
+    "source": "default seed"
+  },
+  {
+    "sha256": "bd6eb98857741fabb3e50aeb45aa5e1f8e37a5cfe8998a8cefc543097d771723",
+    "dhash": "098f97b3b7923f37",
+    "label": "fake neobox bonus page",
+    "bytes": 142275,
+    "width": 624,
+    "height": 960,
+    "source": "default seed"
+  },
+  {
+    "sha256": "1b43e262b63230c1b5ae70008f2384e5e03468fddec60b96bd5826d944a1cd19",
+    "dhash": "7e7a783c1c2c1a32",
+    "label": "fake usdt withdrawal success",
+    "bytes": 253107,
+    "width": 1024,
+    "height": 1280,
+    "source": "default seed"
+  }
+]
