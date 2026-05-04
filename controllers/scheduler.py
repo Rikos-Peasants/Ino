@@ -66,6 +66,15 @@ class SchedulerController:
         
         if not self.check_art_challenges.is_running():
             self.check_art_challenges.start()
+        
+        if not self.check_duel_challenges.is_running():
+            self.check_duel_challenges.start()
+        
+        if not self.check_custom_roles.is_running():
+            self.check_custom_roles.start()
+        
+        if not self.check_debuffs.is_running():
+            self.check_debuffs.start()
     
     def stop_tasks(self):
         """Stop all scheduled tasks"""
@@ -101,6 +110,15 @@ class SchedulerController:
         
         if self.check_art_challenges.is_running():
             self.check_art_challenges.cancel()
+        
+        if self.check_duel_challenges.is_running():
+            self.check_duel_challenges.cancel()
+        
+        if self.check_custom_roles.is_running():
+            self.check_custom_roles.cancel()
+        
+        if self.check_debuffs.is_running():
+            self.check_debuffs.cancel()
     
     @tasks.loop(hours=24)  # Check daily
     async def weekly_best_image(self):
@@ -830,3 +848,175 @@ class SchedulerController:
     async def before_historical_reactions_task(self):
         """Wait for bot to be ready before starting historical reaction checking"""
         await self.bot.wait_until_ready()
+
+    # ==================== DUEL CHALLENGE TASKS ====================
+
+    @tasks.loop(minutes=1)  # Check every minute for precise timing
+    async def check_duel_challenges(self):
+        """Check for expired duel voting periods and resolve them"""
+        try:
+            challenge_manager = getattr(self.bot, 'challenge_mode_manager', None)
+            if not challenge_manager:
+                return
+
+            guild = self.bot.get_guild(Config.GUILD_ID)
+            if not guild:
+                return
+
+            # Get expired voting challenges
+            expired_duels = challenge_manager.get_expired_voting_challenges()
+            for duel in expired_duels:
+                try:
+                    # Resolve the duel
+                    resolved = challenge_manager.resolve_challenge(duel["challenge_id"])
+                    if not resolved:
+                        continue
+
+                    # Get the channel
+                    channel = guild.get_channel(duel.get("channel_id"))
+                    if not channel:
+                        continue
+
+                    # Announce the result
+                    from views.challenge_mode_view import ChallengeModeEmbed
+                    embed = ChallengeModeEmbed.create_result_embed(resolved)
+                    await channel.send(embed=embed)
+
+                    # Award points to winner
+                    winner_id = resolved.get("winner_id")
+                    if winner_id:
+                        wager = resolved.get("wager", 0)
+                        leaderboard_manager = getattr(self.bot, 'leaderboard_manager', None)
+                        if leaderboard_manager:
+                            try:
+                                # Check for debuff
+                                events_manager = getattr(self.bot, 'art_random_events_manager', None)
+                                multiplier = 1.0
+                                if events_manager:
+                                    multiplier = events_manager.get_earnings_multiplier(winner_id)
+                                
+                                final_winnings = int(wager * 2 * multiplier)
+                                winner_member = guild.get_member(winner_id)
+                                if winner_member:
+                                    await leaderboard_manager.add_points(
+                                        user_id=winner_id,
+                                        user_name=winner_member.display_name,
+                                        points=final_winnings,
+                                        point_type="duel_win",
+                                        reason=f"Won 1v1 duel (wager: {wager} pts)"
+                                    )
+                                    logger.info(f"✅ Awarded {final_winnings} points to {winner_member.display_name} for winning duel")
+                                    if multiplier < 1.0:
+                                        await channel.send(f"⚠️ <@{winner_id}> earned {final_winnings} pts instead of {wager*2} due to debuff.")
+                            except Exception as e:
+                                logger.error(f"Error awarding duel winner points: {e}")
+
+                    logger.info(f"⚔️ Resolved duel between <@{duel.get('challenger_id')}> and <@{duel.get('opponent_id')}>")
+
+                except Exception as e:
+                    logger.error(f"Error resolving duel {duel.get('challenge_id')}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error in duel challenge task: {e}")
+
+    @check_duel_challenges.before_loop
+    async def before_duel_challenges_task(self):
+        """Wait for bot to be ready before checking duels"""
+        await self.bot.wait_until_ready()
+        await asyncio.sleep(10)
+
+    # ==================== CUSTOM ROLES TASKS ====================
+
+    @tasks.loop(hours=6)  # Check every 6 hours
+    async def check_custom_roles(self):
+        """Update custom roles for top rankers"""
+        try:
+            roles_manager = getattr(self.bot, 'custom_roles_manager', None)
+            art_manager = getattr(self.bot, 'art_challenge_manager', None)
+            challenge_manager = getattr(self.bot, 'challenge_mode_manager', None)
+            if not roles_manager or not art_manager or not challenge_manager:
+                return
+
+            guild = self.bot.get_guild(Config.GUILD_ID)
+            if not guild:
+                return
+
+            logger.info("🔄 Checking and updating custom roles...")
+
+            # Get all tier role IDs
+            artist_role_ids = roles_manager.get_artist_role_ids()
+            duelist_role_ids = roles_manager.get_duelist_role_ids()
+            all_tier_role_ids = roles_manager.get_all_tier_role_ids()
+
+            # Get all members who have tier roles
+            members_with_roles = []
+            for role_id in all_tier_role_ids:
+                role = guild.get_role(role_id)
+                if role:
+                    members_with_roles.extend(role.members)
+
+            # Update each member's roles
+            for member in members_with_roles:
+                try:
+                    # Get their stats
+                    art_stats = art_manager.get_user_challenge_stats(member.id)
+                    duel_stats = challenge_manager.get_user_challenge_stats(member.id)
+
+                    total_art_points = art_stats.get("total_points", 0)
+                    total_duel_wins = duel_stats.get("wins", 0)
+
+                    # Determine correct roles
+                    artist_role = roles_manager.get_artist_role(total_art_points)
+                    duelist_role = roles_manager.get_duelist_role(total_duel_wins)
+
+                    # Remove all tier roles
+                    for role_id in all_tier_role_ids:
+                        role = guild.get_role(role_id)
+                        if role and role in member.roles:
+                            await member.remove_roles(role, reason="Updating custom role tier")
+
+                    # Add correct roles
+                    if artist_role:
+                        role = guild.get_role(artist_role["role_id"])
+                        if role:
+                            await member.add_roles(role, reason=f"Artist role: {artist_role['name']}")
+
+                    if duelist_role:
+                        role = guild.get_role(duelist_role["role_id"])
+                        if role:
+                            await member.add_roles(role, reason=f"Duelist role: {duelist_role['name']}")
+
+                except Exception as e:
+                    logger.error(f"Error updating roles for {member.display_name}: {e}")
+
+            logger.info("✅ Custom roles check completed")
+
+        except Exception as e:
+            logger.error(f"Error in custom roles task: {e}")
+
+    @check_custom_roles.before_loop
+    async def before_custom_roles_task(self):
+        """Wait for bot to be ready before checking custom roles"""
+        await self.bot.wait_until_ready()
+        await asyncio.sleep(10)
+
+    # ==================== DEBUFF TASKS ====================
+
+    @tasks.loop(hours=1)  # Check every hour
+    async def check_debuffs(self):
+        """Clear expired debuffs"""
+        try:
+            events_manager = getattr(self.bot, 'art_random_events_manager', None)
+            if not events_manager:
+                return
+
+            events_manager.clear_expired_debuffs()
+
+        except Exception as e:
+            logger.error(f"Error in debuff task: {e}")
+
+    @check_debuffs.before_loop
+    async def before_debuffs_task(self):
+        """Wait for bot to be ready before checking debuffs"""
+        await self.bot.wait_until_ready()
+        await asyncio.sleep(10)

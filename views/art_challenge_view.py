@@ -180,6 +180,14 @@ class ArtChallengeEmbed:
             inline=True
         )
         
+        # Fishy Jumpscare - rare event
+        if challenge_data.get("fishy_active") and challenge_data.get("fishy_required_item"):
+            embed.add_field(
+                name="🐟 FISHY JUMPSCARE!",
+                value=f"⚠️ **MUST include: {challenge_data.get('fishy_required_item')}**\nRare fish catch event!",
+                inline=False
+            )
+        
         embed.add_field(
             name="📤 How to Submit",
             value="Post your artwork in this channel and click the **Submit** button below!",
@@ -328,6 +336,15 @@ class ArtChallengeEmbed:
             embed.add_field(
                 name="🎨 Quality Notes",
                 value=quality,
+                inline=False
+            )
+        
+        # Character commission (Wait who was that?)
+        character_commission = result.get("character_commission")
+        if character_commission:
+            embed.add_field(
+                name=f"🎭 Wait who was that? - {character_commission.get('character_name')}!",
+                value=f"{character_commission.get('reaction', '')}\n⭐ **Rating: {character_commission.get('rating', 'N/A')}/10**\n{character_commission.get('comment', '')}",
                 inline=False
             )
         

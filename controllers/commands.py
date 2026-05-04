@@ -6626,4 +6626,151 @@ class CommandsController:
                         await ctx.followup.send("❌ An error occurred.", ephemeral=True)
                     except:
                         pass
+
+        # ==================== CHALLENGE MODE (1v1 DUELS) ====================
+
+        @self.bot.hybrid_command(name="duel", description="Challenge someone to a 1v1 art duel with a point wager!")
+        @app_commands.describe(opponent="The user to challenge", wager="Points to wager (10-10000)")
+        @public_command
+        async def duel_command(ctx, opponent: discord.Member, wager: int):
+            try:
+                challenge_manager = getattr(self.bot, 'challenge_mode_manager', None)
+                if not challenge_manager:
+                    await ctx.send("❌ Challenge mode is not available.", ephemeral=True)
+                    return
+
+                if opponent.bot or opponent.id == ctx.author.id:
+                    await ctx.send("❌ You cannot challenge bots or yourself.", ephemeral=True)
+                    return
+
+                if wager < 10 or wager > 10000:
+                    await ctx.send("❌ Wager must be between 10 and 10000 points.", ephemeral=True)
+                    return
+
+                challenge = challenge_manager.create_challenge(
+                    challenger_id=ctx.author.id, challenger_name=ctx.author.display_name,
+                    opponent_id=opponent.id, opponent_name=opponent.display_name,
+                    wager=wager, channel_id=ctx.channel.id, guild_id=ctx.guild.id
+                )
+                if not challenge:
+                    await ctx.send("❌ Failed to create challenge.", ephemeral=True)
+                    return
+
+                from views.challenge_mode_view import ChallengeModeEmbed, ChallengeAcceptView
+                embed = ChallengeModeEmbed.create_challenge_embed(challenge)
+                view = ChallengeAcceptView(challenge["challenge_id"], challenge_manager)
+                msg = await ctx.send(content=f"<@{opponent.id}> you've been challenged!", embed=embed, view=view)
+                challenge_manager.update_message_id(challenge["challenge_id"], msg.id)
+
+            except Exception as e:
+                logger.error(f"Error in duel command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
+
+        @self.bot.hybrid_command(name="duelsubmit", description="Submit your artwork to an active duel")
+        @app_commands.describe(image="Your artwork image")
+        @public_command
+        async def duel_submit_command(ctx, image: Optional[discord.Attachment] = None):
+            try:
+                challenge_manager = getattr(self.bot, 'challenge_mode_manager', None)
+                if not challenge_manager:
+                    await ctx.send("❌ Challenge mode is not available.", ephemeral=True)
+                    return
+
+                image_url = None
+                if image and image.content_type and image.content_type.startswith('image/'):
+                    image_url = image.url
+                if not image_url and ctx.message and ctx.message.attachments:
+                    for att in ctx.message.attachments:
+                        if any(att.filename.lower().endswith(ext) for ext in ['.png','.jpg','.jpeg','.gif','.webp']):
+                            image_url = att.url
+                            break
+                if not image_url:
+                    await ctx.send("❌ Please attach an image.", ephemeral=True)
+                    return
+
+                active = challenge_manager.get_active_challenges()
+                user_duel = None
+                for duel in active:
+                    if duel.get("state") == "active" and ctx.author.id in (duel.get("challenger_id"), duel.get("opponent_id")):
+                        user_duel = duel
+                        break
+
+                if not user_duel:
+                    await ctx.send("❌ You don't have an active duel. Use `/duel` to start one!", ephemeral=True)
+                    return
+
+                result = challenge_manager.submit_entry(user_duel["challenge_id"], ctx.author.id, image_url, 0)
+                if result.get("success"):
+                    await ctx.send("✅ Artwork submitted! Waiting for opponent...", ephemeral=False)
+                    updated = challenge_manager.get_challenge(user_duel["challenge_id"])
+                    if updated.get("state") == "voting":
+                        from views.challenge_mode_view import ChallengeModeEmbed, ChallengeVoteView
+                        embed = ChallengeModeEmbed.create_voting_embed(updated)
+                        view = ChallengeVoteView(updated["challenge_id"], challenge_manager)
+                        channel = ctx.guild.get_channel(updated.get("channel_id")) or ctx.channel
+                        msg = await channel.send(content="🗳️ **VOTING IS OPEN!**", embed=embed, view=view)
+                        challenge_manager.update_message_id(updated["challenge_id"], msg.id)
+                else:
+                    await ctx.send(f"❌ {result.get('error')}", ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error in duelsubmit command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
+
+        @self.bot.hybrid_command(name="duelstats", description="View your 1v1 duel statistics")
+        @public_command
+        async def duel_stats_command(ctx, user: Optional[discord.Member] = None):
+            try:
+                challenge_manager = getattr(self.bot, 'challenge_mode_manager', None)
+                if not challenge_manager:
+                    await ctx.send("❌ Challenge mode is not available.", ephemeral=True)
+                    return
+
+                target = user or ctx.author
+                stats = challenge_manager.get_user_challenge_stats(target.id)
+
+                embed = discord.Embed(
+                    title=f"⚔️ Duel Stats - {target.display_name}",
+                    color=discord.Color.from_rgb(255, 69, 0)
+                )
+                embed.add_field(name="🏆 Wins", value=str(stats.get("wins", 0)), inline=True)
+                embed.add_field(name="💀 Losses", value=str(stats.get("losses", 0)), inline=True)
+                embed.add_field(name="🤝 Draws", value=str(stats.get("draws", 0)), inline=True)
+                embed.add_field(name="💰 Total Wagered", value=f"{stats.get('total_wagered', 0)} pts", inline=True)
+                embed.add_field(name="💎 Total Won", value=f"{stats.get('total_won', 0)} pts", inline=True)
+                embed.set_thumbnail(url=target.display_avatar.url if target.display_avatar else None)
+                embed.timestamp = datetime.utcnow()
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                logger.error(f"Error in duelstats command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
+
+        @self.bot.hybrid_command(name="debuff", description="Check if you have the 'Look of Disgust' debuff active")
+        @public_command
+        async def debuff_command(ctx):
+            try:
+                events_manager = getattr(self.bot, 'art_random_events_manager', None)
+                if not events_manager:
+                    await ctx.send("❌ System not available.", ephemeral=True)
+                    return
+
+                debuff = events_manager.get_active_debuff(ctx.author.id)
+                if debuff:
+                    expires = debuff.get("expires_at")
+                    embed = discord.Embed(
+                        title="😒 Look of Disgust - ACTIVE",
+                        description=f"You lost 100+ points in a day and now earn **50% less** from challenges!",
+                        color=discord.Color.dark_red()
+                    )
+                    if expires:
+                        embed.add_field(name="⏰ Expires", value=f"<t:{int(expires.timestamp())}:R>", inline=True)
+                    embed.add_field(name="📉 Earnings Multiplier", value=f"{debuff.get('multiplier', 0.5)*100:.0f}%", inline=True)
+                    await ctx.send(embed=embed)
+                else:
+                    await ctx.send("✅ You have no active debuffs. Keep it that way!", ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error in debuff command: {e}")
+                await ctx.send("❌ An error occurred.", ephemeral=True)
                 

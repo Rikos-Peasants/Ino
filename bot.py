@@ -178,6 +178,33 @@ class RikoBot(commands.Bot):
             logger.error(f"❌ Failed to initialize art challenge manager: {e}")
             self.art_challenge_manager = None
             self.art_challenge_view_manager = None
+
+        # Initialize challenge mode manager (1v1 duels)
+        try:
+            from models.challenge_mode_manager import ChallengeModeManager
+            self.challenge_mode_manager = ChallengeModeManager()
+            logger.info("✅ Challenge mode manager initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize challenge mode manager: {e}")
+            self.challenge_mode_manager = None
+
+        # Initialize custom roles manager
+        try:
+            from models.custom_roles_manager import CustomRolesManager
+            self.custom_roles_manager = CustomRolesManager()
+            logger.info("✅ Custom roles manager initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize custom roles manager: {e}")
+            self.custom_roles_manager = None
+
+        # Initialize art random events manager
+        try:
+            from models.art_random_events_manager import ArtRandomEventsManager
+            self.art_random_events_manager = ArtRandomEventsManager()
+            logger.info("✅ Art random events manager initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize art random events manager: {e}")
+            self.art_random_events_manager = None
     
     async def setup_hook(self):
         """Initial setup when bot is starting"""
@@ -251,6 +278,19 @@ class RikoBot(commands.Bot):
                 logger.info("✅ Art challenge persistent views registered")
         except Exception as e:
             logger.error(f"❌ Failed to register art challenge views: {e}")
+        
+        # Register challenge mode persistent views
+        try:
+            from views.challenge_mode_view import ChallengeAcceptView, ChallengeVoteView
+            challenge_manager = getattr(self, 'challenge_mode_manager', None)
+            if challenge_manager:
+                accept_view = ChallengeAcceptView("", challenge_manager)
+                vote_view = ChallengeVoteView("", challenge_manager)
+                self.add_view(accept_view)
+                self.add_view(vote_view)
+                logger.info("✅ Challenge mode persistent views registered")
+        except Exception as e:
+            logger.error(f"❌ Failed to register challenge mode views: {e}")
         
         # Start scheduler tasks for best image posting
         if self.scheduler_controller:

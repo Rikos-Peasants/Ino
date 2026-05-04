@@ -415,24 +415,22 @@ Make it festive and seasonal!"""
             # Initialize Gemini client
             client = genai.Client(api_key=self.gemini_api_key)
             
-            prompt = f"""Analyze this image carefully and suggest ONE unique, creative item/object that would be fun and interesting to add to it.
+            prompt = f"""Analyze this image carefully and suggest ONE item/object to add that makes SENSE with the image.
+
+CRITICAL RULE - CONTEXTUAL RELEVANCE:
+The item MUST feel like it naturally BELONGS in this specific image. Before suggesting, ask yourself:
+- Does this item fit the scene's SETTING? (e.g., a beach umbrella belongs at a beach, not in a bedroom)
+- Does it match the image's MOOD and TONE? (e.g., don't add a party hat to a melancholic scene)
+- Is it PROPORTIONAL and physically plausible? (e.g., don't add a giant whale to a small room)
+- Would an artist look at this and think "yes, that makes sense to add"?
 
 REQUIREMENTS:
-- The item MUST complement or interestingly contrast with the image's theme, mood, colors, or subject
-- Be SPECIFIC and DESCRIPTIVE (e.g., "a glowing paper lantern" not just "a lantern", "a sleepy orange cat" not just "a cat")
+- Be SPECIFIC and DESCRIPTIVE (e.g., "a glowing paper lantern" not just "a lantern")
 - The item should be achievable for artists to draw/edit (not overly complex)
-- Think OUTSIDE THE BOX - avoid generic suggestions like "sparkles", "butterflies", or "rainbow"
-- Consider the image's atmosphere: dark images might benefit from something luminous, peaceful scenes might need something whimsical
 - Match the art style if possible (anime style? add anime-style items, realistic? add realistic items)
+- Avoid generic suggestions like "sparkles", "butterflies", or "rainbow"
 {christmas_text}
 {recent_items_text}
-
-THINK CREATIVELY! Consider:
-- Unexpected but fitting objects (a vintage gramophone, a paper boat, a compass rose)
-- Creatures that match the mood (a moth drawn to light, a curious axolotl, a sleepy sloth)
-- Atmospheric elements (falling autumn leaves, floating cherry blossoms, drifting dandelion seeds)
-- Story-telling items (a half-written letter, an old pocket watch, a mysterious key)
-- Whimsical additions (a tiny house on a mushroom, a jar of captured starlight, a door leading nowhere)
 
 Respond with ONLY the item name/description in lowercase, 2-6 words maximum. Nothing else."""
 
@@ -1437,6 +1435,20 @@ Please verify if this submission includes all the required elements.
                 challenge_data["challenge_title"] = "🏷️ Tag Challenge!"
                 challenge_data["challenge_description"] = f"Create an image that includes ALL of these elements: **{', '.join(tags)}**"
             
+            # Check for Fishy Jumpscare (5% chance)
+            challenge_data["fishy_active"] = False
+            challenge_data["fishy_required_item"] = None
+            try:
+                from models.art_random_events_manager import ArtRandomEventsManager
+                events_manager = ArtRandomEventsManager()
+                fishy = events_manager.roll_fishy_jumpscare()
+                if fishy:
+                    challenge_data["fishy_active"] = True
+                    challenge_data["fishy_required_item"] = fishy
+                    logger.info(f"🐟 Fishy Jumpscare triggered! Required item: {fishy}")
+            except Exception as e:
+                logger.error(f"Error checking for fishy jumpscare: {e}")
+            
             # Insert into database
             result = self.challenges_collection.insert_one(challenge_data)
             challenge_data["_id"] = result.inserted_id
@@ -1799,6 +1811,8 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             if is_duplicate:
                 points_awarded = -20  # Penalty for re-uploading the original image
                 logger.warning(f"User {user_id} attempted to submit duplicate image. Applying -20 point penalty.")
+                # Check for debuff (track daily point loss)
+                self._track_daily_point_loss(user_id, -20)
             elif is_verified and not already_verified:
                 points_awarded = challenge.get("reward_points", 50)
             else:
@@ -1840,6 +1854,19 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             # Update user stats (only count points if awarded)
             self._update_user_stats(user_id, is_verified and not already_verified, points_awarded)
             
+            # Random "Wait who was that?" character commission (15% chance on verified submissions)
+            character_commission = None
+            if is_verified and not already_verified:
+                try:
+                    from models.art_random_events_manager import ArtRandomEventsManager
+                    events_manager = ArtRandomEventsManager()
+                    if random.random() < 0.15:  # 15% chance
+                        character_commission = await events_manager.generate_character_commission(image_url)
+                        if character_commission:
+                            logger.info(f"🎭 Character commission by {character_commission.get('character_name')} for user {user_id}")
+                except Exception as e:
+                    logger.error(f"Error generating character commission: {e}")
+            
             return {
                 "success": True,
                 "verified": is_verified,
@@ -1848,7 +1875,8 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 "is_resubmission": is_resubmission,
                 "already_verified": already_verified,
                 "submission_number": submission_count + 1,
-                "is_duplicate": is_duplicate
+                "is_duplicate": is_duplicate,
+                "character_commission": character_commission
             }
             
         except Exception as e:
@@ -1877,6 +1905,36 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             )
         except Exception as e:
             logger.error(f"Error updating user stats: {e}")
+    
+    def _track_daily_point_loss(self, user_id: int, points_lost: int):
+        """Track daily point loss and apply debuff if threshold reached"""
+        if points_lost >= 0:
+            return  # Only track losses
+        
+        try:
+            from models.art_random_events_manager import ArtRandomEventsManager
+            events_manager = ArtRandomEventsManager()
+            
+            # Get or create daily point loss tracker
+            today = datetime.utcnow().date()
+            tracker_key = f"{user_id}_{today}"
+            
+            # This is a simple implementation - in production, use a dedicated collection
+            # For now, we'll use the debuff system directly
+            # Check current debuff status
+            current_debuff = events_manager.get_active_debuff(user_id)
+            if current_debuff:
+                return  # Already debuffed
+            
+            # Check if user has lost enough points today
+            # This is simplified - in production, track cumulative daily loss
+            # For now, we'll just apply debuff on significant single loss
+            if points_lost <= -100:
+                events_manager.check_and_apply_debuff(user_id, points_lost)
+                logger.warning(f"😒 Applied 'Look of disgust' debuff to user {user_id} for losing {points_lost} points")
+            
+        except Exception as e:
+            logger.error(f"Error tracking daily point loss: {e}")
     
     def get_challenge_submissions(self, challenge_id: str) -> List[Dict]:
         """Get all submissions for a challenge"""
