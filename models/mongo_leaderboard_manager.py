@@ -1567,6 +1567,20 @@ class MongoLeaderboardManager:
             logger.error(f"Error getting top score user: {e}")
             return None
 
+    def get_top_inorep_user(self, guild_id: str, exclude_user_names: List[str] = None) -> Optional[Dict]:
+        """Get the #1 InoRep holder (skipping excluded names like 'riko')"""
+        try:
+            exclude_lower = [n.lower() for n in (exclude_user_names or [])]
+            cursor = self.db['inorep'].find({"guild_id": guild_id}).sort("rep", DESCENDING)
+            for doc in cursor:
+                if doc.get("user_name", "").lower() in exclude_lower:
+                    continue
+                return {"user_id": int(doc["user_id"]), "user_name": doc.get("user_name", "Unknown"), "value": doc.get("rep", 0)}
+            return None
+        except Exception as e:
+            logger.error(f"Error getting top InoRep user: {e}")
+            return None
+
     def get_top_user_by_total_points(self, exclude_user_ids: List[int] = None) -> Optional[Dict]:
         """Get user_id + user_name of the #1 total-points holder"""
         try:

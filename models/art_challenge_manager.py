@@ -1754,8 +1754,8 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
     
     # ==================== SUBMISSION MANAGEMENT ====================
     
-    async def submit_entry(self, challenge_id: str, user_id: int, 
-                           image_url: str, message_id: int) -> Dict:
+    async def submit_entry(self, challenge_id: str, user_id: int,
+                           image_url: str, message_id: int, user_name: str = "Unknown") -> Dict:
         """Submit an entry to a challenge
         
         Users can submit multiple times:
@@ -1852,7 +1852,7 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             )
             
             # Update user stats (only count points if awarded)
-            self._update_user_stats(user_id, is_verified and not already_verified, points_awarded)
+            self._update_user_stats(user_id, user_name, is_verified and not already_verified, points_awarded)
             
             # Random "Wait who was that?" character commission (15% chance on verified submissions)
             character_commission = None
@@ -1893,13 +1893,14 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             logger.error(f"Error fetching stats user IDs: {e}")
             return []
 
-    def _update_user_stats(self, user_id: int, verified: bool, points: int):
+    def _update_user_stats(self, user_id: int, user_name: str, verified: bool, points: int):
         """Update user's art challenge statistics"""
         if not self._ensure_connected():
             return
         
         try:
             update = {
+                "$set": {"user_name": user_name},
                 "$inc": {
                     "total_submissions": 1,
                     "total_points": points

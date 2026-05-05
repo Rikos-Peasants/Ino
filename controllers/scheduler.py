@@ -1003,12 +1003,14 @@ class SchedulerController:
             if not leaderboard_manager:
                 return
 
+            guild_id_str = str(guild.id)
             top_rank_categories = {
                 "most_messages": leaderboard_manager.get_top_user_by_messages(),
                 "most_vc":       leaderboard_manager.get_top_user_by_voice(),
-                "most_liked":    leaderboard_manager.get_top_user_by_score(
+                "most_liked":    leaderboard_manager.get_top_inorep_user(
+                                     guild_id_str,
                                      exclude_user_names=roles_manager.MOST_LIKED_EXCLUDED_NAMES),
-                "most_points":   leaderboard_manager.get_top_user_by_total_points(),
+                "most_points":   leaderboard_manager.get_top_user_by_score(),
             }
 
             for category, top_user in top_rank_categories.items():

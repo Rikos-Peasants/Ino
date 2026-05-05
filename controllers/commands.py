@@ -980,6 +980,85 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
         
+        @self.bot.hybrid_command(name="backfillmessages", description="Rebuild message point counts from full channel history (Bot owners only)")
+        @owner_command
+        async def backfill_messages_command(ctx):
+            """Rebuild message point counts from full channel history. Run once."""
+            leaderboard_manager = self.get_leaderboard_manager()
+            if not leaderboard_manager:
+                await ctx.send("❌ Leaderboard manager unavailable.", ephemeral=True)
+                return
+
+            guild = ctx.guild
+            if hasattr(ctx, 'defer'):
+                await ctx.defer()
+            status = await ctx.send("⏳ Starting message backfill — this may take a while...")
+
+            counts: dict = {}  # user_id -> {user_name, points}
+            total_messages = 0
+
+            text_channels = [c for c in guild.text_channels if c.permissions_for(guild.me).read_message_history]
+            booster_ids = set(Config.BOOSTER_TEXT_CHANNELS)
+
+            for channel in text_channels:
+                pts_per_msg = Config.POINTS_PER_MESSAGE_BOOSTER if channel.id in booster_ids else Config.POINTS_PER_MESSAGE
+                try:
+                    async for message in channel.history(limit=None, oldest_first=True):
+                        if message.author.bot:
+                            continue
+                        uid = message.author.id
+                        if uid not in counts:
+                            counts[uid] = {"user_name": message.author.display_name, "points": 0}
+                        counts[uid]["points"] += pts_per_msg
+                        total_messages += 1
+                        if total_messages % 5000 == 0:
+                            try:
+                                await status.edit(content=f"⏳ Processed {total_messages:,} messages across {len(counts)} users...")
+                            except Exception:
+                                pass
+                except Exception as e:
+                    logger.error(f"Error reading #{channel.name}: {e}")
+                    continue
+
+            if not counts:
+                await status.edit(content="❌ No messages found.")
+                return
+
+            # Bulk-set points_text for every user (overwrites to prevent double-count)
+            try:
+                col = leaderboard_manager.db['user_points']
+                for uid, data in counts.items():
+                    col.update_one(
+                        {"user_id": str(uid)},
+                        {"$set": {
+                            "user_name": data["user_name"],
+                            "points_text": data["points"],
+                        },
+                         "$setOnInsert": {
+                            "user_id": str(uid),
+                            "points_voice": 0,
+                            "points_booster": 0,
+                            "total_points": data["points"],
+                        }},
+                        upsert=True
+                    )
+                    # Keep total_points in sync for existing docs
+                    col.update_one(
+                        {"user_id": str(uid), "total_points": {"$exists": True}},
+                        [{"$set": {"total_points": {
+                            "$add": [
+                                "$points_voice",
+                                {"$ifNull": ["$points_booster", 0]},
+                                data["points"]
+                            ]
+                        }}}]
+                    )
+            except Exception as e:
+                await status.edit(content=f"❌ DB write failed: {e}")
+                return
+
+            await status.edit(content=f"✅ Backfill complete! **{total_messages:,}** messages • **{len(counts)}** users updated.")
+
         @self.bot.hybrid_command(name="bestyear", description="Manually post the best image of this year (Bot owners only)")
         @owner_command
         async def best_year_command(ctx):
@@ -6601,7 +6680,8 @@ class CommandsController:
                     challenge_id=active.get("challenge_id"),
                     user_id=ctx.author.id,
                     image_url=image_url,
-                    message_id=ctx.message.id if ctx.message else 0
+                    message_id=ctx.message.id if ctx.message else 0,
+                    user_name=ctx.author.display_name
                 )
                 
                 if result.get("success"):
