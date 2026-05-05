@@ -99,7 +99,7 @@ class ChallengeAcceptView(View):
             await interaction.response.send_message(
                 f"✅ **Challenge accepted!**\n"
                 f"🎯 **Theme: {theme}**\n"
-                f"📸 Both players: reply to your artwork image with `!duelsubmit` to submit!\n"
+                f"📸 Both players: reply to your artwork image with `R!duelsubmit` to submit!\n"
                 f"⏰ Deadline: {deadline_str}", ephemeral=False)
         else:
             await interaction.response.send_message("❌ Failed to accept challenge.", ephemeral=True)

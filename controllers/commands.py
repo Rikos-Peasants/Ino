@@ -6788,7 +6788,7 @@ class CommandsController:
                         pass
 
                 if not image_url:
-                    await ctx.send("❌ Please attach an image to your message, or reply to your artwork with `!duelsubmit`.")
+                    await ctx.send("❌ Please attach an image to your message, or reply to your artwork with `R!duelsubmit`.")
                     return
 
                 active = challenge_manager.get_active_challenges()
