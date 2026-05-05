@@ -41,7 +41,7 @@ class CommandSecurity:
         # OWNER - Bot owners only
         SecurityLevel.OWNER: {
             'testowner', 'processold', 'bestweek', 'bestmonth', 'bestyear', 'dbstatus',
-            'testbest', 'updatescore', 'debugreactions', 'youtube', 'list', 'add', 
+            'backfillmessages', 'testbest', 'updatescore', 'debugreactions', 'youtube', 'list', 'add',
             'remove', 'test', 'help', 'validate', 'createevent', 'endevent',
             'debug_events', 'force_check_expired', 'process_old_reactions', 
             'rebuild_likes_db', 'test_bookmark', 'clear_bookmarks'

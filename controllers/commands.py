@@ -984,48 +984,65 @@ class CommandsController:
         @owner_command
         async def backfill_messages_command(ctx):
             """Rebuild message point counts from full channel history. Run once."""
-            leaderboard_manager = self.get_leaderboard_manager()
-            if not leaderboard_manager:
-                await ctx.send("❌ Leaderboard manager unavailable.", ephemeral=True)
-                return
-
-            guild = ctx.guild
-            if hasattr(ctx, 'defer'):
-                await ctx.defer()
-            status = await ctx.send("⏳ Starting message backfill — this may take a while...")
-
-            counts: dict = {}  # user_id -> {user_name, points}
-            total_messages = 0
-
-            text_channels = [c for c in guild.text_channels if c.permissions_for(guild.me).read_message_history]
-            booster_ids = set(Config.BOOSTER_TEXT_CHANNELS)
-
-            for channel in text_channels:
-                pts_per_msg = Config.POINTS_PER_MESSAGE_BOOSTER if channel.id in booster_ids else Config.POINTS_PER_MESSAGE
-                try:
-                    async for message in channel.history(limit=None, oldest_first=True):
-                        if message.author.bot:
-                            continue
-                        uid = message.author.id
-                        if uid not in counts:
-                            counts[uid] = {"user_name": message.author.display_name, "points": 0}
-                        counts[uid]["points"] += pts_per_msg
-                        total_messages += 1
-                        if total_messages % 5000 == 0:
-                            try:
-                                await status.edit(content=f"⏳ Processed {total_messages:,} messages across {len(counts)} users...")
-                            except Exception:
-                                pass
-                except Exception as e:
-                    logger.error(f"Error reading #{channel.name}: {e}")
-                    continue
-
-            if not counts:
-                await status.edit(content="❌ No messages found.")
-                return
-
-            # Bulk-set points_text for every user (overwrites to prevent double-count)
+            logger.info(f"backfillmessages invoked by {ctx.author}")
             try:
+                if ctx.interaction:
+                    await ctx.defer()
+
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager:
+                    await ctx.send("❌ Leaderboard manager unavailable.")
+                    return
+
+                guild = ctx.guild
+                if not guild:
+                    await ctx.send("❌ Must be used in a guild.")
+                    return
+
+                status = await ctx.send("⏳ Starting message backfill — this may take a while...")
+
+                counts: dict = {}  # user_id -> {user_name, points}
+                total_messages = 0
+                booster_ids = set(Config.BOOSTER_TEXT_CHANNELS)
+
+                me = guild.me
+                if me:
+                    text_channels = [c for c in guild.text_channels if c.permissions_for(me).read_message_history]
+                else:
+                    text_channels = list(guild.text_channels)
+
+                logger.info(f"backfillmessages: scanning {len(text_channels)} channels")
+
+                for channel in text_channels:
+                    pts_per_msg = Config.POINTS_PER_MESSAGE_BOOSTER if channel.id in booster_ids else Config.POINTS_PER_MESSAGE
+                    ch_count = 0
+                    try:
+                        async for message in channel.history(limit=None, oldest_first=True):
+                            if message.author.bot:
+                                continue
+                            uid = message.author.id
+                            if uid not in counts:
+                                counts[uid] = {"user_name": message.author.display_name, "points": 0}
+                            counts[uid]["points"] += pts_per_msg
+                            total_messages += 1
+                            ch_count += 1
+                            if total_messages % 5000 == 0:
+                                try:
+                                    await status.edit(content=f"⏳ Processed {total_messages:,} messages across {len(counts)} users...")
+                                except Exception:
+                                    pass
+                        logger.info(f"backfillmessages: #{channel.name} — {ch_count} messages")
+                    except Exception as e:
+                        logger.error(f"backfillmessages: error reading #{channel.name}: {e}")
+                        continue
+
+                logger.info(f"backfillmessages: total {total_messages} messages, {len(counts)} users")
+
+                if not counts:
+                    await status.edit(content="❌ No messages found. Check bot channel permissions.")
+                    return
+
+                # Bulk-set points_text for every user (overwrites to prevent double-count)
                 col = leaderboard_manager.db['user_points']
                 for uid, data in counts.items():
                     col.update_one(
@@ -1053,11 +1070,16 @@ class CommandsController:
                             ]
                         }}}]
                     )
-            except Exception as e:
-                await status.edit(content=f"❌ DB write failed: {e}")
-                return
 
-            await status.edit(content=f"✅ Backfill complete! **{total_messages:,}** messages • **{len(counts)}** users updated.")
+                await status.edit(content=f"✅ Backfill complete! **{total_messages:,}** messages • **{len(counts)}** users updated.")
+                logger.info(f"backfillmessages: done — {total_messages} msgs, {len(counts)} users")
+
+            except Exception as e:
+                logger.error(f"backfillmessages error: {e}", exc_info=True)
+                try:
+                    await ctx.send(f"❌ Backfill failed: {e}")
+                except Exception:
+                    pass
 
         @self.bot.hybrid_command(name="bestyear", description="Manually post the best image of this year (Bot owners only)")
         @owner_command
