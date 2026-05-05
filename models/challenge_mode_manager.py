@@ -292,6 +292,24 @@ class ChallengeModeManager:
             logger.error(f"Error getting user challenge stats: {e}")
             return {"wins": 0, "losses": 0, "draws": 0, "total_wagered": 0, "total_won": 0}
 
+    def get_all_participant_user_ids(self) -> List[int]:
+        """Return every unique user_id that has participated in a completed duel"""
+        if not self._ensure_connected():
+            return []
+        try:
+            docs = self.challenges_collection.find(
+                {"state": self.STATE_COMPLETED},
+                {"challenger_id": 1, "opponent_id": 1, "_id": 0}
+            )
+            ids = set()
+            for d in docs:
+                ids.add(d["challenger_id"])
+                ids.add(d["opponent_id"])
+            return list(ids)
+        except Exception as e:
+            logger.error(f"Error fetching participant user IDs: {e}")
+            return []
+
     def set_fishy(self, challenge_id: str, required_item: str) -> bool:
         if not self._ensure_connected():
             return False

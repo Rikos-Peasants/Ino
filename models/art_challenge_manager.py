@@ -1883,6 +1883,16 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             logger.error(f"Error submitting entry: {e}")
             return {"success": False, "error": str(e)}
     
+    def get_all_stats_user_ids(self) -> List[int]:
+        """Return every user_id that has an entry in art_challenge_stats"""
+        if not self._ensure_connected():
+            return []
+        try:
+            return [doc["user_id"] for doc in self.challenge_stats_collection.find({}, {"user_id": 1, "_id": 0})]
+        except Exception as e:
+            logger.error(f"Error fetching stats user IDs: {e}")
+            return []
+
     def _update_user_stats(self, user_id: int, verified: bool, points: int):
         """Update user's art challenge statistics"""
         if not self._ensure_connected():

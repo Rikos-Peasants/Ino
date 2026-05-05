@@ -927,9 +927,9 @@ class SchedulerController:
 
     # ==================== CUSTOM ROLES TASKS ====================
 
-    @tasks.loop(hours=6)  # Check every 6 hours
+    @tasks.loop(minutes=10)
     async def check_custom_roles(self):
-        """Update custom roles for top rankers"""
+        """Update custom roles for all users with art/duel stats"""
         try:
             roles_manager = getattr(self.bot, 'custom_roles_manager', None)
             art_manager = getattr(self.bot, 'art_challenge_manager', None)
@@ -941,55 +941,62 @@ class SchedulerController:
             if not guild:
                 return
 
-            logger.info("🔄 Checking and updating custom roles...")
+            all_tier_role_ids = set(roles_manager.get_all_tier_role_ids())
 
-            # Get all tier role IDs
-            artist_role_ids = roles_manager.get_artist_role_ids()
-            duelist_role_ids = roles_manager.get_duelist_role_ids()
-            all_tier_role_ids = roles_manager.get_all_tier_role_ids()
+            # Collect all user IDs that have any stats (DB-driven, not role-driven)
+            art_user_ids = set(art_manager.get_all_stats_user_ids())
+            duel_user_ids = set(challenge_manager.get_all_participant_user_ids())
+            all_user_ids = art_user_ids | duel_user_ids
 
-            # Get all members who have tier roles
-            members_with_roles = []
-            for role_id in all_tier_role_ids:
-                role = guild.get_role(role_id)
-                if role:
-                    members_with_roles.extend(role.members)
+            if not all_user_ids:
+                return
 
-            # Update each member's roles
-            for member in members_with_roles:
+            logger.info(f"🔄 Syncing custom roles for {len(all_user_ids)} users...")
+            updated = 0
+
+            for user_id in all_user_ids:
+                member = guild.get_member(user_id)
+                if not member:
+                    continue
+
                 try:
-                    # Get their stats
-                    art_stats = art_manager.get_user_challenge_stats(member.id)
+                    art_stats = art_manager.get_user_challenge_stats(member.id) or {}
                     duel_stats = challenge_manager.get_user_challenge_stats(member.id)
 
                     total_art_points = art_stats.get("total_points", 0)
                     total_duel_wins = duel_stats.get("wins", 0)
 
-                    # Determine correct roles
-                    artist_role = roles_manager.get_artist_role(total_art_points)
-                    duelist_role = roles_manager.get_duelist_role(total_duel_wins)
+                    artist_tier = roles_manager.get_artist_role(total_art_points)
+                    duelist_tier = roles_manager.get_duelist_role(total_duel_wins)
 
-                    # Remove all tier roles
-                    for role_id in all_tier_role_ids:
-                        role = guild.get_role(role_id)
-                        if role and role in member.roles:
-                            await member.remove_roles(role, reason="Updating custom role tier")
+                    desired_role_ids = set()
+                    if artist_tier:
+                        desired_role_ids.add(artist_tier["role_id"])
+                    if duelist_tier:
+                        desired_role_ids.add(duelist_tier["role_id"])
 
-                    # Add correct roles
-                    if artist_role:
-                        role = guild.get_role(artist_role["role_id"])
-                        if role:
-                            await member.add_roles(role, reason=f"Artist role: {artist_role['name']}")
+                    current_tier_roles = {r.id for r in member.roles if r.id in all_tier_role_ids}
 
-                    if duelist_role:
-                        role = guild.get_role(duelist_role["role_id"])
-                        if role:
-                            await member.add_roles(role, reason=f"Duelist role: {duelist_role['name']}")
+                    if current_tier_roles == desired_role_ids:
+                        continue  # Already correct, skip
+
+                    # Remove stale tier roles
+                    to_remove = [guild.get_role(rid) for rid in (current_tier_roles - desired_role_ids) if guild.get_role(rid)]
+                    if to_remove:
+                        await member.remove_roles(*to_remove, reason="Custom role tier update")
+
+                    # Add missing tier roles
+                    to_add = [guild.get_role(rid) for rid in (desired_role_ids - current_tier_roles) if guild.get_role(rid)]
+                    if to_add:
+                        await member.add_roles(*to_add, reason="Custom role tier update")
+
+                    updated += 1
 
                 except Exception as e:
                     logger.error(f"Error updating roles for {member.display_name}: {e}")
 
-            logger.info("✅ Custom roles check completed")
+            if updated:
+                logger.info(f"✅ Custom roles updated for {updated} members")
 
         except Exception as e:
             logger.error(f"Error in custom roles task: {e}")
