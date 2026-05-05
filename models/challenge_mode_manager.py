@@ -23,6 +23,20 @@ class ChallengeModeManager:
     MAX_WAGER = 10000
     VOTING_DURATION_HOURS = 1
     CHALLENGE_EXPIRY_HOURS = 24
+    SUBMISSION_HOURS = 4
+
+    CHALLENGE_THEMES = [
+        "Rainy city at night", "A forgotten library", "Underwater kingdom",
+        "Cherry blossom festival", "Robot and nature coexisting", "Last sunrise on Earth",
+        "A market in a flying city", "The spirit of an ancient forest", "Neon alleyway at 3am",
+        "Dragon sleeping in a modern city", "A letter never sent", "The moment before a battle",
+        "A café on the moon", "Memories of summer", "Lost in a maze of mirrors",
+        "Two strangers sharing an umbrella", "A castle made of clouds", "The last bookstore",
+        "Witch's cottage in autumn", "Deep sea discovery", "A train to nowhere",
+        "Star festival", "The sound of silence", "Overgrown ruins",
+        "A dream you can almost remember", "Parallel worlds collide", "The lighthouse keeper",
+        "First snowfall of the year", "A marketplace of magical goods", "End of an era",
+    ]
 
     def __init__(self, connection_url: Optional[str] = None, database_name: str = "Riko"):
         from config import Config
@@ -88,19 +102,30 @@ class ChallengeModeManager:
             logger.error(f"Error creating challenge: {e}")
             return None
 
-    def accept_challenge(self, challenge_id: str, opponent_id: int) -> bool:
+    def accept_challenge(self, challenge_id: str, opponent_id: int) -> Optional[Dict]:
+        """Accept a challenge. Returns the updated challenge dict (with theme) or None on failure."""
         if not self._ensure_connected():
-            return False
+            return None
         try:
+            import random
             from bson import ObjectId
+            theme = random.choice(self.CHALLENGE_THEMES)
+            submission_deadline = datetime.utcnow() + timedelta(hours=self.SUBMISSION_HOURS)
             result = self.challenges_collection.update_one(
                 {"_id": ObjectId(challenge_id), "opponent_id": opponent_id, "state": self.STATE_PENDING},
-                {"$set": {"state": self.STATE_ACTIVE, "accepted_at": datetime.utcnow()}}
+                {"$set": {
+                    "state": self.STATE_ACTIVE,
+                    "accepted_at": datetime.utcnow(),
+                    "challenge_theme": theme,
+                    "submission_deadline": submission_deadline,
+                }}
             )
-            return result.modified_count > 0
+            if result.modified_count > 0:
+                return self.get_challenge(challenge_id)
+            return None
         except Exception as e:
             logger.error(f"Error accepting challenge: {e}")
-            return False
+            return None
 
     def decline_challenge(self, challenge_id: str, opponent_id: int) -> bool:
         if not self._ensure_connected():

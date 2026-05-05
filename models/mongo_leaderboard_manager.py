@@ -1516,3 +1516,68 @@ class MongoLeaderboardManager:
         except Exception as e:
             logger.error(f"Error getting combined leaderboard: {e}")
             return []
+
+    # ==================== TOP-RANK ROLE QUERIES ====================
+
+    def get_top_user_by_messages(self, exclude_user_ids: List[int] = None) -> Optional[Dict]:
+        """Get user_id + user_name of the #1 message sender (points_text)"""
+        try:
+            if not hasattr(self, 'user_points_collection'):
+                self.user_points_collection = self.db['user_points']
+            exclude = [str(uid) for uid in (exclude_user_ids or [])]
+            query = {"user_id": {"$nin": exclude}} if exclude else {}
+            doc = self.user_points_collection.find_one(query, sort=[("points_text", DESCENDING)])
+            if doc:
+                return {"user_id": int(doc["user_id"]), "user_name": doc.get("user_name", "Unknown"), "value": doc.get("points_text", 0)}
+            return None
+        except Exception as e:
+            logger.error(f"Error getting top message user: {e}")
+            return None
+
+    def get_top_user_by_voice(self, exclude_user_ids: List[int] = None) -> Optional[Dict]:
+        """Get user_id + user_name of the #1 VC participant (points_voice)"""
+        try:
+            if not hasattr(self, 'user_points_collection'):
+                self.user_points_collection = self.db['user_points']
+            exclude = [str(uid) for uid in (exclude_user_ids or [])]
+            query = {"user_id": {"$nin": exclude}} if exclude else {}
+            doc = self.user_points_collection.find_one(query, sort=[("points_voice", DESCENDING)])
+            if doc:
+                return {"user_id": int(doc["user_id"]), "user_name": doc.get("user_name", "Unknown"), "value": doc.get("points_voice", 0)}
+            return None
+        except Exception as e:
+            logger.error(f"Error getting top voice user: {e}")
+            return None
+
+    def get_top_user_by_score(self, exclude_user_names: List[str] = None, exclude_user_ids: List[int] = None) -> Optional[Dict]:
+        """Get user_id + user_name of the #1 most-liked image poster (total_score)"""
+        try:
+            exclude_names_lower = [n.lower() for n in (exclude_user_names or [])]
+            exclude_ids = [str(uid) for uid in (exclude_user_ids or [])]
+            query = {}
+            if exclude_ids:
+                query["user_id"] = {"$nin": exclude_ids}
+            cursor = self.collection.find(query, sort=[("total_score", DESCENDING)])
+            for doc in cursor:
+                if doc.get("user_name", "").lower() in exclude_names_lower:
+                    continue
+                return {"user_id": int(doc["user_id"]), "user_name": doc.get("user_name", "Unknown"), "value": doc.get("total_score", 0)}
+            return None
+        except Exception as e:
+            logger.error(f"Error getting top score user: {e}")
+            return None
+
+    def get_top_user_by_total_points(self, exclude_user_ids: List[int] = None) -> Optional[Dict]:
+        """Get user_id + user_name of the #1 total-points holder"""
+        try:
+            if not hasattr(self, 'user_points_collection'):
+                self.user_points_collection = self.db['user_points']
+            exclude = [str(uid) for uid in (exclude_user_ids or [])]
+            query = {"user_id": {"$nin": exclude}} if exclude else {}
+            doc = self.user_points_collection.find_one(query, sort=[("total_points", DESCENDING)])
+            if doc:
+                return {"user_id": int(doc["user_id"]), "user_name": doc.get("user_name", "Unknown"), "value": doc.get("total_points", 0)}
+            return None
+        except Exception as e:
+            logger.error(f"Error getting top points user: {e}")
+            return None

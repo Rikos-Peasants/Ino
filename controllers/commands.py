@@ -1019,13 +1019,13 @@ class CommandsController:
                 else:
                     await ctx.send(embed=error_embed)
         
-        @self.bot.hybrid_command(name="leaderboard", description="Show all leaderboards (Points, Images, InoRep)")
+        @self.bot.hybrid_command(name="leaderboard", description="Show all leaderboards (Points, Images, InoRep, Art)")
         @public_command
         async def leaderboard_command(ctx, type: Optional[str] = None):
             """Show combined leaderboard with interactive buttons
             
             Args:
-                type: Optional leaderboard type - 'points', 'images', or 'inorep' (default: points)
+                type: Optional leaderboard type - 'points', 'images', 'inorep', or 'art' (default: points)
             """
             try:
                 # Check if this is a slash command (has defer) or text command
@@ -1058,8 +1058,8 @@ class CommandsController:
                 # Normalize type parameter
                 if type:
                     type = type.lower()
-                    if type not in ['points', 'images', 'inorep']:
-                        error_msg = "Invalid type. Use 'points', 'images', or 'inorep'."
+                    if type not in ['points', 'images', 'inorep', 'art']:
+                        error_msg = "Invalid type. Use 'points', 'images', 'inorep', or 'art'."
                         await ctx.send(error_msg, ephemeral=True)
                         return
                 else:
@@ -1081,6 +1081,15 @@ class CommandsController:
                     )
                     embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=False)
                     
+                elif type == 'art':
+                    art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                    if not art_manager:
+                        error_msg = "Art challenge system is not available."
+                        await ctx.send(error_msg, ephemeral=True)
+                        return
+                    leaderboard_data = art_manager.get_challenge_leaderboard(limit=10)
+                    embed = EmbedViews.art_challenge_leaderboard_embed(leaderboard_data)
+
                 else:  # images (default)
                     leaderboard_data = leaderboard_manager.get_leaderboard(limit=10)
                     embed = EmbedViews.leaderboard_embed(leaderboard_data, "all time")
@@ -1097,7 +1106,8 @@ class CommandsController:
                 
                 # Create interactive view with buttons
                 from views.combined_leaderboard_view import CombinedLeaderboardView
-                view = CombinedLeaderboardView(ctx, leaderboard_manager, quest_manager, initial_type=type)
+                art_manager = getattr(self.bot, 'art_challenge_manager', None)
+                view = CombinedLeaderboardView(ctx, leaderboard_manager, quest_manager, art_manager=art_manager, initial_type=type)
                 
                 # Send response based on command type
                 if hasattr(ctx, 'followup'):
@@ -6666,26 +6676,39 @@ class CommandsController:
                 logger.error(f"Error in duel command: {e}")
                 await ctx.send("❌ An error occurred.", ephemeral=True)
 
-        @self.bot.hybrid_command(name="duelsubmit", description="Submit your artwork to an active duel")
-        @app_commands.describe(image="Your artwork image")
-        @public_command
-        async def duel_submit_command(ctx, image: Optional[discord.Attachment] = None):
+        @self.bot.command(name="duelsubmit")
+        async def duel_submit_command(ctx):
             try:
                 challenge_manager = getattr(self.bot, 'challenge_mode_manager', None)
                 if not challenge_manager:
-                    await ctx.send("❌ Challenge mode is not available.", ephemeral=True)
+                    await ctx.send("❌ Challenge mode is not available.")
                     return
 
+                # Find image: from current message attachments OR the message being replied to
                 image_url = None
-                if image and image.content_type and image.content_type.startswith('image/'):
-                    image_url = image.url
-                if not image_url and ctx.message and ctx.message.attachments:
-                    for att in ctx.message.attachments:
-                        if any(att.filename.lower().endswith(ext) for ext in ['.png','.jpg','.jpeg','.gif','.webp']):
-                            image_url = att.url
-                            break
+                img_exts = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+                for att in ctx.message.attachments:
+                    if att.filename.lower().endswith(img_exts):
+                        image_url = att.url
+                        break
+
+                if not image_url and ctx.message.reference:
+                    try:
+                        ref_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+                        for att in ref_msg.attachments:
+                            if att.filename.lower().endswith(img_exts):
+                                image_url = att.url
+                                break
+                        if not image_url:
+                            for embed in ref_msg.embeds:
+                                if embed.image:
+                                    image_url = embed.image.url
+                                    break
+                    except Exception:
+                        pass
+
                 if not image_url:
-                    await ctx.send("❌ Please attach an image.", ephemeral=True)
+                    await ctx.send("❌ Please attach an image to your message, or reply to your artwork with `!duelsubmit`.")
                     return
 
                 active = challenge_manager.get_active_challenges()
@@ -6696,12 +6719,14 @@ class CommandsController:
                         break
 
                 if not user_duel:
-                    await ctx.send("❌ You don't have an active duel. Use `/duel` to start one!", ephemeral=True)
+                    await ctx.send("❌ You don't have an active duel. Use `/duel` to start one!")
                     return
 
-                result = challenge_manager.submit_entry(user_duel["challenge_id"], ctx.author.id, image_url, 0)
+                result = challenge_manager.submit_entry(user_duel["challenge_id"], ctx.author.id, image_url, ctx.message.id)
                 if result.get("success"):
-                    await ctx.send("✅ Artwork submitted! Waiting for opponent...", ephemeral=False)
+                    theme = user_duel.get("challenge_theme", "")
+                    theme_str = f" (Theme: **{theme}**)" if theme else ""
+                    await ctx.send(f"✅ Artwork submitted{theme_str}! Waiting for opponent...")
                     updated = challenge_manager.get_challenge(user_duel["challenge_id"])
                     if updated.get("state") == "voting":
                         from views.challenge_mode_view import ChallengeModeEmbed, ChallengeVoteView
@@ -6711,11 +6736,11 @@ class CommandsController:
                         msg = await channel.send(content="🗳️ **VOTING IS OPEN!**", embed=embed, view=view)
                         challenge_manager.update_message_id(updated["challenge_id"], msg.id)
                 else:
-                    await ctx.send(f"❌ {result.get('error')}", ephemeral=True)
+                    await ctx.send(f"❌ {result.get('error')}")
 
             except Exception as e:
                 logger.error(f"Error in duelsubmit command: {e}")
-                await ctx.send("❌ An error occurred.", ephemeral=True)
+                await ctx.send("❌ An error occurred.")
 
         @self.bot.hybrid_command(name="duelstats", description="View your 1v1 duel statistics")
         @public_command

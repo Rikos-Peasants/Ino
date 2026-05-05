@@ -1575,7 +1575,37 @@ class EmbedViews:
         embed.set_footer(text="InoRep Management • Just for fun!")
         
         return embed
-    
+
+    @staticmethod
+    def art_challenge_leaderboard_embed(leaderboard_data: list) -> discord.Embed:
+        """Create an embed for the Art Challenge leaderboard"""
+        embed = discord.Embed(
+            title="🎨 Art Challenge Leaderboard",
+            description="Top artists by challenge points",
+            color=discord.Color.from_rgb(255, 182, 193)
+        )
+        if not leaderboard_data:
+            embed.description = "No art challenge data yet. Start competing!"
+            return embed
+
+        medals = ["🥇", "🥈", "🥉"]
+        for i, entry in enumerate(leaderboard_data[:10]):
+            rank = medals[i] if i < 3 else f"**#{i+1}**"
+            name = entry.get("user_name", "Unknown")
+            pts = entry.get("total_points", 0)
+            verified = entry.get("verified_submissions", 0)
+            total = entry.get("total_submissions", 0)
+            rate = f"{verified/total*100:.0f}%" if total else "0%"
+            embed.add_field(
+                name=f"{rank} {name}",
+                value=f"**{pts}** pts • {verified}/{total} verified ({rate})",
+                inline=False
+            )
+
+        embed.set_footer(text="Art Challenge Points Leaderboard")
+        embed.timestamp = discord.utils.utcnow()
+        return embed
+
     @staticmethod
     def inorep_leaderboard_embed(leaderboard_data: list, worst: bool = False) -> discord.Embed:
         """Create an embed for InoRep leaderboard"""

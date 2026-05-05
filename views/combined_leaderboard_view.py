@@ -7,11 +7,12 @@ logger = logging.getLogger(__name__)
 class CombinedLeaderboardView(discord.ui.View):
     """Interactive view for switching between different leaderboards"""
     
-    def __init__(self, ctx, leaderboard_manager, quest_manager, initial_type="points"):
+    def __init__(self, ctx, leaderboard_manager, quest_manager, art_manager=None, initial_type="points"):
         super().__init__(timeout=300)  # 5 minute timeout
         self.ctx = ctx
         self.leaderboard_manager = leaderboard_manager
         self.quest_manager = quest_manager
+        self.art_manager = art_manager
         self.current_board = initial_type  # Use provided initial type
         self.image_sort_by = "total_score"  # Default sort for images leaderboard
         
@@ -20,14 +21,14 @@ class CombinedLeaderboardView(discord.ui.View):
             self.add_item(ImageSortSelect(self))
         
         # Set initial button styles based on initial_type
+        active_ids = {
+            "images": "images_lb", "points": "combined_points_lb",
+            "inorep": "inorep_lb", "art": "art_lb"
+        }
+        active_id = active_ids.get(initial_type)
         for item in self.children:
             if isinstance(item, discord.ui.Button):
-                if (initial_type == "images" and item.custom_id == "images_lb") or \
-                   (initial_type == "points" and item.custom_id == "combined_points_lb") or \
-                   (initial_type == "inorep" and item.custom_id == "inorep_lb"):
-                    item.style = discord.ButtonStyle.primary
-                else:
-                    item.style = discord.ButtonStyle.secondary
+                item.style = discord.ButtonStyle.primary if item.custom_id == active_id else discord.ButtonStyle.secondary
     
     @discord.ui.button(label="📸 Images", style=discord.ButtonStyle.primary, custom_id="images_lb")
     async def images_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -155,6 +156,40 @@ class CombinedLeaderboardView(discord.ui.View):
             logger.error(f"Error showing InoRep leaderboard: {e}")
             await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
     
+    @discord.ui.button(label="🎨 Art", style=discord.ButtonStyle.secondary, custom_id="art_lb")
+    async def art_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show Art Challenge leaderboard"""
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message("❌ This is not your command!", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        try:
+            if not self.art_manager:
+                await interaction.followup.send("❌ Art challenge system is not available!", ephemeral=True)
+                return
+
+            self.current_board = "art"
+
+            for item in self.children:
+                if isinstance(item, discord.ui.Button):
+                    item.style = discord.ButtonStyle.primary if item.custom_id == "art_lb" else discord.ButtonStyle.secondary
+
+            items_to_remove = [item for item in self.children if isinstance(item, ImageSortSelect)]
+            for item in items_to_remove:
+                self.remove_item(item)
+
+            leaderboard_data = self.art_manager.get_challenge_leaderboard(limit=10)
+
+            from views.embeds import EmbedViews
+            embed = EmbedViews.art_challenge_leaderboard_embed(leaderboard_data)
+
+            await interaction.followup.edit_message(interaction.message.id, embed=embed, view=self)
+        except Exception as e:
+            logger.error(f"Error showing art leaderboard: {e}")
+            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+
     async def on_timeout(self):
         """Disable buttons when view times out"""
         try:

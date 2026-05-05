@@ -22,7 +22,11 @@ class ChallengeModeEmbed:
         theme = challenge_data.get("challenge_theme")
         if theme:
             embed.add_field(name="🎯 Theme", value=theme, inline=True)
-        embed.add_field(name="⏰ Status", value="Waiting for opponent to accept...", inline=False)
+        deadline = challenge_data.get("submission_deadline")
+        if deadline:
+            embed.add_field(name="⏰ Submit By", value=f"<t:{int(deadline.timestamp())}:R>", inline=True)
+        else:
+            embed.add_field(name="⏰ Status", value="Waiting for opponent to accept...", inline=False)
         embed.set_footer(text="Opponent: Click Accept or Decline below")
         embed.timestamp = datetime.utcnow()
         return embed
@@ -87,11 +91,16 @@ class ChallengeAcceptView(View):
             await interaction.response.send_message("❌ Only the challenged opponent can accept.", ephemeral=True)
             return
 
-        success = self.challenge_manager.accept_challenge(self.challenge_id, interaction.user.id)
-        if success:
+        updated = self.challenge_manager.accept_challenge(self.challenge_id, interaction.user.id)
+        if updated:
+            theme = updated.get("challenge_theme", "Free theme")
+            deadline = updated.get("submission_deadline")
+            deadline_str = f"<t:{int(deadline.timestamp())}:R>" if deadline else "4 hours"
             await interaction.response.send_message(
-                f"✅ Challenge accepted! Both players: post your artwork in this channel and use `/duelsubmit` to submit!\n"
-                f"⏰ You have 24 hours to submit.", ephemeral=False)
+                f"✅ **Challenge accepted!**\n"
+                f"🎯 **Theme: {theme}**\n"
+                f"📸 Both players: reply to your artwork image with `!duelsubmit` to submit!\n"
+                f"⏰ Deadline: {deadline_str}", ephemeral=False)
         else:
             await interaction.response.send_message("❌ Failed to accept challenge.", ephemeral=True)
 

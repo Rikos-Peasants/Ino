@@ -998,6 +998,50 @@ class SchedulerController:
             if updated:
                 logger.info(f"✅ Custom roles updated for {updated} members")
 
+            # ---- Top-rank roles (Most Messages / VC / Liked / Points) ----
+            leaderboard_manager = getattr(self.bot, 'leaderboard_manager', None)
+            if not leaderboard_manager:
+                return
+
+            top_rank_categories = {
+                "most_messages": leaderboard_manager.get_top_user_by_messages(),
+                "most_vc":       leaderboard_manager.get_top_user_by_voice(),
+                "most_liked":    leaderboard_manager.get_top_user_by_score(
+                                     exclude_user_names=roles_manager.MOST_LIKED_EXCLUDED_NAMES),
+                "most_points":   leaderboard_manager.get_top_user_by_total_points(),
+            }
+
+            for category, top_user in top_rank_categories.items():
+                try:
+                    role_def = roles_manager.TOP_RANK_ROLES[category]
+                    role = guild.get_role(role_def["role_id"])
+                    if not role:
+                        continue
+
+                    new_holder_id = top_user["user_id"] if top_user else None
+                    old_holder_id = roles_manager.get_top_rank_holder(category)
+
+                    if old_holder_id == new_holder_id:
+                        continue  # No change
+
+                    # Remove from old holder
+                    if old_holder_id:
+                        old_member = guild.get_member(old_holder_id)
+                        if old_member and role in old_member.roles:
+                            await old_member.remove_roles(role, reason=f"Top rank '{role_def['name']}' transferred")
+
+                    # Add to new holder
+                    if new_holder_id:
+                        new_member = guild.get_member(new_holder_id)
+                        if new_member and role not in new_member.roles:
+                            await new_member.add_roles(role, reason=f"Top rank: {role_def['name']}")
+                            logger.info(f"👑 {role_def['name']} → {new_member.display_name}")
+
+                    roles_manager.set_top_rank_holder(category, new_holder_id)
+
+                except Exception as e:
+                    logger.error(f"Error updating top-rank role '{category}': {e}")
+
         except Exception as e:
             logger.error(f"Error in custom roles task: {e}")
 
@@ -1009,16 +1053,15 @@ class SchedulerController:
 
     # ==================== DEBUFF TASKS ====================
 
-    @tasks.loop(hours=1)  # Check every hour
+    @tasks.loop(hours=1)
     async def check_debuffs(self):
-        """Clear expired debuffs"""
+        """Clear expired debuffs and buffs"""
         try:
             events_manager = getattr(self.bot, 'art_random_events_manager', None)
             if not events_manager:
                 return
-
             events_manager.clear_expired_debuffs()
-
+            events_manager.clear_expired_buffs()
         except Exception as e:
             logger.error(f"Error in debuff task: {e}")
 
