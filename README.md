@@ -163,6 +163,9 @@ SCAM_IMAGE_DETECTION_ENABLED=true
 SCAM_IMAGE_DELETE_MATCHES=true
 SCAM_IMAGE_DHASH_DISTANCE=6
 SCAM_IMAGE_MAX_ATTACHMENT_BYTES=8388608
+SCAM_IMAGE_CROSS_CHANNEL_THRESHOLD=3
+SCAM_IMAGE_CROSS_CHANNEL_WINDOW_SECONDS=15
+SCAM_IMAGE_CROSS_CHANNEL_ALERT_COOLDOWN_MINUTES=10
 
 # Patreon Integration
 PATREON_ROLE_ID=your_patreon_role_id         # Role for Patreon supporters
@@ -213,6 +216,7 @@ Enable these intents in the Discord Developer Portal:
 | `/purge <amount>` | Delete messages in bulk | Admins |
 | `/scamimage status` | View scam image detector status | Moderators/Admins |
 | `/scamimage scan <image>` | Scan an image without adding it | Moderators/Admins |
+| `/scamimage scan_recent [limit] [channel] [delete_matches]` | Scan recent channel images for known scam signatures | Moderators/Admins |
 | `/scamimage add <image> <label>` | Add an image signature | Moderators/Admins |
 | `/scamimage add_url` | Add an image signature from a URL modal | Moderators/Admins |
 | `/scamimage bulk_recent <label> [limit] [channel]` | Bulk-add recent channel images | Moderators/Admins |

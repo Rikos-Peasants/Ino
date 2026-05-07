@@ -2,6 +2,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
+from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -10,7 +11,13 @@ import discord
 from discord import app_commands
 
 from config import Config
-from views.scam_image_view import ScamImageAddUrlModal, ScamImageStatusView, signature_embed
+from views.scam_image_view import (
+    ScamImageAddUrlModal,
+    ScamImageStatusView,
+    scam_cross_channel_alert_embed,
+    scam_detection_embed,
+    signature_embed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +32,13 @@ class ScamImageController:
         self.delete_matches = getattr(Config, "SCAM_IMAGE_DELETE_MATCHES", False)
         self.dhash_distance = getattr(Config, "SCAM_IMAGE_DHASH_DISTANCE", 4)
         self.max_attachment_bytes = getattr(Config, "SCAM_IMAGE_MAX_ATTACHMENT_BYTES", 8 * 1024 * 1024)
+        self.cross_channel_threshold = getattr(Config, "SCAM_IMAGE_CROSS_CHANNEL_THRESHOLD", 3)
+        self.cross_channel_window_seconds = getattr(Config, "SCAM_IMAGE_CROSS_CHANNEL_WINDOW_SECONDS", 15)
+        self.cross_channel_alert_cooldown_minutes = getattr(
+            Config,
+            "SCAM_IMAGE_CROSS_CHANNEL_ALERT_COOLDOWN_MINUTES",
+            10,
+        )
         self.allowed_url_content_types = {"image/jpeg", "image/png", "image/webp"}
 
     def register_commands(self):
@@ -176,6 +190,70 @@ class ScamImageController:
                 ephemeral=True,
             )
 
+        @group.command(name="scan_recent", description="Scan recent channel images against known scam signatures")
+        @app_commands.describe(
+            limit="Messages to inspect, max 100",
+            channel="Channel to scan; defaults to current channel",
+            delete_matches="Delete matched messages during this scan",
+        )
+        async def scan_recent(
+            interaction: discord.Interaction,
+            limit: app_commands.Range[int, 1, 100] = 25,
+            channel: Optional[discord.TextChannel] = None,
+            delete_matches: bool = False,
+        ):
+            if not await self.can_manage_scam_images(interaction):
+                await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+            target = channel or interaction.channel
+            if not isinstance(target, discord.TextChannel):
+                await interaction.followup.send("Pick a text channel.", ephemeral=True)
+                return
+
+            scanned = 0
+            matched = 0
+            skipped = 0
+            try:
+                async for message in target.history(limit=limit):
+                    if message.author.bot or not message.attachments:
+                        continue
+                    scanned += 1
+                    try:
+                        if await self.scan_message(
+                            message,
+                            force_delete=delete_matches,
+                            alert_on_burst=False,
+                            burst_eligible=False,
+                        ):
+                            matched += 1
+                    except (discord.Forbidden, discord.HTTPException):
+                        skipped += 1
+                    except Exception:
+                        logger.exception("Error scanning historical scam image message %s", message.id)
+                        skipped += 1
+            except discord.Forbidden:
+                await interaction.followup.send(
+                    f"I can't read message history in {target.mention}.",
+                    ephemeral=True,
+                )
+                return
+            except discord.HTTPException as e:
+                await interaction.followup.send(
+                    f"Could not scan {target.mention}: `{e}`",
+                    ephemeral=True,
+                )
+                return
+
+            await interaction.followup.send(
+                (
+                    f"Scan complete in {target.mention}. "
+                    f"Scanned `{scanned}` messages, matched `{matched}`, skipped `{skipped}`."
+                ),
+                ephemeral=True,
+            )
+
         @group.command(name="list", description="List scam image signatures")
         async def list_signatures(
             interaction: discord.Interaction,
@@ -232,12 +310,31 @@ class ScamImageController:
         if interaction.user.guild_permissions.administrator or interaction.user.guild_permissions.manage_guild:
             return True
 
-        moderator_role_id = getattr(Config, "NSFWBAN_MODERATOR_ROLE_ID", None)
-        if moderator_role_id and discord.utils.get(interaction.user.roles, id=moderator_role_id):
+        role_ids = {
+            getattr(Config, "DEFAULT_MODERATION_REVIEW_ROLE_ID", None),
+            getattr(Config, "DEFAULT_MODERATION_ADMIN_ROLE_ID", None),
+            getattr(Config, "NSFWBAN_MODERATOR_ROLE_ID", None),
+        }
+        moderation_manager = self._get_moderation_manager()
+        if moderation_manager:
+            guild_id = str(interaction.guild.id)
+            try:
+                role_ids.add(await moderation_manager.get_review_role_id(guild_id))
+                role_ids.add(await moderation_manager.get_admin_role_id(guild_id))
+            except Exception as e:
+                logger.warning("Could not read moderation role settings for scam image permissions: %s", e)
+
+        if any(role_id and discord.utils.get(interaction.user.roles, id=role_id) for role_id in role_ids):
             return True
         return False
 
-    async def scan_message(self, message: discord.Message) -> bool:
+    async def scan_message(
+        self,
+        message: discord.Message,
+        force_delete: Optional[bool] = None,
+        alert_on_burst: bool = True,
+        burst_eligible: bool = True,
+    ) -> bool:
         if not self.enabled or not message.attachments:
             return False
 
@@ -256,7 +353,16 @@ class ScamImageController:
             if not match:
                 continue
 
-            detection_id = await asyncio.to_thread(self.manager.record_detection, message, attachment, match)
+            detection_id = await asyncio.to_thread(
+                self.manager.record_detection,
+                message,
+                attachment,
+                match,
+                burst_eligible=burst_eligible,
+            )
+            should_delete = self.delete_matches if force_delete is None else force_delete
+            deleted = False
+            delete_error = None
             logger.warning(
                 "Scam image match kind=%s label=%s user=%s channel=%s attachment=%s",
                 match.kind,
@@ -266,32 +372,155 @@ class ScamImageController:
                 attachment.filename,
             )
 
-            if self.delete_matches:
+            if should_delete:
                 try:
                     await message.delete()
+                    deleted = True
                     await asyncio.to_thread(
                         self.manager.update_detection_delete_result,
                         detection_id,
                         deleted=True,
                         delete_error=None,
                     )
-                    return True
                 except discord.Forbidden:
+                    delete_error = "missing Manage Messages permission"
                     await asyncio.to_thread(
                         self.manager.update_detection_delete_result,
                         detection_id,
                         deleted=False,
-                        delete_error="missing Manage Messages permission",
+                        delete_error=delete_error,
                     )
                 except discord.HTTPException as e:
+                    delete_error = str(e)
                     await asyncio.to_thread(
                         self.manager.update_detection_delete_result,
                         detection_id,
                         deleted=False,
-                        delete_error=str(e),
+                        delete_error=delete_error,
                     )
+            else:
+                delete_error = "auto-delete disabled"
+
+            await self._send_detection_log(message, attachment, match, deleted=deleted, delete_error=delete_error)
+            if alert_on_burst:
+                await self._maybe_send_cross_channel_alert(message)
             return True
         return False
+
+    def _get_moderation_manager(self):
+        leaderboard_manager = getattr(self.bot, "leaderboard_manager", None)
+        return getattr(leaderboard_manager, "moderation_manager", None) if leaderboard_manager else None
+
+    async def _get_moderation_log_channel(self, guild: discord.Guild):
+        moderation_manager = self._get_moderation_manager()
+        if not moderation_manager:
+            return None
+        try:
+            log_channel_id = await moderation_manager.get_moderation_log_channel_id(str(guild.id))
+        except Exception as e:
+            logger.warning("Could not read moderation log channel for scam image detection: %s", e)
+            return None
+        return guild.get_channel(log_channel_id) if log_channel_id else None
+
+    async def _get_review_role_id(self, guild: discord.Guild):
+        moderation_manager = self._get_moderation_manager()
+        if moderation_manager:
+            try:
+                role_id = await moderation_manager.get_review_role_id(str(guild.id))
+                if role_id:
+                    return role_id
+            except Exception as e:
+                logger.warning("Could not read moderation review role for scam image alert: %s", e)
+        return getattr(Config, "DEFAULT_MODERATION_REVIEW_ROLE_ID", None)
+
+    async def _send_detection_log(self, message, attachment, match, *, deleted: bool, delete_error: Optional[str]):
+        if not message.guild:
+            return
+        log_channel = await self._get_moderation_log_channel(message.guild)
+        if not log_channel:
+            return
+        embed = scam_detection_embed(message, attachment, match, deleted=deleted, delete_error=delete_error)
+        try:
+            await log_channel.send(embed=embed)
+        except discord.Forbidden:
+            logger.warning("Missing permission to send scam image detection log in %s", log_channel)
+        except discord.HTTPException as e:
+            logger.warning("Could not send scam image detection log: %s", e)
+
+    async def _maybe_send_cross_channel_alert(self, message: discord.Message):
+        if (
+            not message.guild
+            or self.cross_channel_threshold <= 1
+            or self.cross_channel_window_seconds <= 0
+        ):
+            return
+
+        now = datetime.utcnow()
+        window_start = now - timedelta(seconds=self.cross_channel_window_seconds)
+        detections = await asyncio.to_thread(
+            self.manager.recent_user_channel_detections,
+            str(message.guild.id),
+            str(message.author.id),
+            window_start,
+        )
+        channel_ids = []
+        for detection in detections:
+            channel_id = detection.get("channel_id")
+            if channel_id and channel_id not in channel_ids:
+                channel_ids.append(channel_id)
+
+        if len(channel_ids) < self.cross_channel_threshold:
+            return
+
+        log_channel = await self._get_moderation_log_channel(message.guild)
+        if not log_channel:
+            return
+        embed = scam_cross_channel_alert_embed(
+            message,
+            detections,
+            threshold=self.cross_channel_threshold,
+            window_seconds=self.cross_channel_window_seconds,
+        )
+        review_role_id = await self._get_review_role_id(message.guild)
+        content = f"<@&{review_role_id}> Scam image burst detected" if review_role_id else None
+        reservation_token = await asyncio.to_thread(
+            self.manager.reserve_cross_channel_alert,
+            guild_id=str(message.guild.id),
+            user_id=str(message.author.id),
+            user_name=str(message.author),
+            channel_ids=channel_ids,
+            message_ids=[str(detection.get("message_id")) for detection in detections if detection.get("message_id")],
+            threshold=self.cross_channel_threshold,
+            window_seconds=self.cross_channel_window_seconds,
+            cooldown_minutes=self.cross_channel_alert_cooldown_minutes,
+        )
+        if not reservation_token:
+            return
+
+        try:
+            await log_channel.send(content=content, embed=embed)
+            await asyncio.to_thread(
+                self.manager.mark_cross_channel_alert_sent,
+                str(message.guild.id),
+                str(message.author.id),
+                reservation_token,
+            )
+        except discord.Forbidden:
+            await asyncio.to_thread(
+                self.manager.release_cross_channel_alert_reservation,
+                str(message.guild.id),
+                str(message.author.id),
+                reservation_token,
+            )
+            logger.warning("Missing permission to send scam image burst alert in %s", log_channel)
+        except discord.HTTPException as e:
+            await asyncio.to_thread(
+                self.manager.release_cross_channel_alert_reservation,
+                str(message.guild.id),
+                str(message.author.id),
+                reservation_token,
+            )
+            logger.warning("Could not send scam image burst alert: %s", e)
 
     async def add_url_from_modal(self, interaction: discord.Interaction, url: str, label: str):
         if not await self.can_manage_scam_images(interaction):

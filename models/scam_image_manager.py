@@ -3,13 +3,14 @@ import io
 import json
 import logging
 import re
+import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 from PIL import Image, UnidentifiedImageError
-from pymongo import ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, ReturnDocument
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class ScamImageManager:
         self.db = db
         self.signatures_collection = self.db["scam_image_signatures"]
         self.detections_collection = self.db["scam_image_detections"]
+        self.alerts_collection = self.db["scam_image_alerts"]
         self._create_indexes()
 
     def _create_indexes(self):
@@ -56,7 +58,15 @@ class ScamImageManager:
 
             self.detections_collection.create_index([("message_id", ASCENDING), ("attachment_name", ASCENDING)])
             self.detections_collection.create_index([("guild_id", ASCENDING), ("created_at", DESCENDING)])
+            self.detections_collection.create_index([("guild_id", ASCENDING), ("user_id", ASCENDING), ("created_at", DESCENDING)])
             self.detections_collection.create_index([("match_kind", ASCENDING)])
+
+            self.alerts_collection.create_index([("guild_id", ASCENDING), ("user_id", ASCENDING), ("created_at", DESCENDING)])
+            self.alerts_collection.create_index(
+                [("cooldown_key", ASCENDING)],
+                unique=True,
+                partialFilterExpression={"cooldown_key": {"$exists": True}},
+            )
             logger.info("Scam image indexes created successfully")
         except PyMongoError as e:
             logger.warning(f"Could not create scam image indexes: {e}")
@@ -208,7 +218,16 @@ class ScamImageManager:
                 )
         return None
 
-    def record_detection(self, message, attachment, match: ScamImageMatch, *, deleted=False, delete_error=None):
+    def record_detection(
+        self,
+        message,
+        attachment,
+        match: ScamImageMatch,
+        *,
+        deleted=False,
+        delete_error=None,
+        burst_eligible=True,
+    ):
         doc = {
             "guild_id": str(message.guild.id) if message.guild else None,
             "guild_name": message.guild.name if message.guild else None,
@@ -225,6 +244,7 @@ class ScamImageManager:
             "signature_sha256": match.signature_sha256,
             "deleted": deleted,
             "delete_error": delete_error,
+            "burst_eligible": burst_eligible,
             "created_at": datetime.utcnow(),
         }
         result = self.detections_collection.insert_one(doc)
@@ -240,6 +260,98 @@ class ScamImageManager:
                     "updated_at": datetime.utcnow(),
                 }
             },
+        )
+
+    def recent_user_channel_detections(self, guild_id: str, user_id: str, since: datetime):
+        return list(
+            self.detections_collection.find(
+                {
+                    "guild_id": guild_id,
+                    "user_id": user_id,
+                    "burst_eligible": True,
+                    "created_at": {"$gte": since},
+                }
+            ).sort("created_at", DESCENDING)
+        )
+
+    def reserve_cross_channel_alert(
+        self,
+        *,
+        guild_id: str,
+        user_id: str,
+        user_name: str,
+        channel_ids: list[str],
+        message_ids: list[str],
+        threshold: int,
+        window_seconds: int,
+        cooldown_minutes: int,
+    ) -> Optional[str]:
+        now = datetime.utcnow()
+        token = str(uuid.uuid4())
+        cooldown_key = f"{guild_id}:{user_id}"
+        cooldown_until = now + timedelta(minutes=max(cooldown_minutes, 1))
+        update = {
+            "$set": {
+                "guild_id": guild_id,
+                "user_id": user_id,
+                "user_name": user_name,
+                "channel_ids": channel_ids,
+                "message_ids": message_ids,
+                "threshold": threshold,
+                "window_seconds": window_seconds,
+                "window_minutes": window_seconds / 60,
+                "cooldown_until": cooldown_until,
+                "reservation_token": token,
+                "status": "pending",
+                "updated_at": now,
+            },
+            "$setOnInsert": {
+                "cooldown_key": cooldown_key,
+                "created_at": now,
+            },
+        }
+        try:
+            reserved = self.alerts_collection.find_one_and_update(
+                {
+                    "cooldown_key": cooldown_key,
+                    "$or": [
+                        {"cooldown_until": {"$lte": now}},
+                        {"cooldown_until": {"$exists": False}},
+                    ],
+                },
+                update,
+                upsert=True,
+                return_document=ReturnDocument.AFTER,
+            )
+        except DuplicateKeyError:
+            return None
+
+        if reserved and reserved.get("reservation_token") == token:
+            return token
+        return None
+
+    def mark_cross_channel_alert_sent(self, guild_id: str, user_id: str, token: str):
+        self.alerts_collection.update_one(
+            {
+                "cooldown_key": f"{guild_id}:{user_id}",
+                "reservation_token": token,
+            },
+            {
+                "$set": {
+                    "status": "sent",
+                    "sent_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow(),
+                }
+            },
+        )
+
+    def release_cross_channel_alert_reservation(self, guild_id: str, user_id: str, token: str):
+        self.alerts_collection.delete_one(
+            {
+                "cooldown_key": f"{guild_id}:{user_id}",
+                "reservation_token": token,
+                "status": "pending",
+            }
         )
 
     def list_signatures(self, query: Optional[str] = None, active_only: bool = True, limit: int = 10):
