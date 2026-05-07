@@ -15,7 +15,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 
 logger = logging.getLogger(__name__)
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 MAX_DHASH_CANDIDATES = 1000
 
 
@@ -285,16 +285,19 @@ class ScamImageManager:
         threshold: int,
         window_seconds: int,
         cooldown_minutes: int,
+        alert_kind: str = "scam_image_match",
     ) -> Optional[str]:
         now = datetime.utcnow()
         token = str(uuid.uuid4())
-        cooldown_key = f"{guild_id}:{user_id}"
+        cooldown_key = f"{guild_id}:{user_id}:{alert_kind}"
+        legacy_cooldown_key = f"{guild_id}:{user_id}"
         cooldown_until = now + timedelta(minutes=max(cooldown_minutes, 1))
         update = {
             "$set": {
                 "guild_id": guild_id,
                 "user_id": user_id,
                 "user_name": user_name,
+                "alert_kind": alert_kind,
                 "channel_ids": channel_ids,
                 "message_ids": message_ids,
                 "threshold": threshold,
@@ -311,6 +314,15 @@ class ScamImageManager:
             },
         }
         try:
+            active_legacy_cooldown = self.alerts_collection.find_one(
+                {
+                    "cooldown_key": legacy_cooldown_key,
+                    "alert_kind": {"$exists": False},
+                    "cooldown_until": {"$gt": now},
+                }
+            )
+            if active_legacy_cooldown:
+                return None
             reserved = self.alerts_collection.find_one_and_update(
                 {
                     "cooldown_key": cooldown_key,
@@ -330,10 +342,19 @@ class ScamImageManager:
             return token
         return None
 
-    def mark_cross_channel_alert_sent(self, guild_id: str, user_id: str, token: str):
+    def mark_cross_channel_alert_sent(
+        self,
+        guild_id: str,
+        user_id: str,
+        token: str,
+        alert_kind: str = "scam_image_match",
+    ):
         self.alerts_collection.update_one(
             {
-                "cooldown_key": f"{guild_id}:{user_id}",
+                "$or": [
+                    {"cooldown_key": f"{guild_id}:{user_id}:{alert_kind}"},
+                    {"cooldown_key": f"{guild_id}:{user_id}", "alert_kind": {"$exists": False}},
+                ],
                 "reservation_token": token,
             },
             {
@@ -345,10 +366,19 @@ class ScamImageManager:
             },
         )
 
-    def release_cross_channel_alert_reservation(self, guild_id: str, user_id: str, token: str):
+    def release_cross_channel_alert_reservation(
+        self,
+        guild_id: str,
+        user_id: str,
+        token: str,
+        alert_kind: str = "scam_image_match",
+    ):
         self.alerts_collection.delete_one(
             {
-                "cooldown_key": f"{guild_id}:{user_id}",
+                "$or": [
+                    {"cooldown_key": f"{guild_id}:{user_id}:{alert_kind}"},
+                    {"cooldown_key": f"{guild_id}:{user_id}", "alert_kind": {"$exists": False}},
+                ],
                 "reservation_token": token,
                 "status": "pending",
             }

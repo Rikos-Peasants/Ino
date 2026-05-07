@@ -2,7 +2,7 @@ import asyncio
 import ipaddress
 import logging
 import socket
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -14,6 +14,7 @@ from config import Config
 from views.scam_image_view import (
     ScamImageAddUrlModal,
     ScamImageStatusView,
+    image_burst_alert_embed,
     scam_cross_channel_alert_embed,
     scam_detection_embed,
     signature_embed,
@@ -39,7 +40,16 @@ class ScamImageController:
             "SCAM_IMAGE_CROSS_CHANNEL_ALERT_COOLDOWN_MINUTES",
             10,
         )
-        self.allowed_url_content_types = {"image/jpeg", "image/png", "image/webp"}
+        self.image_burst_scan_enabled = getattr(Config, "SCAM_IMAGE_BURST_SCAN_ENABLED", True)
+        self.image_burst_ignored_channel_ids = set(getattr(Config, "IMAGE_REACTION_CHANNELS", []))
+        self.image_burst_ignored_channel_ids.update(getattr(Config, "ART_CHALLENGE_CHANNELS", []))
+        self.image_burst_delete_messages = getattr(Config, "SCAM_IMAGE_BURST_DELETE_MESSAGES", False)
+        self.image_burst_timeout_enabled = getattr(Config, "SCAM_IMAGE_BURST_TIMEOUT_ENABLED", True)
+        self.image_burst_timeout_seconds = getattr(Config, "SCAM_IMAGE_BURST_TIMEOUT_SECONDS", 60)
+        self._image_burst_entries = []
+        self._image_burst_confirmation_keys = set()
+        self._image_burst_suppressed_until = {}
+        self.allowed_url_content_types = {"image/jpeg", "image/png", "image/webp", "image/bmp", "image/x-ms-bmp"}
 
     def register_commands(self):
         group = app_commands.Group(
@@ -64,6 +74,16 @@ class ScamImageController:
                 inline=True,
             )
             embed.add_field(name="Detections", value=str(counts["detections"]), inline=True)
+            embed.add_field(
+                name="Repeated Burst Actions",
+                value=(
+                    f"scan={self.image_burst_scan_enabled}, "
+                    f"timeout={self.image_burst_timeout_enabled} "
+                    f"({self.image_burst_timeout_seconds}s), "
+                    f"delete={self.image_burst_delete_messages}"
+                ),
+                inline=False,
+            )
             await interaction.response.send_message(
                 embed=embed,
                 view=ScamImageStatusView(self),
@@ -351,6 +371,8 @@ class ScamImageController:
 
             match = await asyncio.to_thread(self.manager.find_match, attachment.filename, body, self.dhash_distance)
             if not match:
+                if alert_on_burst and burst_eligible:
+                    await self._maybe_send_repeated_image_burst_alert(message, attachment)
                 continue
 
             detection_id = await asyncio.to_thread(
@@ -406,6 +428,293 @@ class ScamImageController:
                 await self._maybe_send_cross_channel_alert(message)
             return True
         return False
+
+    def _image_burst_metadata_key(self, attachment) -> tuple:
+        filename = getattr(attachment, "filename", "") or ""
+        extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        return (
+            extension,
+            int(getattr(attachment, "size", 0) or 0),
+            getattr(attachment, "width", None),
+            getattr(attachment, "height", None),
+            getattr(attachment, "content_type", None),
+        )
+
+    async def _maybe_send_repeated_image_burst_alert(self, message: discord.Message, attachment):
+        if (
+            not message.guild
+            or not self.image_burst_scan_enabled
+            or not self.manager.is_supported_image(attachment.filename)
+            or message.channel.id in self.image_burst_ignored_channel_ids
+            or self.cross_channel_threshold <= 1
+            or self.cross_channel_window_seconds <= 0
+        ):
+            return
+
+        now = datetime.utcnow()
+        window_start = now - timedelta(seconds=self.cross_channel_window_seconds)
+        self._image_burst_entries = [
+            entry for entry in self._image_burst_entries if entry["created_at"] >= window_start
+        ]
+
+        confirmation_key = (str(message.guild.id), str(message.author.id))
+        if self._is_image_burst_suppressed(confirmation_key, now):
+            return
+        if confirmation_key in self._image_burst_confirmation_keys:
+            return
+
+        metadata_key = self._image_burst_metadata_key(attachment)
+        attachment_id = str(getattr(attachment, "id", attachment.filename))
+        message_id = str(message.id)
+        if any(
+            cached["guild_id"] == confirmation_key[0]
+            and cached["user_id"] == confirmation_key[1]
+            and cached.get("message_id") == message_id
+            and cached.get("attachment_id") == attachment_id
+            for cached in self._image_burst_entries
+        ):
+            return
+
+        entry = {
+            "created_at": now,
+            "guild_id": confirmation_key[0],
+            "user_id": confirmation_key[1],
+            "user_name": str(message.author),
+            "channel_id": str(message.channel.id),
+            "message_id": message_id,
+            "attachment_id": attachment_id,
+            "attachment_name": attachment.filename,
+            "attachment_size": attachment.size,
+            "metadata_key": metadata_key,
+            "message": message,
+            "attachment": attachment,
+        }
+        self._image_burst_entries.append(entry)
+
+        candidates = [
+            cached
+            for cached in self._image_burst_entries
+            if cached["guild_id"] == entry["guild_id"]
+            and cached["user_id"] == entry["user_id"]
+        ]
+        channel_ids = {cached["channel_id"] for cached in candidates}
+        if len(channel_ids) < self.cross_channel_threshold:
+            return
+
+        self._image_burst_confirmation_keys.add(confirmation_key)
+        try:
+            confirmed_entries, match_kind = await self._confirm_repeated_image_entries(
+                self._prioritize_image_burst_candidates(candidates, metadata_key)
+            )
+            confirmed_channel_ids = []
+            for confirmed in confirmed_entries:
+                channel_id = confirmed.get("channel_id")
+                if channel_id and channel_id not in confirmed_channel_ids:
+                    confirmed_channel_ids.append(channel_id)
+            if len(confirmed_channel_ids) < self.cross_channel_threshold:
+                return
+
+            log_channel = await self._get_moderation_log_channel(message.guild)
+            if not log_channel:
+                self._suppress_image_burst_user(confirmation_key)
+                self._clear_image_burst_entries(confirmation_key)
+                return
+
+            reservation_token = await asyncio.to_thread(
+                self.manager.reserve_cross_channel_alert,
+                guild_id=str(message.guild.id),
+                user_id=str(message.author.id),
+                user_name=str(message.author),
+                channel_ids=confirmed_channel_ids,
+                message_ids=[
+                    str(confirmed.get("message_id"))
+                    for confirmed in confirmed_entries
+                    if confirmed.get("message_id")
+                ],
+                threshold=self.cross_channel_threshold,
+                window_seconds=self.cross_channel_window_seconds,
+                cooldown_minutes=self.cross_channel_alert_cooldown_minutes,
+                alert_kind="repeated_image_burst",
+            )
+            if not reservation_token:
+                self._suppress_image_burst_user(confirmation_key)
+                self._clear_image_burst_entries(confirmation_key)
+                return
+
+            embed = image_burst_alert_embed(
+                message,
+                confirmed_entries,
+                threshold=self.cross_channel_threshold,
+                window_seconds=self.cross_channel_window_seconds,
+                match_kind=match_kind,
+                actions=["Actions pending"],
+            )
+            review_role_id = await self._get_review_role_id(message.guild)
+            content = f"<@&{review_role_id}> Repeated image burst detected" if review_role_id else None
+            try:
+                alert_message = await log_channel.send(content=content, embed=embed)
+            except discord.Forbidden:
+                await asyncio.to_thread(
+                    self.manager.release_cross_channel_alert_reservation,
+                    str(message.guild.id),
+                    str(message.author.id),
+                    reservation_token,
+                    alert_kind="repeated_image_burst",
+                )
+                logger.warning("Missing permission to send repeated image burst alert in %s", log_channel)
+                self._suppress_image_burst_user(confirmation_key)
+                self._clear_image_burst_entries(confirmation_key)
+                return
+            except discord.HTTPException as e:
+                await asyncio.to_thread(
+                    self.manager.release_cross_channel_alert_reservation,
+                    str(message.guild.id),
+                    str(message.author.id),
+                    reservation_token,
+                    alert_kind="repeated_image_burst",
+                )
+                logger.warning("Could not send repeated image burst alert: %s", e)
+                self._suppress_image_burst_user(confirmation_key)
+                self._clear_image_burst_entries(confirmation_key)
+                return
+
+            action_results = await self._apply_repeated_image_burst_actions(message, confirmed_entries)
+            embed = image_burst_alert_embed(
+                message,
+                confirmed_entries,
+                threshold=self.cross_channel_threshold,
+                window_seconds=self.cross_channel_window_seconds,
+                match_kind=match_kind,
+                actions=action_results,
+            )
+            try:
+                await alert_message.edit(embed=embed)
+            except discord.HTTPException as e:
+                logger.warning("Could not update repeated image burst alert actions: %s", e)
+            await asyncio.to_thread(
+                self.manager.mark_cross_channel_alert_sent,
+                str(message.guild.id),
+                str(message.author.id),
+                reservation_token,
+                alert_kind="repeated_image_burst",
+            )
+            self._suppress_image_burst_user(confirmation_key)
+            self._clear_image_burst_entries(confirmation_key)
+        finally:
+            self._image_burst_confirmation_keys.discard(confirmation_key)
+
+    async def _apply_repeated_image_burst_actions(self, message: discord.Message, entries: list[dict]) -> list[str]:
+        results = []
+        author_is_owner = await self.bot.is_owner(message.author)
+        if self.image_burst_timeout_enabled:
+            if not isinstance(message.author, discord.Member):
+                results.append("Timeout skipped: author is not a guild member")
+            elif author_is_owner:
+                results.append("Timeout skipped: bot owner")
+            else:
+                timeout_seconds = max(int(self.image_burst_timeout_seconds or 0), 1)
+                timeout_until = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+                try:
+                    await message.author.edit(
+                        timed_out_until=timeout_until,
+                        reason="Repeated image burst detected",
+                    )
+                    results.append(f"Timed out for {timeout_seconds} seconds")
+                except discord.Forbidden:
+                    results.append("Timeout failed: missing permission or role hierarchy")
+                except discord.HTTPException as e:
+                    results.append(f"Timeout failed: {e}")
+        else:
+            results.append("Timeout disabled")
+
+        if self.image_burst_delete_messages:
+            if author_is_owner:
+                results.append("Message deletion skipped: bot owner")
+            else:
+                deleted = 0
+                failed = 0
+                seen_message_ids = set()
+                for entry in entries:
+                    entry_message = entry.get("message")
+                    message_id = entry.get("message_id")
+                    if not entry_message or message_id in seen_message_ids:
+                        continue
+                    seen_message_ids.add(message_id)
+                    try:
+                        await entry_message.delete()
+                        deleted += 1
+                    except discord.NotFound:
+                        deleted += 1
+                    except (discord.Forbidden, discord.HTTPException):
+                        failed += 1
+                results.append(f"Deleted {deleted} burst messages" if failed == 0 else f"Deleted {deleted} burst messages; failed {failed}")
+        else:
+            results.append("Message deletion disabled")
+
+        return results
+
+    def _prioritize_image_burst_candidates(self, candidates: list[dict], metadata_key: tuple) -> list[dict]:
+        same_metadata = [entry for entry in candidates if entry.get("metadata_key") == metadata_key]
+        other_metadata = [entry for entry in candidates if entry.get("metadata_key") != metadata_key]
+        selected = same_metadata[-25:]
+        remaining = 25 - len(selected)
+        if remaining > 0:
+            selected.extend(other_metadata[-remaining:])
+        return selected
+
+    def _is_image_burst_suppressed(self, confirmation_key: tuple, now: datetime) -> bool:
+        for key, suppressed_until in list(self._image_burst_suppressed_until.items()):
+            if suppressed_until <= now:
+                self._image_burst_suppressed_until.pop(key, None)
+        suppressed_until = self._image_burst_suppressed_until.get(confirmation_key)
+        if not suppressed_until:
+            return False
+        return True
+
+    def _suppress_image_burst_user(self, confirmation_key: tuple):
+        seconds = max(self.cross_channel_alert_cooldown_minutes, 1) * 60
+        self._image_burst_suppressed_until[confirmation_key] = datetime.utcnow() + timedelta(seconds=seconds)
+
+    def _clear_image_burst_entries(self, confirmation_key: tuple):
+        guild_id, user_id = confirmation_key
+        self._image_burst_entries = [
+            entry
+            for entry in self._image_burst_entries
+            if entry.get("guild_id") != guild_id or entry.get("user_id") != user_id
+        ]
+
+    async def _confirm_repeated_image_entries(self, candidates: list[dict]) -> tuple[list[dict], str]:
+        readable = []
+        for entry in candidates:
+            if "signature" not in entry:
+                try:
+                    body = await entry["attachment"].read(use_cached=True)
+                    entry["signature"] = await asyncio.to_thread(
+                        self.manager.build_signature,
+                        body,
+                        "repeated image burst",
+                    )
+                except (discord.HTTPException, OSError, ValueError):
+                    continue
+            readable.append(entry)
+
+        exact_groups = {}
+        for entry in readable:
+            exact_groups.setdefault(entry["signature"].sha256, []).append(entry)
+        for group in exact_groups.values():
+            if len({entry["channel_id"] for entry in group}) >= self.cross_channel_threshold:
+                return group, "Exact SHA-256"
+
+        for seed in readable:
+            similar = []
+            for entry in readable:
+                distance = self.manager.hamming_distance(seed["signature"].dhash, entry["signature"].dhash)
+                if distance <= self.dhash_distance:
+                    similar.append(entry)
+            if len({entry["channel_id"] for entry in similar}) >= self.cross_channel_threshold:
+                return similar, f"dHash distance <= {self.dhash_distance}"
+
+        return [], ""
 
     def _get_moderation_manager(self):
         leaderboard_manager = getattr(self.bot, "leaderboard_manager", None)
