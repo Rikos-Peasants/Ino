@@ -2318,7 +2318,7 @@ class CommandsController:
 
 **What gets logged where:**
 • **Warning Logs:** Manual warnings, timeouts, kicks, warning clears
-• **Moderation Logs:** AI flagged content, staff reviews, admin overrules"""
+• **Moderation Logs:** AI flagged content, staff reviews, admin overrules, scam image detections"""
                     
                     embed.add_field(name="💡 How to Configure", value=help_text, inline=False)
                     embed.set_footer(text="Use the commands above to configure specific log channels")
@@ -2435,7 +2435,7 @@ class CommandsController:
                                                inline=False)
                         elif log_type == 'moderation':
                             test_embed.add_field(name="📋 What gets logged here:", 
-                                               value="• AI flagged content\n• Staff review decisions\n• Admin overrules\n• Blacklisted content hits", 
+                                               value="• AI flagged content\n• Staff review decisions\n• Admin overrules\n• Blacklisted content hits\n• Scam image auto-deletes and burst alerts",
                                                inline=False)
                         
                         test_embed.set_footer(text=f"{log_name} System Configuration")

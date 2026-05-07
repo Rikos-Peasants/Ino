@@ -1,4 +1,5 @@
 import discord
+from datetime import datetime
 
 
 def signature_embed(title: str, signature) -> discord.Embed:
@@ -8,6 +9,56 @@ def signature_embed(title: str, signature) -> discord.Embed:
     embed.add_field(name="Size", value=f"{signature.bytes} bytes", inline=True)
     embed.add_field(name="Dimensions", value=f"{signature.width}x{signature.height}", inline=True)
     embed.add_field(name="dHash", value=f"`{signature.dhash}`", inline=True)
+    return embed
+
+
+def scam_detection_embed(message, attachment, match, *, deleted: bool, delete_error: str | None = None) -> discord.Embed:
+    embed = discord.Embed(
+        title="Scam Image Detected",
+        description="A message attachment matched a known scam image signature.",
+        color=discord.Color.red(),
+        timestamp=datetime.utcnow(),
+    )
+    embed.add_field(name="User", value=f"{message.author.mention}\n`{message.author}`", inline=True)
+    embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+    embed.add_field(name="Action", value="Deleted" if deleted else f"Not deleted ({delete_error or 'not configured'})", inline=True)
+    embed.add_field(name="Attachment", value=f"`{attachment.filename}`\n{attachment.size} bytes", inline=False)
+    embed.add_field(name="Match", value=f"`{match.kind}` {match.label}\n{match.detail}", inline=False)
+    embed.add_field(name="Jump", value=f"[Open message]({message.jump_url})", inline=True)
+    embed.set_footer(text=f"Message ID: {message.id}")
+    return embed
+
+
+def scam_cross_channel_alert_embed(message, detections, *, threshold: int, window_seconds: int) -> discord.Embed:
+    channel_ids = []
+    for detection in detections:
+        channel_id = detection.get("channel_id")
+        if channel_id and channel_id not in channel_ids:
+            channel_ids.append(channel_id)
+
+    embed = discord.Embed(
+        title="Scam Image Burst Alert",
+        description=(
+            f"{message.author.mention} posted matched scam images in "
+            f"{len(channel_ids)} channels within {window_seconds} seconds."
+        ),
+        color=discord.Color.dark_red(),
+        timestamp=datetime.utcnow(),
+    )
+    embed.add_field(name="User", value=f"{message.author.mention}\n`{message.author}`", inline=True)
+    embed.add_field(name="Threshold", value=f"{threshold}+ channels", inline=True)
+    embed.add_field(name="Channels", value="\n".join(f"<#{channel_id}>" for channel_id in channel_ids[:10]), inline=False)
+
+    recent = []
+    for detection in detections[:5]:
+        recent.append(
+            f"<#{detection.get('channel_id')}> - `{detection.get('match_kind')}` {detection.get('match_label')}"
+        )
+    if recent:
+        embed.add_field(name="Recent Matches", value="\n".join(recent), inline=False)
+
+    embed.add_field(name="Latest Message", value=f"[Open message]({message.jump_url})", inline=True)
+    embed.set_footer(text=f"User ID: {message.author.id}")
     return embed
 
 

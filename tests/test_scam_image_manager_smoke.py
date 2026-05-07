@@ -1,6 +1,7 @@
 import io
 from pathlib import Path
 import sys
+from datetime import datetime, timedelta
 
 from PIL import Image
 
@@ -15,8 +16,9 @@ class FakeInsertResult:
 
 
 class FakeUpdateResult:
-    def __init__(self, modified_count=1):
+    def __init__(self, modified_count=1, upserted_id=None):
         self.modified_count = modified_count
+        self.upserted_id = upserted_id
 
 
 class FakeCursor:
@@ -49,6 +51,12 @@ class FakeCollection:
                     from pymongo.errors import DuplicateKeyError
 
                     raise DuplicateKeyError("duplicate sha256")
+        if "cooldown_key" in doc:
+            for existing in self.docs:
+                if existing.get("cooldown_key") == doc["cooldown_key"]:
+                    from pymongo.errors import DuplicateKeyError
+
+                    raise DuplicateKeyError("duplicate cooldown_key")
         stored = dict(doc)
         stored["_id"] = len(self.docs) + 1
         self.docs.append(stored)
@@ -63,7 +71,28 @@ class FakeCollection:
             doc = dict(query)
             doc.update(update.get("$setOnInsert", {}))
             doc.update(update.get("$set", {}))
-            return self.insert_one(doc)
+            result = self.insert_one(doc)
+            return FakeUpdateResult(0, result.inserted_id)
+        return FakeUpdateResult(0)
+
+    def find_one_and_update(self, query, update, upsert=False, return_document=None):
+        for doc in self.docs:
+            if self._matches(doc, query):
+                doc.update(update.get("$set", {}))
+                return dict(doc)
+        if upsert:
+            doc = {key: value for key, value in query.items() if not key.startswith("$")}
+            doc.update(update.get("$setOnInsert", {}))
+            doc.update(update.get("$set", {}))
+            self.insert_one(doc)
+            return dict(self.docs[-1])
+        return None
+
+    def delete_one(self, query):
+        for index, doc in enumerate(self.docs):
+            if self._matches(doc, query):
+                del self.docs[index]
+                return FakeUpdateResult(1)
         return FakeUpdateResult(0)
 
     def find_one(self, query, projection=None):
@@ -82,12 +111,18 @@ class FakeCollection:
     def _matches(self, doc, query):
         for key, expected in query.items():
             if key == "$or":
-                return any(self._matches(doc, item) for item in expected)
+                if not any(self._matches(doc, item) for item in expected):
+                    return False
+                continue
             actual = doc.get(key)
             if isinstance(expected, dict):
                 if "$exists" in expected and (key in doc) != expected["$exists"]:
                     return False
                 if "$ne" in expected and actual == expected["$ne"]:
+                    return False
+                if "$gte" in expected and actual < expected["$gte"]:
+                    return False
+                if "$lte" in expected and actual > expected["$lte"]:
                     return False
                 if "$regex" in expected:
                     import re
@@ -133,6 +168,70 @@ def main():
     counts = manager.counts()
     assert counts["total"] == 1
     assert counts["active"] == 1
+
+    class FakeGuild:
+        id = 10
+        name = "Guild"
+
+    class FakeChannel:
+        id = 20
+        name = "general"
+
+        def __str__(self):
+            return self.name
+
+    class FakeAuthor:
+        id = 30
+
+        def __str__(self):
+            return "poster"
+
+    class FakeMessage:
+        guild = FakeGuild()
+        channel = FakeChannel()
+        author = FakeAuthor()
+        id = 40
+
+    class FakeAttachment:
+        filename = sample_name
+        size = len(body)
+
+    detection_id = manager.record_detection(FakeMessage(), FakeAttachment(), match)
+    manager.update_detection_delete_result(detection_id, deleted=True, delete_error=None)
+    recent = manager.recent_user_channel_detections("10", "30", datetime.utcnow() + timedelta(seconds=1))
+    assert recent == []
+    recent = manager.recent_user_channel_detections("10", "30", datetime.min)
+    assert len(recent) == 1
+
+    manager.record_detection(FakeMessage(), FakeAttachment(), match, burst_eligible=False)
+    recent = manager.recent_user_channel_detections("10", "30", datetime.min)
+    assert len(recent) == 1
+
+    reservation = manager.reserve_cross_channel_alert(
+        guild_id="10",
+        user_id="30",
+        user_name="poster",
+        channel_ids=["20", "21", "22"],
+        message_ids=["40"],
+        threshold=3,
+        window_seconds=15,
+        cooldown_minutes=10,
+    )
+    assert reservation
+    duplicate_reservation = manager.reserve_cross_channel_alert(
+        guild_id="10",
+        user_id="30",
+        user_name="poster",
+        channel_ids=["20", "21", "22"],
+        message_ids=["40"],
+        threshold=3,
+        window_seconds=15,
+        cooldown_minutes=10,
+    )
+    assert duplicate_reservation is None
+    manager.mark_cross_channel_alert_sent("10", "30", reservation)
+    manager.release_cross_channel_alert_reservation("10", "30", reservation)
+    assert len(manager.alerts_collection.docs) == 1
 
     ok, message = manager.set_signature_active(signature.sha256[:12], False)
     assert ok is True
