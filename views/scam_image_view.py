@@ -62,6 +62,50 @@ def scam_cross_channel_alert_embed(message, detections, *, threshold: int, windo
     return embed
 
 
+def image_burst_alert_embed(
+    message,
+    entries,
+    *,
+    threshold: int,
+    window_seconds: int,
+    match_kind: str,
+    actions: list[str] | None = None,
+) -> discord.Embed:
+    channel_ids = []
+    for entry in entries:
+        channel_id = entry.get("channel_id")
+        if channel_id and channel_id not in channel_ids:
+            channel_ids.append(channel_id)
+
+    embed = discord.Embed(
+        title="Repeated Image Burst Alert",
+        description=(
+            f"{message.author.mention} posted the same or visually similar image in "
+            f"{len(channel_ids)} channels within {window_seconds} seconds."
+        ),
+        color=discord.Color.dark_orange(),
+        timestamp=datetime.utcnow(),
+    )
+    embed.add_field(name="User", value=f"{message.author.mention}\n`{message.author}`", inline=True)
+    embed.add_field(name="Threshold", value=f"{threshold}+ channels", inline=True)
+    embed.add_field(name="Match", value=match_kind, inline=True)
+    if actions:
+        embed.add_field(name="Actions", value="\n".join(actions), inline=False)
+    embed.add_field(name="Channels", value="\n".join(f"<#{channel_id}>" for channel_id in channel_ids[:10]), inline=False)
+
+    recent = []
+    for entry in entries[:5]:
+        recent.append(
+            f"<#{entry.get('channel_id')}> - `{entry.get('attachment_name')}` ({entry.get('attachment_size')} bytes)"
+        )
+    if recent:
+        embed.add_field(name="Recent Images", value="\n".join(recent), inline=False)
+
+    embed.add_field(name="Latest Message", value=f"[Open message]({message.jump_url})", inline=True)
+    embed.set_footer(text=f"User ID: {message.author.id}")
+    return embed
+
+
 class ScamImageStatusView(discord.ui.View):
     def __init__(self, controller):
         super().__init__(timeout=180)

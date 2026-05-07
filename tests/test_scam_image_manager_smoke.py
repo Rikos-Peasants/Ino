@@ -120,9 +120,13 @@ class FakeCollection:
                     return False
                 if "$ne" in expected and actual == expected["$ne"]:
                     return False
+                if "$in" in expected and actual not in expected["$in"]:
+                    return False
                 if "$gte" in expected and actual < expected["$gte"]:
                     return False
                 if "$lte" in expected and actual > expected["$lte"]:
+                    return False
+                if "$gt" in expected and actual <= expected["$gt"]:
                     return False
                 if "$regex" in expected:
                     import re
@@ -207,6 +211,25 @@ def main():
     recent = manager.recent_user_channel_detections("10", "30", datetime.min)
     assert len(recent) == 1
 
+    manager.alerts_collection.insert_one({
+        "cooldown_key": "10:31",
+        "guild_id": "10",
+        "user_id": "31",
+        "cooldown_until": datetime.utcnow() + timedelta(minutes=5),
+        "status": "sent",
+    })
+    legacy_cooldown_reservation = manager.reserve_cross_channel_alert(
+        guild_id="10",
+        user_id="31",
+        user_name="poster",
+        channel_ids=["20", "21", "22"],
+        message_ids=["40"],
+        threshold=3,
+        window_seconds=15,
+        cooldown_minutes=10,
+    )
+    assert legacy_cooldown_reservation is None
+
     reservation = manager.reserve_cross_channel_alert(
         guild_id="10",
         user_id="30",
@@ -229,9 +252,29 @@ def main():
         cooldown_minutes=10,
     )
     assert duplicate_reservation is None
+    other_kind_reservation = manager.reserve_cross_channel_alert(
+        guild_id="10",
+        user_id="30",
+        user_name="poster",
+        channel_ids=["20", "21", "22"],
+        message_ids=["40"],
+        threshold=3,
+        window_seconds=15,
+        cooldown_minutes=10,
+        alert_kind="repeated_image_burst",
+    )
+    assert other_kind_reservation
+    other_alert = next(
+        doc for doc in manager.alerts_collection.docs
+        if doc.get("reservation_token") == other_kind_reservation
+    )
+    manager.mark_cross_channel_alert_sent("bad-guild", "30", other_kind_reservation, alert_kind="repeated_image_burst")
+    assert other_alert["status"] == "pending"
+    manager.mark_cross_channel_alert_sent("10", "30", other_kind_reservation, alert_kind="repeated_image_burst")
+    assert other_alert["status"] == "sent"
     manager.mark_cross_channel_alert_sent("10", "30", reservation)
     manager.release_cross_channel_alert_reservation("10", "30", reservation)
-    assert len(manager.alerts_collection.docs) == 1
+    assert len(manager.alerts_collection.docs) == 3
 
     ok, message = manager.set_signature_active(signature.sha256[:12], False)
     assert ok is True
