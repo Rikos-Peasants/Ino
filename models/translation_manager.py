@@ -33,11 +33,13 @@ logger = logging.getLogger(__name__)
 
 DISCORD_TOKEN_RE = re.compile(
     r"https?://\S+|"
-    r"<a?:[A-Za-z0-9_]+:[0-9]+>|"
-    r"<@!?[0-9]+>|"
-    r"<@&[0-9]+>|"
-    r"<#[0-9]+>|"
-    r":[A-Za-z0-9_+-]+:|"
+    r"<a?:[A-Za-z0-9_]+:[0-9]+>|"       # custom emoji  <:name:id> / <a:name:id>
+    r"<@!?[0-9]+>|"                       # user mention  <@id> / <@!id>
+    r"<@&[0-9]+>|"                        # role mention  <@&id>
+    r"<#[0-9]+>|"                         # channel       <#id>
+    r"</[A-Za-z0-9_\- ]+:[0-9]+>|"       # slash command </name subcommand:id>
+    r"<t:[0-9]+(:[tTdDfFR])?>|"          # timestamp     <t:unix> / <t:unix:style>
+    r":[A-Za-z0-9_+-]+:|"                # :emoji_name:
     r"@everyone|"
     r"@here"
 )
