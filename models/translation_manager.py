@@ -102,6 +102,58 @@ def _normalize_unicode(text: str) -> str:
         normalized = "".join(_HOMOGLYPH_MAP.get(c, c) for c in normalized)
     return normalized
 
+
+def _apply_casing_style(original: str, translated: str) -> str:
+    """
+    Mirror the casing style of *original* onto *translated*.
+
+    Handles ALL CAPS, all lowercase, Title Case, sentence case, and
+    mock / alternating / spongebob caps (e.g. "ChE SuCCeDe...").
+    """
+    alpha = [c for c in original if c.isalpha()]
+    if not alpha or not translated.strip():
+        return translated
+
+    upper_count = sum(1 for c in alpha if c.isupper())
+    upper_ratio = upper_count / len(alpha)
+
+    # ALL CAPS
+    if upper_ratio > 0.80:
+        return translated.upper()
+
+    # all lowercase (truly no capitals at all)
+    if upper_ratio < 0.05:
+        return translated.lower()
+
+    # Title Case — word-initial letters are mostly upper, body letters mostly lower
+    words = re.findall(r"[A-Za-z]+", original)
+    if words:
+        initial_upper = sum(1 for w in words if w[0].isupper()) / len(words)
+        body_chars = [c for w in words for c in w[1:]]
+        body_upper = (
+            sum(1 for c in body_chars if c.isupper()) / len(body_chars)
+            if body_chars else 0.0
+        )
+        if initial_upper > 0.75 and body_upper < 0.20:
+            return translated.title()
+
+    # Sentence case — first letter upper, overall ratio low
+    if upper_ratio < 0.25 and alpha[0].isupper():
+        s = translated.strip()
+        return (s[0].upper() + s[1:].lower()) if s else translated
+
+    # Mock / alternating / spongebob caps — apply positional pattern from original
+    pattern = [c.isupper() for c in original if c.isalpha()]
+    result = []
+    idx = 0
+    for ch in translated:
+        if ch.isalpha():
+            result.append(ch.upper() if pattern[idx % len(pattern)] else ch.lower())
+            idx += 1
+        else:
+            result.append(ch)
+    return "".join(result)
+
 EXPRESSIVE_ENGLISH_WORDS = frozenset({
     "no", "yes", "why", "stop", "wait", "oh", "ah", "aw", "ew", "ow",
     "wow", "go", "hey", "yo", "hi", "bye", "please", "help",
@@ -359,7 +411,7 @@ class TranslationManager:
 
         return TranslationResult(
             source_language=detected_language.upper(),
-            translated_text=translated,
+            translated_text=_apply_casing_style(content, translated),
             provider="google",
         )
 
@@ -448,7 +500,7 @@ class TranslationManager:
 
         return TranslationResult(
             source_language=result.source_language.upper(),
-            translated_text=translated,
+            translated_text=_apply_casing_style(content, translated),
             provider="gemini_retry",
         )
 
@@ -549,7 +601,7 @@ class TranslationManager:
 
         return TranslationResult(
             source_language=result.source_language.upper(),
-            translated_text=translated,
+            translated_text=_apply_casing_style(content, translated),
             provider="gemini",
         )
 
@@ -566,7 +618,7 @@ class TranslationManager:
             return False
 
         words = re.findall(r"[A-Za-z']+", stripped)
-        return len(words) >= 2
+        return len(words) >= 1
 
     async def _ask_gemini_for_romanized_translation(self, content: str) -> Optional[TranslationResult]:
         try:

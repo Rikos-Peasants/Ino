@@ -1133,8 +1133,8 @@ class EventsController:
             description=(
                 "We noticed your message may not be in English. "
                 "You can help others understand you by opting into our **translation program**.\n\n"
-                "By agreeing, your message text may be processed by translation services "
-                "(Google Translate or our internal AI model) to produce an English translation."
+                "By agreeing, your message text may be processed by **Google Translate, DeepL & Serika** "
+                "to produce an English translation."
             ),
             color=discord.Color.blurple(),
         )
