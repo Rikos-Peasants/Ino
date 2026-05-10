@@ -67,7 +67,7 @@ FR_HINTS: frozenset = frozenset({
     "école", "ecole", "travail", "magasin", "restaurant", "café", "cafe",
     "rue", "ville", "pays", "quartier", "chemin", "route", "pont",
     "voiture", "vélo", "velo", "train", "avion", "bus", "métro", "metro",
-    "argent", "chose", "truc", "machin", "affaire", "problème", "probleme",
+    "argent", "truc", "machin", "affaire", "problème", "probleme",
     "idée", "idee", "question", "réponse", "reponse", "raison", "façon",
     # Food
     "pain", "baguette", "fromage", "beurre", "lait", "viande", "poisson",
@@ -92,7 +92,7 @@ FR_HINTS: frozenset = frozenset({
     "ouais", "ouai", "mouais", "bof", "pfff", "pff", "ouf", "naze",
     "relou", "chelou", "zarbi", "kiffer", "kif", "grave", "trop",
     "wesh", "wallah", "inshallah", "mdrr", "mdr", "ptdr",
-    "xd", "omg", "rip", "gg", "bg", "tb", "jsp", "jpp", "nsp",
+    "omg", "rip", "gg", "bg", "tb", "jsp", "jpp", "nsp",
     "tkt", "cmt", "bcp", "stp", "svp", "att", "rdv", "bfbf",
     "frero", "frère", "frere", "meuf", "reuf", "teuf", "keuf",
     "ça", "ca", "c'est", "cest", "t'es", "tes", "j'suis", "jsuis",
@@ -115,6 +115,6 @@ FR_HINTS: frozenset = frozenset({
     # Common nouns frequently missing
     "message", "messages", "mot", "mots", "phrase", "phrases",
     "question", "réponse", "reponse", "réponses", "reponses",
-    "erreur", "problème", "probleme", "solution", "résultat",
+    "erreur", "problème", "probleme", "résultat",
     "réseau", "reseau", "compte", "comptes",
 })

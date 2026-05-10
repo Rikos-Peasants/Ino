@@ -3,13 +3,13 @@ NL_HINTS: frozenset = frozenset({
     "hallo", "hoi", "hey", "goedemorgen", "goedemiddag", "goedenavond",
     "goedenacht", "doei", "dag", "tot", "ziens", "welkom", "bedankt",
     "dank", "dankjewel", "dankuwel", "alsjeblieft", "alstublieft",
-    "sorry", "pardon", "excuseer", "gefeliciteerd", "proost", "gezondheid",
+    "pardon", "excuseer", "gefeliciteerd", "proost", "gezondheid",
     "geweldig", "super", "prima", "fijn", "leuk",
     # Pronouns
     "jij", "hij", "zij", "ze", "het", "wij", "jullie",
     "mij", "jou", "hem", "haar", "ons", "hen",
     "mijn", "jouw", "zijn", "onze", "uw", "hun",
-    "dit", "dat", "deze", "die", "iets", "iemand", "niets", "niemand",
+    "dit", "dat", "deze", "iets", "iemand", "niets", "niemand",
     # Common verbs (infinitive & conjugated)
     "zijn", "hebben", "worden", "kunnen", "moeten", "willen",
     "mogen", "zullen", "gaan", "komen", "zeggen", "zien", "geven",
@@ -20,8 +20,8 @@ NL_HINTS: frozenset = frozenset({
     "kopen", "verkopen", "openen", "sluiten", "helpen", "begrijpen",
     "beginnen", "eindigen", "stoppen", "zoeken", "houden", "haten",
     "hopen", "wachten", "antwoorden", "vragen", "betalen", "kijken",
-    "ben", "bent", "zijn", "was", "waren",
-    "heb", "hebt", "heeft", "hebben", "had", "hadden",
+    "ben", "bent", "zijn", "waren",
+    "heb", "hebt", "heeft", "hebben", "hadden",
     "kan", "kunt", "kunnen", "kon", "konden",
     "moet", "moeten", "moest", "moesten",
     "wil", "wilt", "willen", "wou", "wouden",
@@ -61,7 +61,7 @@ NL_HINTS: frozenset = frozenset({
     "lunch", "avondeten", "eten", "stroopwafel", "kaas", "hagelslag",
     "pannenkoek", "bitterballen", "stamppot",
     # Connectors, adverbs & expressions
-    "ook", "maar", "want", "omdat", "hoewel", "zodat", "als",
+    "ook", "maar", "omdat", "hoewel", "zodat", "als",
     "wanneer", "hoe", "waar", "waarom", "hoeveel", "welk", "welke",
     "erg", "heel", "echt", "gewoon", "misschien", "zeker", "tuurlijk",
     "natuurlijk", "duidelijk", "eigenlijk", "trouwens", "bovendien",
@@ -69,9 +69,9 @@ NL_HINTS: frozenset = frozenset({
     "kortom", "tenslotte", "alvast", "alweer", "alles", "niets",
     "iedereen", "niemand", "elke", "andere", "wat", "nog",
     # Chat / internet slang
-    "haha", "xd", "omg", "wtf", "jeetje", "gatverdamme",
+    "haha", "omg", "wtf", "jeetje", "gatverdamme",
     "gossiemijne", "joh", "toch", "echt", "maat", "vriend", "kerel",
     "knap", "tof", "stoer", "wauw", "wow", "hé", "nee",
-    "ja", "jep", "nep", "oke", "okay", "oké", "okee", "tja",
+    "ja", "jep", "nep", "oke", "oké", "okee", "tja",
     "pfff", "ugh", "oooh", "aaah", "watskeburt", "potdorie",
 })

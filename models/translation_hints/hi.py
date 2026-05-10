@@ -9,7 +9,7 @@ HI_HINTS: frozenset = frozenset({
     "beti", "beta", "baba", "didi", "bhaiya",
     # Pronouns
     "mein", "main", "tu", "tum", "aap", "woh", "hum", "yeh",
-    "mujhe", "tujhe", "use", "hume", "inhe", "unhe",
+    "mujhe", "tujhe", "hume", "inhe", "unhe",
     "mera", "meri", "tera", "teri", "apna", "apni",
     "uska", "uski", "unka", "unki", "hamara", "hamari",
     "kya", "kaun", "kahan", "kab", "kyun", "kaise",

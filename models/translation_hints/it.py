@@ -65,8 +65,7 @@ IT_HINTS: frozenset = frozenset({
     "casa", "appartamento", "camera", "cucina", "bagno", "sala",
     "ufficio", "scuola", "lavoro", "negozio", "ristorante", "bar",
     "strada", "città", "paese", "quartiere", "macchina", "bici",
-    "treno", "aereo", "autobus", "soldi", "cosa", "problema",
-    "idea", "domanda", "risposta", "motivo",
+    "treno", "aereo", "autobus", "soldi", "cosa", "problema", "domanda", "risposta", "motivo",
     # Food
     "pane", "riso", "carne", "pollo", "pesce", "verdura", "frutta",
     "acqua", "latte", "vino", "birra", "caffè", "caffe", "succo",
@@ -75,14 +74,14 @@ IT_HINTS: frozenset = frozenset({
     "tiramisu", "cannoli", "mozzarella", "prosciutto", "mortadella",
     # Connectors, adverbs & expressions
     "anche", "invece", "però", "pero", "sebbene", "perché", "perche",
-    "poiché", "poiche", "come", "quando", "dove", "quanto", "molto",
+    "poiché", "poiche", "quando", "dove", "quanto", "molto",
     "poco", "più", "piu", "meno", "bene", "male", "forse", "certo",
     "sicuro", "vero", "allora", "così", "cosi", "ancora", "solo",
     "soltanto", "persino", "inoltre", "tuttavia", "comunque",
     "insomma", "dunque", "quindi", "perciò", "percio", "oppure",
     "niente", "nulla", "qualcosa", "tutto", "tutti", "ogni", "altro",
     # Chat / internet slang
-    "ahah", "ahahah", "xd", "omg", "dai", "vabbè", "vabbe",
+    "ahah", "ahahah", "omg", "dai", "vabbè", "vabbe",
     "mah", "boh", "uff", "basta", "figurati", "tranquillo", "dai",
     "pazza", "pazzo", "figo", "figa", "ganzo", "ganzer", "forte",
     "fico", "fichissimo", "bella", "anzi", "cioè", "cioe",

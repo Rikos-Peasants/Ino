@@ -70,7 +70,7 @@ ES_HINTS: frozenset = frozenset({
     "bano", "sala", "oficina", "escuela", "trabajo", "tienda", "restaurante",
     "calle", "ciudad", "país", "pais", "barrio", "camino",
     "coche", "carro", "bici", "tren", "avión", "avion", "autobús",
-    "autobus", "dinero", "cosa", "problema", "idea", "pregunta",
+    "autobus", "dinero", "cosa", "problema", "pregunta",
     "respuesta", "razón", "razon", "manera",
     # Food
     "pan", "arroz", "carne", "pollo", "pescado", "verdura", "fruta",
@@ -89,7 +89,7 @@ ES_HINTS: frozenset = frozenset({
     "por eso", "poreso", "o sea", "osea", "en fin", "enfin",
     "nada", "algo", "alguien", "nadie", "todo", "todos", "cada",
     # Chat / internet slang
-    "jaja", "jejeje", "xd", "omg", "wtf", "ugh", "aw", "uff",
+    "jaja", "jejeje", "omg", "wtf", "ugh", "aw", "uff",
     "wey", "güey", "guey", "tío", "tia", "crack", "flojo", "floja",
     "mola", "molón", "molon", "flipar", "alucinante", "qué asco", "queasco",
     "ni modo", "nimodo", "a huevo", "ahuevo", "chale", "nelda",

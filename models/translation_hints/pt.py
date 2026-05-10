@@ -89,7 +89,7 @@ PT_HINTS: frozenset = frozenset({
     # Chat / internet slang
     "kkk", "kkkk", "kkkkk", "haha", "rsrs", "hauahau", "opsss",
     "cara", "mano", "bicho", "véi", "vei", "mlk", "galera",
-    "saudade", "afinal", "vixe", "nossa", "caramba", "puts",
+    "saudade", "afinal", "vixe", "nossa", "caramba",
     "oxente", "eita", "uai", "tá", "ta", "né", "ne", "sim",
     "não", "nao", "num", "tô", "vo", "vou",
     "tava", "tive", "tivemos", "ficou", "fico", "deu", "dá", "da",

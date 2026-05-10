@@ -11,7 +11,7 @@ DE_HINTS: frozenset = frozenset({
     "mein", "meine", "meinen", "meiner", "dein", "deine", "deinen",
     "sein", "seine", "unser", "unsere", "euer", "eure", "ihr", "ihre",
     "dieser", "diese", "dieses", "diesen", "jener", "jene", "jenes",
-    "was", "wer", "wen", "wem", "wessen", "welcher", "welche",
+    "wer", "wen", "wem", "wessen", "welcher", "welche",
     # Common verbs (infinitive)
     "sein", "haben", "werden", "können", "konnen", "müssen", "mussen",
     "wollen", "sollen", "dürfen", "durfen", "mögen", "mogen",
@@ -91,7 +91,7 @@ DE_HINTS: frozenset = frozenset({
     "außer", "ausser", "ohne", "durch", "gegen", "für", "fur",
     "mit", "nach", "seit", "vor", "zwischen", "über", "uber",
     # Chat / internet slang
-    "xd", "haha", "ähm", "ahm", "öhm", "ohm", "uff", "boah",
+    "haha", "ähm", "ahm", "öhm", "ohm", "uff", "boah",
     "alter", "digga", "digger", "mann", "mensch", "scheiße", "scheisse",
     "verdammt", "krass", "heftig", "geil", "krass", "mega", "voll",
     "echt", "halt", "mal", "doch", "eben", "eigentlich", "sozusagen",

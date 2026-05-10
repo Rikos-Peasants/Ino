@@ -57,7 +57,7 @@ JA_HINTS: frozenset = frozenset({
     "janai", "jaない", "dewanai",
     # Auxiliary / grammar words that appear in romanized text
     "dayo", "deshou", "desho", "desuyo", "deshita", "mashita",
-    "masen", "kedo", "dakedo", "dakara", "kara", "node", "noni",
+    "masen", "kedo", "dakedo", "dakara", "kara", "noni",
     "toiu", "tte", "nante", "nnante", "yori", "hodo", "dake",
     "shika", "sae", "demo", "nanode", "tame", "youni", "mitai",
     "rashii", "souda", "ppoi", "sou", "gurai", "kurai", "bakari",
