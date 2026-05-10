@@ -91,7 +91,7 @@ FR_HINTS: frozenset = frozenset({
     # Chat / internet expressions
     "ouais", "ouai", "mouais", "bof", "pfff", "pff", "ouf", "naze",
     "relou", "chelou", "zarbi", "kiffer", "kif", "grave", "trop",
-    "wesh", "wallah", "inshallah", "mdrr", "mdr", "ptdr", "lol",
+    "wesh", "wallah", "inshallah", "mdrr", "mdr", "ptdr",
     "xd", "omg", "rip", "gg", "bg", "tb", "jsp", "jpp", "nsp",
     "tkt", "cmt", "bcp", "stp", "svp", "att", "rdv", "bfbf",
     "frero", "frère", "frere", "meuf", "reuf", "teuf", "keuf",

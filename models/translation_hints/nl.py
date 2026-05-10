@@ -6,7 +6,7 @@ NL_HINTS: frozenset = frozenset({
     "sorry", "pardon", "excuseer", "gefeliciteerd", "proost", "gezondheid",
     "geweldig", "super", "prima", "fijn", "leuk",
     # Pronouns
-    "ik", "jij", "hij", "zij", "ze", "het", "wij", "jullie",
+    "jij", "hij", "zij", "ze", "het", "wij", "jullie",
     "mij", "jou", "hem", "haar", "ons", "hen",
     "mijn", "jouw", "zijn", "onze", "uw", "hun",
     "dit", "dat", "deze", "die", "iets", "iemand", "niets", "niemand",
@@ -69,7 +69,7 @@ NL_HINTS: frozenset = frozenset({
     "kortom", "tenslotte", "alvast", "alweer", "alles", "niets",
     "iedereen", "niemand", "elke", "andere", "wat", "nog",
     # Chat / internet slang
-    "haha", "lol", "xd", "omg", "wtf", "jeetje", "gatverdamme",
+    "haha", "xd", "omg", "wtf", "jeetje", "gatverdamme",
     "gossiemijne", "joh", "toch", "echt", "maat", "vriend", "kerel",
     "knap", "tof", "stoer", "wauw", "wow", "hé", "he", "nee",
     "ja", "jep", "nep", "oke", "okay", "oké", "okee", "tja",

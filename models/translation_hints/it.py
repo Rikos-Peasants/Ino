@@ -82,7 +82,7 @@ IT_HINTS: frozenset = frozenset({
     "insomma", "dunque", "quindi", "perciò", "percio", "oppure",
     "niente", "nulla", "qualcosa", "tutto", "tutti", "ogni", "altro",
     # Chat / internet slang
-    "ahah", "ahahah", "lol", "xd", "omg", "dai", "vabbè", "vabbe",
+    "ahah", "ahahah", "xd", "omg", "dai", "vabbè", "vabbe",
     "mah", "boh", "uff", "basta", "figurati", "tranquillo", "dai",
     "pazza", "pazzo", "figo", "figa", "ganzo", "ganzer", "forte",
     "fico", "fichissimo", "bella", "anzi", "cioè", "cioe",

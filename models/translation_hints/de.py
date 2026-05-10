@@ -91,7 +91,7 @@ DE_HINTS: frozenset = frozenset({
     "außer", "ausser", "ohne", "durch", "gegen", "für", "fur",
     "mit", "nach", "seit", "vor", "zwischen", "über", "uber",
     # Chat / internet slang
-    "lol", "xd", "haha", "ähm", "ahm", "öhm", "ohm", "uff", "boah",
+    "xd", "haha", "ähm", "ahm", "öhm", "ohm", "uff", "boah",
     "alter", "digga", "digger", "mann", "mensch", "scheiße", "scheisse",
     "verdammt", "krass", "heftig", "geil", "krass", "mega", "voll",
     "echt", "halt", "mal", "doch", "eben", "eigentlich", "sozusagen",

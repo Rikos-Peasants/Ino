@@ -73,5 +73,5 @@ AR_HINTS: frozenset = frozenset({
     "zabi", "wala", "walla", "mako", "ma ko",
     "a7la", "a7san", "a7sann", "alf", "mabrook",
     "mabruk", "yahla", "ya3ni", "ya3ny", "yafni",
-    "lol", "omg", "wtf", "haha", "emoji", "bro",
+    "omg", "wtf", "haha", "emoji", "bro",
 })

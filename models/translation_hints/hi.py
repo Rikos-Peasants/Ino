@@ -15,7 +15,7 @@ HI_HINTS: frozenset = frozenset({
     "kya", "kaun", "kahan", "kab", "kyun", "kaise",
     "kitna", "kitni", "kitne", "konsa", "konsi",
     # Common verbs
-    "hai", "hain", "tha", "thi", "the", "hoga", "hogi",
+    "hai", "hain", "tha", "thi", "hoga", "hogi",
     "karna", "karo", "kar", "kiya", "karein", "karte", "karti",
     "jaana", "jao", "jaa", "gaya", "gayi", "jata", "jati",
     "aana", "aao", "aa", "aaya", "aayi", "aata", "aati",

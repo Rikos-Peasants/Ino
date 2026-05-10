@@ -63,7 +63,7 @@ JA_HINTS: frozenset = frozenset({
     "rashii", "souda", "ppoi", "sou", "gurai", "kurai", "bakari",
     "nagara", "tara", "reba", "nara", "temo", "tsutsu", "yara",
     # Common nouns — people & body
-    "hito", "mono", "koto", "tokoro", "toki", "te", "me", "mimi",
+    "hito", "mono", "koto", "tokoro", "toki", "te", "mimi",
     "kuchi", "atama", "karada", "ashi", "yubi", "koe", "kao",
     "kami", "kokoro", "inochi", "chikara", "kimochi", "yume",
     "kotoba", "namae", "tomodachi", "nakama", "kazoku", "okaasan",
@@ -93,7 +93,7 @@ JA_HINTS: frozenset = frozenset({
     "ganbatte", "ganbare", "yokatta", "zannen", "shimatta",
     "yatta", "yataa", "ikuzo", "ikuyo", "mouikkai", "mouichido",
     "mata", "majide", "majika", "yabaine", "sugoine", "kawaikute",
-    "ikemen", "kawaii", "tsundere", "yandere", "otaku", "waifu",
+    "ikemen", "kawaii", "tsundere", "yandere", "otaku",
     "husbando", "gacha", "ninki", "isekai", "shounen", "shoujo",
     "seinen", "josei", "mangaka", "yuusha", "maou", "tenshi",
     "akuma", "youkai", "oni", "kitsune", "tanuki", "ryuu", "kaijuu",

@@ -45,6 +45,8 @@ DISCORD_TOKEN_RE = re.compile(
     r"@here"
 )
 _MENTION_SANITIZE_RE = re.compile(r"@(everyone|here)", re.IGNORECASE)
+# Matches accented/diacritical Latin chars that are strong indicators of non-English
+_ACCENTED_LATIN_RE = re.compile(r"[\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u017E\u0152\u0153\u0178]")
 LETTER_RE = re.compile(r"[^\W\d_]", re.UNICODE)
 # Matches actual non-Latin writing systems so Google Translate (not Gemini) handles them.
 # Deliberately excludes accented Latin (é ñ ü etc.) — those CAN go to Gemini fallback.
@@ -629,8 +631,11 @@ class TranslationManager:
             return False
 
         stripped = content.strip()
-        if len(stripped) < Config.AUTO_TRANSLATE_ROMANIZED_MIN_CHARS:
-            return False
+        # Accented Latin chars (è é à ç ô etc.) are a near-certain non-English signal;
+        # skip the length minimum so short accented messages still reach Gemini.
+        if not _ACCENTED_LATIN_RE.search(stripped):
+            if len(stripped) < Config.AUTO_TRANSLATE_ROMANIZED_MIN_CHARS:
+                return False
 
         # Romanized text is latin-script. Native scripts are handled by Google Translate detection.
         if NON_LATIN_RE.search(stripped):
@@ -652,11 +657,18 @@ Non-English includes ALL of the following:
 - Stylized / homoglyph text: messages using fullwidth characters (ｈｅｌｌｏ), Cyrillic-lookalike letters, or mixed scripts that represent a Latin-script language.
 - Any other clearly non-English language written in Latin letters.
 
+IMPORTANT — accented characters are strong non-English signals:
+- Accented Latin characters (è, é, ê, ë, à, â, ç, ù, û, ô, î, ï, œ, æ, ñ, ü, ö, ä, etc.) strongly indicate a Romance or Germanic language.
+- Even if most words look like English, the presence of accents means the message is almost certainly French, Spanish, Portuguese, Italian, or German — translate it.
+- Example: "c'est pas possible" → translate (French), even though "possible" exists in English.
+- Example: "attends un moment" → translate (French), even though "moment" exists in English.
+- Example: "ça marche" → translate (French).
+
 If the message is:
-- Clearly English
-- Mostly English with just 1-2 foreign words
+- Clearly English with no accented characters
+- Mostly English with just 1-2 foreign words AND no accented characters
 - Only names, usernames, or short tags
-- Too ambiguous to determine
+- Too ambiguous to determine AND has no accented characters
 Return: {{"translate": false}}
 
 Otherwise, translate the full message to natural English and return:
@@ -667,7 +679,7 @@ Rules:
 - If the message mixes non-English and English (e.g. "lol c'est ouf", "maji yabai lol", "Lost in the hollows, unmei maware", "Zero modori mata saisei"), translate the non-English parts and keep any English parts unchanged.
 - Preserve Discord placeholders like XQZ0QZX exactly — do not translate them.
 - Do not translate URLs, mentions, custom emoji, or placeholder tokens.
-- Do not guess — if genuinely unsure, return {{"translate": false}}."""
+- Do not guess — if genuinely unsure AND no accents present, return {{"translate": false}}."""
 
             contents = [
                 genai_types.Content(

@@ -87,7 +87,7 @@ TR_HINTS: frozenset = frozenset({
     "knk", "kk", "nbr", "nbr abi", "naber", "ne haber",
     "iyiyim", "iyiim", "fena değil", "fenadegil",
     "yani", "işte yani", "hahahah", "hjkhjk", "aşşağı",
-    "aşağı", "asagi", "ahahah", "lol", "xd", "omg",
+    "aşağı", "asagi", "ahahah", "xd", "omg",
     "sürekli", "surekli", "keşke", "keske", "maşallah",
     "masallah", "inşallah", "insallah", "harika",
     "olm", "oha", "ya oha", "aa", "aaa", "vay",
