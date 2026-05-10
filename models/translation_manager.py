@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
 import hashlib
 import json
@@ -679,11 +680,16 @@ Rules:
                 response_mime_type="application/json",
             )
 
-            response_text = extract_gemini_stream_text(self.gemini_client.models.generate_content_stream(
-                model="gemini-flash-latest",
-                contents=contents,
-                config=generate_content_config,
-            )).strip()
+            response_text = await asyncio.to_thread(
+                lambda: extract_gemini_stream_text(
+                    self.gemini_client.models.generate_content_stream(
+                        model="gemini-flash-latest",
+                        contents=contents,
+                        config=generate_content_config,
+                    )
+                )
+            )
+            response_text = response_text.strip()
             if not response_text:
                 logger.debug("Empty Gemini romanized translation streaming response")
                 return None
@@ -766,11 +772,16 @@ Rules:
                 response_mime_type="application/json",
             )
 
-            response_text = extract_gemini_stream_text(self.gemini_client.models.generate_content_stream(
-                model="gemini-flash-latest",
-                contents=contents,
-                config=generate_content_config,
-            )).strip()
+            response_text = await asyncio.to_thread(
+                lambda: extract_gemini_stream_text(
+                    self.gemini_client.models.generate_content_stream(
+                        model="gemini-flash-latest",
+                        contents=contents,
+                        config=generate_content_config,
+                    )
+                )
+            )
+            response_text = response_text.strip()
             if not response_text:
                 logger.debug("Empty Gemini translation streaming response")
                 return None

@@ -373,7 +373,7 @@ class TranslationResponseView(discord.ui.View):
                 ),
                 view=self,
                 allowed_mentions=discord.AllowedMentions.none(),
-                suppress_embeds=True,
+                suppress=True,
             )
         await interaction.followup.send("I tried again with Gemini.", ephemeral=True)
 
