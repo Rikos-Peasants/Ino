@@ -20,7 +20,7 @@ NL_HINTS: frozenset = frozenset({
     "kopen", "verkopen", "openen", "sluiten", "helpen", "begrijpen",
     "beginnen", "eindigen", "stoppen", "zoeken", "houden", "haten",
     "hopen", "wachten", "antwoorden", "vragen", "betalen", "kijken",
-    "ben", "bent", "is", "zijn", "was", "waren",
+    "ben", "bent", "zijn", "was", "waren",
     "heb", "hebt", "heeft", "hebben", "had", "hadden",
     "kan", "kunt", "kunnen", "kon", "konden",
     "moet", "moeten", "moest", "moesten",

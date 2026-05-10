@@ -91,7 +91,7 @@ PT_HINTS: frozenset = frozenset({
     "cara", "mano", "bicho", "véi", "vei", "mlk", "galera",
     "saudade", "afinal", "vixe", "nossa", "caramba", "puts",
     "oxente", "eita", "uai", "tá", "ta", "né", "ne", "sim",
-    "não", "nao", "num", "tô", "to", "tô", "vo", "vou",
+    "não", "nao", "num", "tô", "vo", "vou",
     "tava", "tive", "tivemos", "ficou", "fico", "deu", "dá", "da",
     "pra", "pro", "num", "numa", "tipo", "umas", "uns",
 })

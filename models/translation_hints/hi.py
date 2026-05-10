@@ -21,7 +21,7 @@ HI_HINTS: frozenset = frozenset({
     "aana", "aao", "aa", "aaya", "aayi", "aata", "aati",
     "khaana", "khao", "kha", "khaya", "khayi",
     "peena", "pee", "piya", "piyi",
-    "sona", "so", "soya", "soyi", "sota", "soti",
+    "sona", "soya", "soyi", "sota", "soti",
     "bolna", "bolo", "bol", "bola", "boli",
     "dekhna", "dekho", "dekh", "dekha", "dekhi",
     "sunna", "suno", "sun", "suna", "suni",

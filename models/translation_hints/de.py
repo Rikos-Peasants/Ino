@@ -31,7 +31,7 @@ DE_HINTS: frozenset = frozenset({
     "habe", "hast", "hat", "haben", "habt",
     "kann", "kannst", "können", "konnt",
     "muss", "musst", "müssen", "mussten",
-    "will", "willst", "wollen", "wollt",
+    "willst", "wollen", "wollt",
     "darf", "darfst", "dürfen", "durft",
     "mag", "magst", "mögen",
     "gehe", "gehst", "geht",
