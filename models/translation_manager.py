@@ -11,10 +11,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+import unicodedata
+
 import aiohttp
 
 from config import Config
 from models.gemini_utils import extract_gemini_stream_text
+from models.translation_hints import ALL_HINTS as NON_ENGLISH_WORD_HINTS
+from models import cipher_decoder
 
 try:
     from google import genai
@@ -36,7 +40,67 @@ DISCORD_TOKEN_RE = re.compile(
     r":[A-Za-z0-9_+-]+:"
 )
 LETTER_RE = re.compile(r"[^\W\d_]", re.UNICODE)
-NON_LATIN_RE = re.compile(r"[^\x00-\x7F]")
+# Matches actual non-Latin writing systems so Google Translate (not Gemini) handles them.
+# Deliberately excludes accented Latin (é ñ ü etc.) — those CAN go to Gemini fallback.
+NON_LATIN_RE = re.compile(
+    r"[\u0370-\u03FF"    # Greek / Coptic
+    r"\u0400-\u04FF"    # Cyrillic
+    r"\u0530-\u058F"    # Armenian
+    r"\u0590-\u05FF"    # Hebrew
+    r"\u0600-\u06FF"    # Arabic
+    r"\u0750-\u077F"    # Arabic Supplement
+    r"\u0900-\u097F"    # Devanagari
+    r"\u0980-\u09FF"    # Bengali
+    r"\u0A00-\u0A7F"    # Gurmukhi
+    r"\u0A80-\u0AFF"    # Gujarati
+    r"\u0B00-\u0B7F"    # Oriya
+    r"\u0B80-\u0BFF"    # Tamil (native)
+    r"\u0C00-\u0C7F"    # Telugu
+    r"\u0C80-\u0CFF"    # Kannada
+    r"\u0D00-\u0D7F"    # Malayalam
+    r"\u0D80-\u0DFF"    # Sinhala (native)
+    r"\u0E00-\u0E7F"    # Thai
+    r"\u0F00-\u0FFF"    # Tibetan
+    r"\u1000-\u109F"    # Myanmar
+    r"\u10A0-\u10FF"    # Georgian
+    r"\u1100-\u11FF"    # Hangul Jamo
+    r"\u3000-\u30FF"    # CJK Symbols + Hiragana/Katakana
+    r"\u3400-\u4DBF"    # CJK Extension A
+    r"\u4E00-\u9FFF"    # CJK Unified Ideographs
+    r"\uAC00-\uD7A3"    # Hangul Syllables
+    r"]"
+)
+
+# Cyrillic / Greek characters that are visual homoglyphs of Latin letters.
+# Only applied when text is a *mix* of Latin and these scripts (likely stylized).
+_HOMOGLYPH_MAP: dict[str, str] = {
+    "\u0430": "a",  # а (Cyrillic)
+    "\u0435": "e",  # е
+    "\u0456": "i",  # і
+    "\u043e": "o",  # о
+    "\u0440": "p",  # р
+    "\u0441": "c",  # с
+    "\u0443": "y",  # у
+    "\u0445": "x",  # х
+    "\u0455": "s",  # ѕ
+    "\u0458": "j",  # ј
+    "\u03b1": "a",  # α (Greek)
+    "\u03bf": "o",  # ο
+    "\u03c1": "p",  # ρ
+    "\u03c2": "c",  # ς
+    "\u03f2": "c",  # ϲ
+    "\u03bd": "v",  # ν
+}
+
+
+def _normalize_unicode(text: str) -> str:
+    """NFKC-normalize fullwidth chars and remap Cyrillic/Greek homoglyphs in mixed-script text."""
+    normalized = unicodedata.normalize("NFKC", text)
+    has_latin = any("a" <= c.lower() <= "z" for c in normalized)
+    has_confusable = any(c in _HOMOGLYPH_MAP for c in normalized)
+    if has_latin and has_confusable:
+        normalized = "".join(_HOMOGLYPH_MAP.get(c, c) for c in normalized)
+    return normalized
 
 EXPRESSIVE_ENGLISH_WORDS = frozenset({
     "no", "yes", "why", "stop", "wait", "oh", "ah", "aw", "ew", "ow",
@@ -57,6 +121,12 @@ INTERNET_SLANG_WORDS = frozenset({
     "fr", "lowkey", "highkey", "bet", "cap", "nocap",
     "poggers", "pog", "copium", "based", "cringe",
     "ayo", "ayoo", "npc",
+    # Common abbreviations that Google Translate falsely detects as foreign languages
+    "wdym", "wym", "wyd", "wbu", "hbu", "wdyt", "wyt", "wdyg",
+    "imo", "imho", "tbh", "ngl", "istg", "iirc", "afaik",
+    "icymi", "fwiw", "tfw", "smh", "imo", "irl", "rn", "ig",
+    "dm", "dms", "lmk", "hmu", "sup", "wb", "ty", "yw",
+    "gl", "hf", "ez", "gg", "wp", "omw", "eta",
 })
 LAUGH_RE = re.compile(
     r"^(?:"
@@ -73,56 +143,6 @@ LAUGH_RE = re.compile(
     r")$",
     re.IGNORECASE,
 )
-NON_ENGLISH_WORD_HINTS = {
-    # Japanese romanized — common casual/anime/Discord vocab
-    "arigato", "arigatou", "baka", "boku", "daijoubu", "daisuki", "dakara",
-    "dakedo", "dayo", "deshou", "desho", "desu", "genki", "gomennasai",
-    "honto", "hontou", "ikemen", "iya", "kawaii", "kedo", "kimi", "konnichiwa",
-    "kouhai", "kudasai", "maji", "nani", "nanka", "ohayou", "onegai", "otaku",
-    "sayonara", "senpai", "sugoi", "suki", "tsundere", "urusai", "wakatta",
-    "watashi", "yabai", "yamete", "yandere", "yappari", "yoroshiku",
-    # Hindi / South-Asian romanized
-    "aap", "acha", "dhanyavaad", "kaise", "kya", "mujhe", "namaste",
-    "nahi", "privet", "shukriya",
-    # Korean romanized
-    "annyeong", "gomawo", "kamsahamnida", "saranghae", "mianhae", "jinjja",
-    "daebak", "aigo", "omo", "gwenchana",
-    # Other Asian / Middle-Eastern romanized
-    "habibi", "inshallah", "salam", "shukran", "wallah", "yalla",
-    "spasibo", "obrigado",
-    # Shared European
-    "danke", "dankje", "goedemorgen", "goedenavond", "hallo", "lekker",
-    "Nederlands",
-    # Turkish
-    "merhaba", "teşekkür", "evet", "hayır", "nasılsın",
-    # French
-    "alors", "après", "apres", "aussi", "beaucoup", "bonsoir", "bonjour",
-    "buongiorno", "ciao", "donc", "encore", "jamais", "maintenant", "merci",
-    "mais", "même", "meme", "salut", "surtout", "toujours", "voici", "voila",
-    "vraiment", "depuis", "parce", "parfait", "pourquoi", "quand", "quelque",
-    "rien", "souvent", "tellement", "très", "tres", "ouais", "ouai", "enfin",
-    "finalement", "franchement", "normalement", "évidemment", "clairement",
-    # Spanish
-    "hola", "gracias", "pero", "pues", "bien", "eres", "estoy", "tengo",
-    "quiero", "puedo", "porque", "cuando", "donde", "como", "hasta", "bueno",
-    "claro", "ahora", "siempre", "nunca", "tambien", "también", "todavía",
-    # Portuguese
-    "obrigado", "obrigada", "tudo", "bom", "boa", "você", "voce", "também",
-    "muito", "agora", "sempre", "nunca", "porque", "quando", "onde",
-    # Italian
-    "ciao", "grazie", "buongiorno", "prego", "subito", "allora", "però",
-    "pero", "perché", "quando", "adesso", "sempre", "anche", "davvero",
-    # German
-    "danke", "bitte", "hallo", "guten", "schön", "schon", "warum", "weil",
-    "immer", "niemals", "jetzt", "heute", "morgen", "gestern", "natürlich",
-    # Dutch / Afrikaans
-    "dankje", "hallo", "goedemorgen", "goedenavond", "lekker", "nederlands",
-    "waarom", "omdat", "altijd", "nooit", "gewoon", "eigenlijk",
-    # Arabic / Farsi romanized
-    "salam", "shukran", "inshallah", "wallah", "habibi", "yalla",
-    # Turkish
-    "merhaba", "teşekkür", "evet", "hayır", "nasılsın",
-}
 
 
 @dataclass
@@ -252,17 +272,24 @@ class TranslationManager:
     def looks_translation_candidate(self, content: str) -> bool:
         """Local pre-check used before consent, so no provider sees data before opt-in."""
         detection_text = self._content_for_detection(content)
-        if len(LETTER_RE.findall(detection_text)) < 3:
+        letter_chars = LETTER_RE.findall(detection_text)
+        has_non_ascii = any(ord(c) > 127 for c in letter_chars)
+        if len(letter_chars) < (1 if has_non_ascii else 3):
             return False
 
         if self._is_internet_expression(detection_text):
             return False
 
+        if cipher_decoder.has_cipher(detection_text):
+            return True
+
         if any(char.isalpha() and ord(char) > 127 for char in detection_text):
             return True
 
-        words = [word.casefold().strip("'") for word in re.findall(r"[A-Za-z']+", detection_text)]
-        if len(words) < 2:
+        # Normalize fullwidth/homoglyph chars before word-hint matching
+        norm_text = _normalize_unicode(detection_text)
+        words = [word.casefold().strip("'") for word in re.findall(r"[A-Za-z']+", norm_text)]
+        if not words:
             return False
 
         return bool(set(words) & NON_ENGLISH_WORD_HINTS)
@@ -273,17 +300,46 @@ class TranslationManager:
             return None
 
         detection_text = self._content_for_detection(content)
-        if len(LETTER_RE.findall(detection_text)) < 3:
+        letter_chars = LETTER_RE.findall(detection_text)
+        has_non_ascii = any(ord(c) > 127 for c in letter_chars)
+        if len(letter_chars) < (1 if has_non_ascii else 3):
             return None
 
         if self._is_internet_expression(detection_text):
+            return None
+
+        decoded, encoding = cipher_decoder.decode_any(content)
+        # Also try with normalized text in case ciphers embedded homoglyphs
+        if decoded is None:
+            norm_content = _normalize_unicode(content)
+            if norm_content != content:
+                decoded, encoding = cipher_decoder.decode_any(norm_content)
+        if decoded is not None:
+            detected = await self._detect_language(decoded) if self.api_key else None
+            if not detected or detected.lower() == "en":
+                return TranslationResult(
+                    source_language=encoding,
+                    translated_text=decoded,
+                    provider="cipher",
+                )
+            protected, tokens = self._protect_discord_tokens(decoded)
+            translated = await self._translate(protected, detected)
+            translated = self._restore_discord_tokens(translated, tokens).strip()
+            if translated:
+                return TranslationResult(
+                    source_language=f"{encoding}/{detected.upper()}",
+                    translated_text=translated,
+                    provider="cipher",
+                )
             return None
 
         approved = await self.get_approved_translation(content)
         if approved:
             return approved
 
-        detected_language = await self._detect_language(detection_text) if self.api_key else None
+        # Normalize fullwidth / Cyrillic-homoglyph text before hitting the API
+        api_text = _normalize_unicode(detection_text)
+        detected_language = await self._detect_language(api_text) if self.api_key else None
         if not detected_language or detected_language.lower() == "en":
             return await self._translate_romanized_if_needed(content, detection_text)
 
@@ -293,7 +349,9 @@ class TranslationManager:
         if "-latn" in detected_language.lower():
             return await self._translate_romanized_if_needed(content, detection_text)
 
-        protected_content, tokens = self._protect_discord_tokens(content)
+        # Translate normalized form so API isn't confused by homoglyphs / fullwidth chars
+        translate_source = _normalize_unicode(content) if api_text != detection_text else content
+        protected_content, tokens = self._protect_discord_tokens(translate_source)
         translated = await self._translate(protected_content, detected_language)
         translated = self._restore_discord_tokens(translated, tokens).strip()
         if not translated:
@@ -519,7 +577,8 @@ MESSAGE:
 
 Non-English includes ALL of the following:
 - European Latin-script languages: French ("salut comment tu vas"), Spanish ("hola como estas"), Portuguese, Italian, German, Dutch, etc.
-- Romanized/transliterated languages: Hindi/Hinglish ("namaste kaise ho"), Japanese romaji ("konnichiwa genki desu"), Arabic transliteration ("salam habibi"), Turkish, etc.
+- Romanized/transliterated languages: Hindi/Hinglish ("namaste kaise ho"), Japanese romaji ("konnichiwa genki desu"), Arabic transliteration ("salam habibi"), Turkish, Tamil romanized ("vanakkam eppadi irukkeenga"), Sinhala romanized ("ayubowan kohomada"), Korean romanized, etc.
+- Stylized / homoglyph text: messages using fullwidth characters (ｈｅｌｌｏ), Cyrillic-lookalike letters, or mixed scripts that represent a Latin-script language.
 - Any other clearly non-English language written in Latin letters.
 
 If the message is:
@@ -602,8 +661,8 @@ Return only valid JSON:
 
 Rules:
 - If the message is already English, return {{"translate": false}}.
-- Handle ALL non-English languages: French, Spanish, Portuguese, Italian, German, Dutch, Arabic, Hindi/Hinglish, Japanese romaji, Korean, Turkish, etc.
-- Use ISO 639-1 uppercase codes: FR, ES, PT, IT, DE, NL, AR, HI, JA, KO, TR, etc.
+- Handle ALL non-English languages: French, Spanish, Portuguese, Italian, German, Dutch, Arabic, Hindi/Hinglish, Japanese romaji, Korean, Turkish, Tamil (TA), Sinhala (SI), and any other language.
+- Use ISO 639-1 uppercase codes: FR, ES, PT, IT, DE, NL, AR, HI, JA, KO, TR, TA, SI, etc.
 - Preserve Discord placeholders like XQZ0QZX exactly — do not translate them.
 - Do not translate URLs, mentions, custom emoji, names, or placeholder tokens."""
 
