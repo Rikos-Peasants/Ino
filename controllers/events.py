@@ -373,6 +373,7 @@ class TranslationResponseView(discord.ui.View):
                 ),
                 view=self,
                 allowed_mentions=discord.AllowedMentions.none(),
+                suppress_embeds=True,
             )
         await interaction.followup.send("I tried again with Gemini.", ephemeral=True)
 
@@ -411,6 +412,9 @@ class EventsController:
         self._image_channel_text_since_reminder: Dict[int, int] = {}
         # Keep Ino's insult replies from becoming a reply loop.
         self._ino_insult_roast_cooldown: Dict[tuple, datetime] = {}
+        # Maps original message ID -> translation/consent reply message, so we can
+        # delete the reply automatically when the original message is deleted.
+        self._translation_replies: Dict[int, discord.Message] = {}
     
     def get_mod_offline_manager(self) -> Optional[ModOfflineManager]:
         """Get the mod offline manager from the commands controller"""
@@ -1077,6 +1081,7 @@ class EventsController:
                     view=view,
                 )
                 view.prompt_message = prompt_message
+                self._translation_replies[message.id] = prompt_message
                 return
 
             await self._process_auto_translate_message(message)
@@ -1108,9 +1113,11 @@ class EventsController:
                 self._format_auto_translation_reply(result.source_language, result.translated_text),
                 mention_author=False,
                 allowed_mentions=discord.AllowedMentions.none(),
+                suppress_embeds=True,
                 view=view,
             )
             view.translation_message = translation_reply
+            self._translation_replies[message.id] = translation_reply
         except discord.Forbidden:
             logger.warning(f"Missing permission to send auto-translation in #{message.channel.name}")
         except discord.NotFound:
@@ -2066,14 +2073,22 @@ class EventsController:
             logger.error(f"Error in spam channel flood detection: {e}")
     
     async def _handle_message_delete(self, message: discord.Message):
-        """Handle message deletions to clean up image tracking"""
-        # Only process messages from image channels
+        """Handle message deletions to clean up image tracking and translation replies."""
+        # Delete the associated translation/consent reply if one exists.
+        reply = self._translation_replies.pop(message.id, None)
+        if reply is not None:
+            try:
+                await reply.delete()
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
+        # Only process image-channel cleanup for this guild.
         if not message.guild or message.guild.id != Config.GUILD_ID:
             return
-            
+
         if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
             return
-            
+
         # Delete the image message from MongoDB if it exists
         await self.bot.leaderboard_manager.delete_image_message(str(message.id))
 

@@ -37,8 +37,11 @@ DISCORD_TOKEN_RE = re.compile(
     r"<@!?[0-9]+>|"
     r"<@&[0-9]+>|"
     r"<#[0-9]+>|"
-    r":[A-Za-z0-9_+-]+:"
+    r":[A-Za-z0-9_+-]+:|"
+    r"@everyone|"
+    r"@here"
 )
+_MENTION_SANITIZE_RE = re.compile(r"@(everyone|here)", re.IGNORECASE)
 LETTER_RE = re.compile(r"[^\W\d_]", re.UNICODE)
 # Matches actual non-Latin writing systems so Google Translate (not Gemini) handles them.
 # Deliberately excludes accented Latin (é ñ ü etc.) — those CAN go to Gemini fallback.
@@ -91,6 +94,11 @@ _HOMOGLYPH_MAP: dict[str, str] = {
     "\u03f2": "c",  # ϲ
     "\u03bd": "v",  # ν
 }
+
+
+def _sanitize_mentions(text: str) -> str:
+    """Replace @everyone / @here with a zero-width-space variant so they never ping."""
+    return _MENTION_SANITIZE_RE.sub(lambda m: f"@\u200b{m.group(1)}", text)
 
 
 def _normalize_unicode(text: str) -> str:
@@ -358,11 +366,13 @@ class TranslationManager:
 
         # Attempt cipher decode first — Morse/Binary have no letters and would be
         # rejected by the letter-count guard below.
-        decoded, encoding = cipher_decoder.decode_any(content)
+        # Use detection_text (Discord tokens already stripped) so role/user IDs
+        # (which contain many leet-char digits) never trigger false leet matches.
+        decoded, encoding = cipher_decoder.decode_any(detection_text)
         if decoded is None:
-            norm_content = _normalize_unicode(content)
-            if norm_content != content:
-                decoded, encoding = cipher_decoder.decode_any(norm_content)
+            norm_det = _normalize_unicode(detection_text)
+            if norm_det != detection_text:
+                decoded, encoding = cipher_decoder.decode_any(norm_det)
 
         if decoded is None:
             letter_chars = LETTER_RE.findall(detection_text)
@@ -417,7 +427,7 @@ class TranslationManager:
 
         return TranslationResult(
             source_language=detected_language.upper(),
-            translated_text=_apply_casing_style(content, translated),
+            translated_text=_sanitize_mentions(_apply_casing_style(content, translated)),
             provider="google",
         )
 
@@ -506,7 +516,7 @@ class TranslationManager:
 
         return TranslationResult(
             source_language=result.source_language.upper(),
-            translated_text=_apply_casing_style(content, translated),
+            translated_text=_sanitize_mentions(_apply_casing_style(content, translated)),
             provider="gemini_retry",
         )
 
@@ -607,7 +617,7 @@ class TranslationManager:
 
         return TranslationResult(
             source_language=result.source_language.upper(),
-            translated_text=_apply_casing_style(content, translated),
+            translated_text=_sanitize_mentions(_apply_casing_style(content, translated)),
             provider="gemini",
         )
 

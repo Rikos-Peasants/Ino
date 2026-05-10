@@ -98,4 +98,23 @@ FR_HINTS: frozenset = frozenset({
     "ça", "ca", "c'est", "cest", "t'es", "tes", "j'suis", "jsuis",
     "j'ai", "jai", "t'as", "tas", "y'a", "ya", "c'était", "cetait",
     "faut", "vaut", "ça", "v'là", "vla",
+    # Articles & basic determiners missing from above
+    "les", "des", "un", "une",
+    # Core negation & affirmation
+    "oui", "non", "pas", "si",
+    # Common connectors
+    "puis", "car", "mais", "donc", "or", "ni", "après",
+    # Common adverbs / discourse
+    "aussi", "encore", "toujours", "jamais", "souvent", "déjà",
+    "deja", "maintenant", "maintenant", "partout", "nulle",
+    "vraiment", "exactement", "surtout", "plutôt", "plutot",
+    # Translation / text vocabulary (common in chat)
+    "traduit", "traduite", "traduction", "traduire", "traducteur",
+    "texte", "langue", "langage", "français", "francais",
+    "anglais", "espagnol", "allemand", "parole", "discours",
+    # Common nouns frequently missing
+    "message", "messages", "mot", "mots", "phrase", "phrases",
+    "question", "réponse", "reponse", "réponses", "reponses",
+    "erreur", "problème", "probleme", "solution", "résultat",
+    "réseau", "reseau", "compte", "comptes",
 })
