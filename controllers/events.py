@@ -212,7 +212,7 @@ class TranslationCorrectionModal(discord.ui.Modal):
     """Collect the reporter's corrected English translation."""
 
     def __init__(self, response_view: "TranslationResponseView"):
-        super().__init__(title="Correct Translation")
+        super().__init__(title="Translated correctly")
         self.response_view = response_view
         self.corrected_translation = discord.ui.TextInput(
             label="Proper English translation",
@@ -377,7 +377,7 @@ class TranslationResponseView(discord.ui.View):
             )
         await interaction.followup.send("I tried again with Gemini.", ephemeral=True)
 
-    @discord.ui.button(label="Correct translation", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Translated correctly", style=discord.ButtonStyle.green)
     async def correct_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.source_author_id:
             await interaction.response.send_message("Only the original sender can mark this translation as correct.", ephemeral=True)
