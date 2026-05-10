@@ -95,6 +95,6 @@ DE_HINTS: frozenset = frozenset({
     "alter", "digga", "digger", "mann", "mensch", "scheiße", "scheisse",
     "verdammt", "krass", "heftig", "geil", "krass", "mega", "voll",
     "echt", "halt", "mal", "doch", "eben", "eigentlich", "sozusagen",
-    "quasi", "sowas", "sowat", "ne", "nee", "nö", "no", "jo", "jop",
+    "quasi", "sowas", "sowat", "ne", "nee", "nö", "jo", "jop",
     "aight", "genau", "stimmt", "passt", "alles klar", "allesklar",
 })

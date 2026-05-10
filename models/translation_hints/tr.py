@@ -82,7 +82,7 @@ TR_HINTS: frozenset = frozenset({
     "sadece", "bile", "dahi", "hatta", "üstelik", "ustelik",
     "hiçbir", "hicbir", "her", "hepsi", "bazı", "bazi",
     # Chat / internet slang
-    "lan", "be", "ya", "yahu", "aga", "moruk", "kanka",
+    "lan", "ya", "yahu", "aga", "moruk", "kanka",
     "kardeşim", "kardesim", "hacı", "haci", "abi",
     "knk", "kk", "nbr", "nbr abi", "naber", "ne haber",
     "iyiyim", "iyiim", "fena değil", "fenadegil",
@@ -91,5 +91,5 @@ TR_HINTS: frozenset = frozenset({
     "sürekli", "surekli", "keşke", "keske", "maşallah",
     "masallah", "inşallah", "insallah", "harika",
     "olm", "oha", "ya oha", "aa", "aaa", "vay",
-    "vay be", "be", "ew", "iğrenç", "igrenc",
+    "vay be", "ew", "iğrenç", "igrenc",
 })

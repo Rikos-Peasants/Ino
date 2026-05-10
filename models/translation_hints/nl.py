@@ -71,7 +71,7 @@ NL_HINTS: frozenset = frozenset({
     # Chat / internet slang
     "haha", "xd", "omg", "wtf", "jeetje", "gatverdamme",
     "gossiemijne", "joh", "toch", "echt", "maat", "vriend", "kerel",
-    "knap", "tof", "stoer", "wauw", "wow", "hé", "he", "nee",
+    "knap", "tof", "stoer", "wauw", "wow", "hé", "nee",
     "ja", "jep", "nep", "oke", "okay", "oké", "okee", "tja",
     "pfff", "ugh", "oooh", "aaah", "watskeburt", "potdorie",
 })

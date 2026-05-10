@@ -103,7 +103,7 @@ FR_HINTS: frozenset = frozenset({
     # Core negation & affirmation
     "oui", "non", "pas", "si",
     # Common connectors
-    "puis", "car", "mais", "donc", "or", "ni", "après",
+    "puis", "car", "mais", "donc", "ni", "après",
     # Common adverbs / discourse
     "aussi", "encore", "toujours", "jamais", "souvent", "déjà",
     "deja", "maintenant", "maintenant", "partout", "nulle",
