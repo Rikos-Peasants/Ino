@@ -24,7 +24,7 @@ from config import Config
 import discord
 from discord.ext import commands
 import aiohttp
-from models.gemini_utils import describe_gemini_response, extract_gemini_text
+from models.gemini_utils import extract_gemini_stream_text
 
 if TYPE_CHECKING:
     from models.mongo_leaderboard_manager import MongoLeaderboardManager
@@ -330,26 +330,11 @@ class YouTubeMonitor:
                     else:
                         logger.debug(f"Video {video_id} ({video_data['title']}) not processed yet, adding to queue")
                     
-                    # Filter out YouTube Shorts - URL and keyword detection only
-                    video_link = video_data.get('link', '')
-                    
-                    # Check 1: URL contains /shorts/
-                    if '/shorts/' in video_link:
-                        logger.debug(f"Skipping YouTube Short (URL): {video_data['title']} - {video_link}")
-                        continue
-                    
-                    # Check 2: Title/description suggests it's a short
-                    title_lower = video_data['title'].lower()
-                    description_lower = video_data.get('description', '').lower()
-                    short_indicators = ['#shorts', '#short', 'short video', 'youtube short', 'yt short']
-                    
-                    if any(indicator in title_lower for indicator in short_indicators):
-                        logger.info(f"Skipping suspected YouTube Short (title): {video_data['title']}")
-                        continue
-                    
-                    if any(indicator in description_lower for indicator in short_indicators):
-                        logger.info(f"Skipping suspected YouTube Short (description): {video_data['title']}")
-                        continue
+                    suspected_short = self._is_suspected_short_metadata(video_data)
+                    if suspected_short:
+                        logger.info(
+                            f"Detected YouTube Short metadata; will announce with Shorts ping: {video_data['title']}"
+                        )
                     
                     videos_to_process.append({
                         'id': video_id,
@@ -359,6 +344,7 @@ class YouTubeMonitor:
                         'description': video_data['description'],
                         'author': video_data['author'],
                         'duration_seconds': video_data.get('duration_seconds', 0),
+                        'suspected_short': suspected_short,
                         'config': {**channel, 'channel_id': youtube_channel_id}  # Include channel_id in config
                     })
                 
@@ -489,7 +475,20 @@ class YouTubeMonitor:
     def _is_short_video(self, video: Dict[str, Any]) -> bool:
         """Treat videos up to the configured 1m30s cutoff as short videos."""
         duration_seconds = self._get_duration_seconds(video)
-        return 0 < duration_seconds <= Config.SHORT_VIDEO_MAX_SECONDS
+        return bool(video.get('suspected_short')) or 0 < duration_seconds <= Config.SHORT_VIDEO_MAX_SECONDS
+
+    def _is_suspected_short_metadata(self, video: Dict[str, Any]) -> bool:
+        """Detect Shorts from metadata when duration is missing or delayed."""
+        link = (video.get('link') or '').lower()
+        title = (video.get('title') or '').lower()
+        description = (video.get('description') or '').lower()
+        short_indicators = ('#shorts', '#short', 'short video', 'youtube short', 'yt short')
+
+        return (
+            '/shorts/' in link
+            or any(indicator in title for indicator in short_indicators)
+            or any(indicator in description for indicator in short_indicators)
+        )
 
     def _role_ping_for_video_type(self, is_short: bool) -> str:
         role_id = Config.SHORTS_ROLE_ID if is_short else Config.YOUTUBE_ROLE_ID
@@ -578,7 +577,7 @@ class YouTubeMonitor:
             return []
 
     async def generate_ino_response(self, video: Dict[str, Any], is_short: bool = False) -> Optional[str]:
-        """Generate Ino's response to a new video using Gemini AI with video attachment"""
+        """Generate Ino's response to a new video using Gemini AI."""
         try:
             if not self.gemini_client:
                 logger.warning("No Gemini client available for response generation")
@@ -615,21 +614,17 @@ class YouTubeMonitor:
             else:
                 channel_context = "This video is from a channel associated with Riko, but since Riko is now a digital spirit trapped in the internet, physical videos are made by humans like Rayen or guest creators."
             
-            # Create the content with video attachment
+            # Keep this text-only. Passing a YouTube URL as file_data can fail with
+            # permission errors even when the API key works for normal text calls.
             contents = [
                 types.Content(
                     role="user",
                     parts=[
-                        types.Part(
-                            file_data=types.FileData(
-                                file_uri=video_link,
-                                mime_type="video/*",
-                            )
-                        ),
                         types.Part.from_text(
                             text=f"""New video uploaded!
 
 TITLE: {video_title}
+URL: {video_link}
 UPLOADER/CREATOR: {video_author}
 FULL DESCRIPTION: {video_description}
 CHANNEL: {channel_context}
@@ -661,34 +656,43 @@ Remember to include the correct role ping at the end based on video type!
                 ),
             ]
             
-            generate_content_config = types.GenerateContentConfig(
-                max_output_tokens=65536,
-                response_mime_type="text/plain",
-                system_instruction=[
+            config_kwargs = {
+                "response_mime_type": "text/plain",
+                "system_instruction": [
                     types.Part.from_text(text=system_prompt),
                 ],
-            )
+            }
+            thinking_config_type = getattr(types, "ThinkingConfig", None)
+            if thinking_config_type is not None:
+                config_kwargs["thinking_config"] = thinking_config_type(thinking_level="HIGH")
+            generate_content_config = types.GenerateContentConfig(**config_kwargs)
             
-            # Generate response using the new API (non-streaming)
-            response = self.gemini_client.models.generate_content(
+            response_text = extract_gemini_stream_text(self.gemini_client.models.generate_content_stream(
                 model="gemini-flash-latest",
                 contents=contents,
                 config=generate_content_config,
-            )
-            
-            response_text = extract_gemini_text(response)
+            ))
             if response_text:
                 return response_text
             else:
                 # Fallback to context-aware template
                 logger.info(
-                    "Using fallback Ino response template; empty Gemini response: %s",
-                    describe_gemini_response(response),
+                    "Using fallback Ino response template; empty Gemini streaming response"
                 )
                 return self._get_fallback_response(video_title, is_rayen_channel, video_author, is_short)
             
         except Exception as e:
-            logger.error(f"Error generating Ino response: {e}")
+            error_text = str(e)
+            if "403" in error_text or "PERMISSION_DENIED" in error_text.upper():
+                self.gemini_client = None
+                logger.error(
+                    "Gemini permission denied while generating YouTube announcement. "
+                    "Disabling Gemini announcements for this process. Check GEMINI_API_KEY, "
+                    "the enabled Generative Language API, and model access. Error: %s",
+                    e,
+                )
+            else:
+                logger.error(f"Error generating Ino response: {e}")
             # Use context-aware fallbacks
             channel_id = video.get('config', {}).get('channel_id', '')
             is_rayen_channel = channel_id == 'UChhMeymAOC5PNbbnqxD_w4g'

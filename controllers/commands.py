@@ -42,6 +42,13 @@ class CommandsController:
     def get_events_controller(self):
         """Safely get events controller"""
         return getattr(self.bot, 'events_controller', None)
+
+    def get_translation_manager(self):
+        """Safely get the shared translation manager from the events controller."""
+        events_controller = self.get_events_controller()
+        if not events_controller:
+            return None
+        return getattr(events_controller, 'translation_manager', None)
     
     def get_random_announcer(self):
         """Safely get random announcer"""
@@ -389,6 +396,89 @@ class CommandsController:
             except Exception as e:
                 logger.error(f"Error in patreon command: {e}")
                 await ctx.send("❌ An error occurred while fetching Patreon information.")
+
+        @self.bot.hybrid_group(
+            name="translation",
+            description="Manage your translation program settings",
+            invoke_without_command=True,
+        )
+        @public_command
+        async def translation_group(ctx):
+            """Show translation preference command help."""
+            await ctx.send(
+                "Use `/translation opt-in` to allow message translation or `/translation opt-out` to disable it.",
+                ephemeral=True,
+            )
+
+        @translation_group.command(name="opt-in", description="Opt into automatic translation for your messages")
+        @public_command
+        async def translation_opt_in_command(ctx):
+            """Opt into the translation program."""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer(ephemeral=True)
+
+                if not ctx.guild:
+                    await ctx.send("❌ Translation settings can only be changed in the server.", ephemeral=True)
+                    return
+
+                translation_manager = self.get_translation_manager()
+                if not translation_manager:
+                    await ctx.send("❌ Translation settings are not available right now.", ephemeral=True)
+                    return
+
+                success = await translation_manager.set_user_preference(
+                    user_id=ctx.author.id,
+                    guild_id=ctx.guild.id,
+                    opted_in=True,
+                    user_name=getattr(ctx.author, "display_name", ctx.author.name),
+                )
+                if not success:
+                    await ctx.send("❌ I could not save your translation preference right now.", ephemeral=True)
+                    return
+
+                await ctx.send(
+                    "✅ You opted into the translation program. Non-English messages can now be translated for others.",
+                    ephemeral=True,
+                )
+            except Exception as e:
+                logger.error(f"Error in translation opt-in command: {e}")
+                await ctx.send("❌ An error occurred while saving your translation preference.", ephemeral=True)
+
+        @translation_group.command(name="opt-out", description="Opt out of automatic translation for your messages")
+        @public_command
+        async def translation_opt_out_command(ctx):
+            """Opt out of the translation program."""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer(ephemeral=True)
+
+                if not ctx.guild:
+                    await ctx.send("❌ Translation settings can only be changed in the server.", ephemeral=True)
+                    return
+
+                translation_manager = self.get_translation_manager()
+                if not translation_manager:
+                    await ctx.send("❌ Translation settings are not available right now.", ephemeral=True)
+                    return
+
+                success = await translation_manager.set_user_preference(
+                    user_id=ctx.author.id,
+                    guild_id=ctx.guild.id,
+                    opted_in=False,
+                    user_name=getattr(ctx.author, "display_name", ctx.author.name),
+                )
+                if not success:
+                    await ctx.send("❌ I could not save your translation preference right now.", ephemeral=True)
+                    return
+
+                await ctx.send(
+                    "✅ You opted out. I will not prompt for or process translations from your messages.",
+                    ephemeral=True,
+                )
+            except Exception as e:
+                logger.error(f"Error in translation opt-out command: {e}")
+                await ctx.send("❌ An error occurred while saving your translation preference.", ephemeral=True)
 
         @self.bot.hybrid_command(
             name="fixytcount",

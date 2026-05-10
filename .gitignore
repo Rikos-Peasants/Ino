@@ -75,6 +75,12 @@ docs/_build/
 .pybuilder/
 target/
 
+# Emotes & Stickers
+emotes/
+emojis/
+stickers/
+download_emotes.py
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

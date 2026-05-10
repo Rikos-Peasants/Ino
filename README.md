@@ -150,6 +150,13 @@ MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/database
 GEMINI_API_KEY=your_gemini_api_key          # For AI announcements & art verification
 OPENAI_KEY=your_openai_key                   # Primary content moderation
 GOOGLE_NL_API_KEY=your_google_nl_key         # Secondary moderation check
+GOOGLE_TRANSLATE_API_KEY=your_translate_key  # Google Cloud Translation API
+AUTO_TRANSLATE_ENABLED=true                  # Auto-reply with EN translations for non-English chat
+AUTO_TRANSLATE_CHANNEL_IDS=                  # Empty means all channels
+AUTO_TRANSLATE_REVIEW_CHANNEL_ID=1401293444005101568
+AUTO_TRANSLATE_MIN_CONFIDENCE=0.60
+AUTO_TRANSLATE_ROMANIZED_ENABLED=true        # Uses Gemini fallback for romaji/Hinglish-style text
+AUTO_TRANSLATE_ROMANIZED_MIN_CHARS=8
 
 # YouTube Integration
 YOUTUBE_API_KEY=your_youtube_api_key         # YouTube Data API
@@ -308,7 +315,7 @@ Ino/
 | **Discord Library** | discord.py 2.3.0+ |
 | **Database** | MongoDB with PyMongo |
 | **AI Models** | gemini-flash-latest |
-| **Content Moderation** | OpenAI API, Google Natural Language API |
+| **Content Moderation & Translation** | OpenAI API, Google Natural Language API, Google Cloud Translation API |
 | **Art API** | Serika.art API |
 | **YouTube** | YouTube Data API v3, RSS feeds |
 | **Image Processing** | Pillow |
@@ -341,6 +348,15 @@ Used for video monitoring:
 Dual-layer content moderation:
 - **Primary**: OpenAI Moderation API
 - **Secondary**: Google Natural Language API
+
+### Google Cloud Translation API
+Used for auto-translating non-English chat messages to English:
+- Detects the source language first
+- Skips English messages
+- Prompts users once before processing their messages with translation providers
+- Users can change consent with `/translation opt-in` and `/translation opt-out`
+- Uses Gemini as a fallback for romanized non-English text like Hindi written in Latin letters or Japanese romaji
+- Replies in the format `Translated NL to EN: Hello, how is it going?`
 
 ---
 

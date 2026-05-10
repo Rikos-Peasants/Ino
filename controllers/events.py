@@ -8,6 +8,7 @@ from views.forum_thread_view import ForumThreadView
 from views.ask_staff_topic_view import AskStaffTopicView
 from config import Config
 from models.user_safety_monitor import UserSafetyMonitor
+from models.translation_manager import TranslationManager
 import logging
 import asyncio
 import random
@@ -45,6 +46,349 @@ DISCORD_INVITE_REGEX = re.compile(
     re.IGNORECASE
 )
 
+def _truncate_text(value: str, limit: int = 1000) -> str:
+    value = value or ""
+    if len(value) <= limit:
+        return value
+    return value[:limit - 3].rstrip() + "..."
+
+
+class TranslationConsentView(discord.ui.View):
+    """One-time consent controls before sending a user's messages to translation providers."""
+
+    def __init__(self, controller: "EventsController", source_message: discord.Message):
+        super().__init__(timeout=60)
+        self.controller = controller
+        self.source_message = source_message
+        self.prompt_message: Optional[discord.Message] = None
+        self.processed = False
+
+    async def _delete_prompt(self) -> None:
+        if not self.prompt_message:
+            return
+
+        try:
+            await self.prompt_message.delete()
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
+
+    async def _ensure_sender(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.source_message.author.id:
+            return True
+
+        await interaction.response.send_message(
+            "Only the message sender can choose this translation setting.",
+            ephemeral=True,
+        )
+        return False
+
+    async def on_timeout(self) -> None:
+        await self._delete_prompt()
+
+    @discord.ui.button(label="Agree", style=discord.ButtonStyle.green)
+    async def agree_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_sender(interaction):
+            return
+
+        if self.processed:
+            await interaction.response.send_message("This translation choice was already handled.", ephemeral=True)
+            return
+
+        if not interaction.guild:
+            await interaction.response.send_message("Translation opt-in only works in the server.", ephemeral=True)
+            return
+
+        self.processed = True
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        success = await self.controller.translation_manager.set_user_preference(
+            user_id=interaction.user.id,
+            guild_id=interaction.guild.id,
+            opted_in=True,
+            user_name=getattr(interaction.user, "display_name", interaction.user.name),
+        )
+        await self._delete_prompt()
+
+        if not success:
+            await interaction.followup.send("I could not save your translation choice right now.", ephemeral=True)
+            return
+
+        await self.controller._process_auto_translate_message(self.source_message)
+        await interaction.followup.send("You opted into the translation program.", ephemeral=True)
+
+    @discord.ui.button(label="Deny", style=discord.ButtonStyle.gray)
+    async def deny_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._ensure_sender(interaction):
+            return
+
+        if self.processed:
+            await interaction.response.send_message("This translation choice was already handled.", ephemeral=True)
+            return
+
+        if not interaction.guild:
+            await interaction.response.send_message("Translation opt-out only works in the server.", ephemeral=True)
+            return
+
+        self.processed = True
+        await interaction.response.defer(ephemeral=True)
+        success = await self.controller.translation_manager.set_user_preference(
+            user_id=interaction.user.id,
+            guild_id=interaction.guild.id,
+            opted_in=False,
+            user_name=getattr(interaction.user, "display_name", interaction.user.name),
+        )
+        await self._delete_prompt()
+
+        if not success:
+            await interaction.followup.send("I could not save your translation choice right now.", ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            "You opted out. Please only speak English here so the moderators can moderate your messages.",
+            ephemeral=True,
+        )
+
+
+class TranslationReviewApproveView(discord.ui.View):
+    """Review-channel controls for approved translation overrides."""
+
+    def __init__(
+        self,
+        controller: "EventsController",
+        original_content: str,
+        source_language: str,
+        translated_text: str,
+        source_message_id: int,
+    ):
+        super().__init__(timeout=7 * 24 * 60 * 60)
+        self.controller = controller
+        self.original_content = original_content
+        self.source_language = source_language
+        self.translated_text = translated_text
+        self.source_message_id = source_message_id
+        self.processed = False
+
+    @discord.ui.button(label="Approve Future Use", style=discord.ButtonStyle.green)
+    async def approve_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self.controller._is_translation_moderator(interaction):
+            await interaction.response.send_message("You do not have permission to approve translations.", ephemeral=True)
+            return
+
+        if self.processed:
+            await interaction.response.send_message("This translation review was already approved.", ephemeral=True)
+            return
+
+        if not interaction.guild:
+            await interaction.response.send_message("This can only be approved in a server.", ephemeral=True)
+            return
+
+        success = await self.controller.translation_manager.save_approved_translation(
+            original_content=self.original_content,
+            source_language=self.source_language,
+            translated_text=self.translated_text,
+            moderator_id=interaction.user.id,
+            moderator_name=getattr(interaction.user, "display_name", interaction.user.name),
+            guild_id=interaction.guild.id,
+        )
+        if not success:
+            await interaction.response.send_message("Could not save the approved translation.", ephemeral=True)
+            return
+
+        self.processed = True
+        button.disabled = True
+        if interaction.message and interaction.message.embeds:
+            embed = interaction.message.embeds[0]
+            embed.color = discord.Color.green()
+            embed.add_field(
+                name="Approved",
+                value=f"Approved by {getattr(interaction.user, 'display_name', interaction.user.name)} for future use.",
+                inline=False,
+            )
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            await interaction.response.edit_message(view=self)
+
+
+class TranslationCorrectionModal(discord.ui.Modal):
+    """Collect the reporter's corrected English translation."""
+
+    def __init__(self, response_view: "TranslationResponseView"):
+        super().__init__(title="Correct Translation")
+        self.response_view = response_view
+        self.corrected_translation = discord.ui.TextInput(
+            label="Proper English translation",
+            style=discord.TextStyle.paragraph,
+            min_length=1,
+            max_length=1000,
+            required=True,
+            placeholder="Enter the corrected English translation...",
+            default=response_view.translated_text[:1000],
+        )
+        self.add_item(self.corrected_translation)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        await self.response_view.submit_wrong_translation(
+            interaction,
+            str(self.corrected_translation.value).strip(),
+        )
+
+
+class TranslationResponseView(discord.ui.View):
+    """Controls attached to Ino's public translation reply."""
+
+    def __init__(
+        self,
+        controller: "EventsController",
+        source_message: discord.Message,
+        source_language: str,
+        translated_text: str,
+    ):
+        super().__init__(timeout=24 * 60 * 60)
+        self.controller = controller
+        self.source_message_id = source_message.id
+        self.source_channel_id = source_message.channel.id
+        self.source_author_id = source_message.author.id
+        self.source_author_name = source_message.author.display_name
+        self.source_message_url = source_message.jump_url
+        self.original_content = source_message.content or ""
+        self.source_language = source_language
+        self.translated_text = translated_text
+        self.review_sent = False
+        self.retry_used = False
+        self.translation_message: Optional[discord.Message] = None
+
+    def _disable_button_by_label(self, label: str) -> None:
+        for item in self.children:
+            if isinstance(item, discord.ui.Button) and item.label == label:
+                item.disabled = True
+
+    async def _edit_translation_message_view(self, interaction: discord.Interaction) -> None:
+        target_message = interaction.message or self.translation_message
+        if target_message:
+            await target_message.edit(view=self)
+
+    @discord.ui.button(label="Translation Wrong", style=discord.ButtonStyle.gray)
+    async def wrong_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.review_sent:
+            await interaction.response.send_message("This translation has already been sent for review.", ephemeral=True)
+            return
+
+        if not interaction.guild:
+            await interaction.response.send_message("Translation reviews can only be created in the server.", ephemeral=True)
+            return
+
+        await interaction.response.send_modal(TranslationCorrectionModal(self))
+
+    async def submit_wrong_translation(self, interaction: discord.Interaction, corrected_translation: str):
+        if self.review_sent:
+            await interaction.followup.send("This translation has already been sent for review.", ephemeral=True)
+            return
+
+        if not corrected_translation:
+            await interaction.followup.send("Please enter the corrected translation.", ephemeral=True)
+            return
+
+        if not interaction.guild:
+            await interaction.followup.send("Translation reviews can only be created in the server.", ephemeral=True)
+            return
+
+        review_channel = interaction.guild.get_channel(Config.AUTO_TRANSLATE_REVIEW_CHANNEL_ID)
+        if review_channel is None:
+            try:
+                review_channel = await interaction.guild.fetch_channel(Config.AUTO_TRANSLATE_REVIEW_CHANNEL_ID)
+            except Exception:
+                review_channel = None
+
+        if not review_channel or not hasattr(review_channel, "send"):
+            await interaction.followup.send("I could not find the translation review channel.", ephemeral=True)
+            return
+
+        reporter_is_mod = await self.controller._is_translation_moderator(interaction)
+        embed = discord.Embed(
+            title="Translation Review",
+            color=discord.Color.orange(),
+        )
+        embed.add_field(name="Original", value=_truncate_text(self.original_content), inline=False)
+        embed.add_field(name="AI Translation", value=_truncate_text(self.translated_text), inline=False)
+        embed.add_field(name="Suggested Correction", value=_truncate_text(corrected_translation), inline=False)
+        embed.add_field(name="Language", value=f"{self.source_language} to EN", inline=True)
+        embed.add_field(name="Original Author", value=f"{self.source_author_name} ({self.source_author_id})", inline=True)
+        embed.add_field(
+            name="Reported By",
+            value=f"{getattr(interaction.user, 'display_name', interaction.user.name)} ({interaction.user.id})"
+                  f"{' - moderator' if reporter_is_mod else ''}",
+            inline=False,
+        )
+        embed.add_field(name="Source", value=f"[Jump to message]({self.source_message_url})", inline=False)
+        embed.set_footer(text="Approve only if this translation should be reused for the same message text.")
+
+        view = TranslationReviewApproveView(
+            controller=self.controller,
+            original_content=self.original_content,
+            source_language=self.source_language,
+            translated_text=corrected_translation,
+            source_message_id=self.source_message_id,
+        )
+        await review_channel.send(
+            embed=embed,
+            view=view,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        self.review_sent = True
+        self._disable_button_by_label("Translation Wrong")
+        await self._edit_translation_message_view(interaction)
+        await interaction.followup.send("I sent this translation for review.", ephemeral=True)
+
+    @discord.ui.button(label="Wrong, Try Again", style=discord.ButtonStyle.blurple)
+    async def retry_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.source_author_id:
+            await interaction.response.send_message("Only the original sender can ask me to try again.", ephemeral=True)
+            return
+
+        if self.retry_used:
+            await interaction.response.send_message("You already used the retry for this translation.", ephemeral=True)
+            return
+
+        self.retry_used = True
+        button.disabled = True
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        retry_result = await self.controller.translation_manager.retry_with_gemini(
+            self.original_content,
+            self.source_language,
+        )
+        if not retry_result:
+            if interaction.message:
+                await interaction.message.edit(view=self)
+            await interaction.followup.send("I could not get a better Gemini translation right now.", ephemeral=True)
+            return
+
+        self.source_language = retry_result.source_language
+        self.translated_text = retry_result.translated_text
+        if interaction.message:
+            await interaction.message.edit(
+                content=self.controller._format_auto_translation_reply(
+                    retry_result.source_language,
+                    retry_result.translated_text,
+                ),
+                view=self,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+        await interaction.followup.send("I tried again with Gemini.", ephemeral=True)
+
+    @discord.ui.button(label="Correct translation", style=discord.ButtonStyle.green)
+    async def correct_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.source_author_id:
+            await interaction.response.send_message("Only the original sender can mark this translation as correct.", ephemeral=True)
+            return
+
+        self.remove_item(button)
+        if interaction.message:
+            await interaction.response.edit_message(view=self)
+        else:
+            await interaction.response.send_message("Marked as correct.", ephemeral=True)
+
+
 class EventsController:
     """Controller for handling Discord events"""
     
@@ -53,6 +397,9 @@ class EventsController:
         self.spam_channel_message_count = 0  # Track messages in spam channel
         self.quest_manager = None  # Will be initialized when bot is ready
         self.user_safety_monitor = UserSafetyMonitor(bot)
+        leaderboard_manager = getattr(bot, 'leaderboard_manager', None)
+        translation_db = getattr(leaderboard_manager, 'db', None)
+        self.translation_manager = TranslationManager(db=translation_db)
         # Ping spam tracking: {author_id: [(target_id, timestamp, message_id), ...]}
         self._ping_history: Dict[int, List[tuple]] = {}
         # Track which authors have been timed out recently to avoid re-triggering
@@ -554,6 +901,9 @@ class EventsController:
         
         # Enforce spoilers in NSFW channels
         await self._check_nsfw_spoiler(message)
+
+        # Translate non-English chat messages after moderation, but before image-channel handling.
+        await self._maybe_auto_translate_message(message)
         
         # Check if message is in image reaction channels
         if message.channel.id not in Config.IMAGE_REACTION_CHANNELS:
@@ -688,6 +1038,141 @@ class EventsController:
             logger.error(f"Error sending Discord invite warning DM: {e}")
 
         return True
+
+    async def _maybe_auto_translate_message(self, message: discord.Message):
+        """Prompt for consent, then reply with an English translation for opted-in users."""
+        try:
+            if not Config.AUTO_TRANSLATE_ENABLED:
+                return
+
+            if not self.translation_manager.is_configured:
+                return
+
+            if Config.AUTO_TRANSLATE_CHANNEL_IDS and message.channel.id not in Config.AUTO_TRANSLATE_CHANNEL_IDS:
+                return
+
+            content = (message.content or "").strip()
+            if not content:
+                return
+
+            if content.startswith(Config.COMMAND_PREFIX) or content.startswith('/'):
+                return
+
+            preference = await self.translation_manager.get_user_preference(
+                user_id=message.author.id,
+                guild_id=message.guild.id,
+            )
+            if preference is False:
+                return
+
+            if preference is None:
+                if not self.translation_manager.looks_translation_candidate(content):
+                    return
+
+                view = TranslationConsentView(controller=self, source_message=message)
+                prompt_message = await message.reply(
+                    self._format_translation_consent_prompt(),
+                    mention_author=False,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                    view=view,
+                )
+                view.prompt_message = prompt_message
+                return
+
+            await self._process_auto_translate_message(message)
+        except discord.Forbidden:
+            logger.warning(f"Missing permission to send auto-translation in #{message.channel.name}")
+        except discord.NotFound:
+            logger.debug("Skipped auto-translation reply because the source message no longer exists")
+        except Exception as e:
+            logger.error(f"Error auto-translating message: {e}")
+
+    async def _process_auto_translate_message(self, message: discord.Message):
+        """Run provider-backed translation for a message that is allowed to be processed."""
+        content = (message.content or "").strip()
+        if not content:
+            return
+
+        try:
+            result = await self.translation_manager.translate_to_english(content)
+            if not result:
+                return
+
+            view = TranslationResponseView(
+                controller=self,
+                source_message=message,
+                source_language=result.source_language,
+                translated_text=result.translated_text,
+            )
+            translation_reply = await message.reply(
+                self._format_auto_translation_reply(result.source_language, result.translated_text),
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions.none(),
+                view=view,
+            )
+            view.translation_message = translation_reply
+        except discord.Forbidden:
+            logger.warning(f"Missing permission to send auto-translation in #{message.channel.name}")
+        except discord.NotFound:
+            logger.debug("Skipped auto-translation reply because the source message no longer exists")
+        except Exception as e:
+            logger.error(f"Error auto-translating message: {e}")
+
+    def _format_auto_translation_reply(self, source_language: str, translated_text: str) -> str:
+        prefix = f"Translated {source_language} to EN: "
+        max_length = 2000
+        if len(prefix) + len(translated_text) <= max_length:
+            return f"{prefix}{translated_text}"
+
+        available = max_length - len(prefix)
+        return f"{prefix}{translated_text[:available - 3].rstrip()}..."
+
+    def _format_translation_consent_prompt(self) -> str:
+        return (
+            "You can help others understand what you are saying by opting into our translation program. "
+            "By doing so, your message data may be processed by services like Serika's internal "
+            "translation model, Google, or DeepL.\n\n"
+            "Press Agree or Deny below. You can change this later with `/translation opt-in` "
+            "or `/translation opt-out`.\n\n"
+            "If you deny, we ask that you only speak English here because our moderators may not be able "
+            "to moderate your language."
+        )
+
+    async def _is_translation_moderator(self, interaction: discord.Interaction) -> bool:
+        try:
+            if not interaction.guild:
+                return False
+
+            member = interaction.guild.get_member(interaction.user.id)
+            if not member:
+                return False
+
+            if await self.bot.is_owner(interaction.user):
+                return True
+
+            if member.guild_permissions.administrator or member.guild_permissions.manage_messages:
+                return True
+
+            role_ids = {
+                Config.DEFAULT_MODERATION_REVIEW_ROLE_ID,
+                Config.DEFAULT_MODERATION_ADMIN_ROLE_ID,
+                Config.STAFF_ROLE_ID,
+            }
+
+            leaderboard_manager = getattr(self.bot, 'leaderboard_manager', None)
+            moderation_manager = getattr(leaderboard_manager, 'moderation_manager', None)
+            if moderation_manager:
+                review_role_id = await moderation_manager.get_review_role_id(str(interaction.guild.id))
+                admin_role_id = await moderation_manager.get_admin_role_id(str(interaction.guild.id))
+                if review_role_id:
+                    role_ids.add(review_role_id)
+                if admin_role_id:
+                    role_ids.add(admin_role_id)
+
+            return any(role.id in role_ids for role in member.roles)
+        except Exception as e:
+            logger.error(f"Error checking translation moderator permissions: {e}")
+            return False
 
     async def _check_nsfw_spoiler(self, message: discord.Message):
         """Check if message in NSFW channel has unspoilered images and warn user."""

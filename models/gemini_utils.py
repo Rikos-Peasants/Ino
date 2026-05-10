@@ -29,6 +29,27 @@ def extract_gemini_text(response: Any) -> str:
     return "\n".join(chunks).strip()
 
 
+def extract_gemini_stream_text(stream: Any) -> str:
+    """Return generated text from a GenAI streaming response."""
+    chunks: list[str] = []
+
+    for chunk in stream:
+        try:
+            text = getattr(chunk, "text", None)
+        except Exception:
+            text = None
+
+        if isinstance(text, str) and text:
+            chunks.append(text)
+            continue
+
+        chunk_text = extract_gemini_text(chunk)
+        if chunk_text:
+            chunks.append(chunk_text)
+
+    return "".join(chunks).strip()
+
+
 def describe_gemini_response(response: Any) -> str:
     """Build concise diagnostics for empty GenAI responses."""
     if response is None:

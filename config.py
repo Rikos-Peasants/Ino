@@ -17,6 +17,26 @@ def get_int_env(key: str, default: Optional[int] = None) -> int:
     except ValueError:
         raise ValueError(f"Environment variable {key} must be a valid integer, got: {value}")
 
+def get_float_env(key: str, default: float) -> float:
+    """Get a float from environment variables with proper error handling"""
+    value = os.getenv(key)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(f"Environment variable {key} must be a valid float, got: {value}")
+
+def get_int_list_env(key: str, default: Optional[List[int]] = None) -> List[int]:
+    """Get a comma-separated integer list from environment variables"""
+    value = os.getenv(key)
+    if not value:
+        return list(default or [])
+    try:
+        return [int(item.strip()) for item in value.split(',') if item.strip()]
+    except ValueError:
+        raise ValueError(f"Environment variable {key} must be a comma-separated list of integers, got: {value}")
+
 class Config:
     # Command prefix for text commands
     COMMAND_PREFIX = os.getenv('COMMAND_PREFIX', 'R!')
@@ -29,6 +49,7 @@ class Config:
     YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')  # For YouTube Data API
     OPENAI_KEY = os.getenv('OPENAI_KEY')  # For content moderation (primary)
     GOOGLE_NL_API_KEY = os.getenv('GOOGLE_NL_API_KEY')  # For secondary moderation check
+    GOOGLE_TRANSLATE_API_KEY = os.getenv('GOOGLE_TRANSLATE_API_KEY')  # For auto-translation to English
     TWITCH_CLIENT = os.getenv('TWITCH_CLIENT')
     TWITCH_SECRET = os.getenv('TWITCH_SECRET')
 
@@ -72,6 +93,14 @@ class Config:
         1278117139428933647,
         1278117139428933649
     ]
+
+    # Auto-translate non-English chat messages to English
+    AUTO_TRANSLATE_ENABLED = os.getenv('AUTO_TRANSLATE_ENABLED', 'true').lower() == 'true'
+    AUTO_TRANSLATE_CHANNEL_IDS = get_int_list_env('AUTO_TRANSLATE_CHANNEL_IDS', [])  # Empty means all channels
+    AUTO_TRANSLATE_REVIEW_CHANNEL_ID = get_int_env('AUTO_TRANSLATE_REVIEW_CHANNEL_ID', 1401293444005101568)
+    AUTO_TRANSLATE_MIN_CONFIDENCE = get_float_env('AUTO_TRANSLATE_MIN_CONFIDENCE', 0.60)
+    AUTO_TRANSLATE_ROMANIZED_ENABLED = os.getenv('AUTO_TRANSLATE_ROMANIZED_ENABLED', 'true').lower() == 'true'
+    AUTO_TRANSLATE_ROMANIZED_MIN_CHARS = get_int_env('AUTO_TRANSLATE_ROMANIZED_MIN_CHARS', 8)
     
     # Booster text channels (2 points per message instead of 1)
     BOOSTER_TEXT_CHANNELS = [
@@ -227,6 +256,7 @@ class Config:
         optional_vars = [
             ('OPENAI_KEY', cls.OPENAI_KEY),
             ('GOOGLE_NL_API_KEY', cls.GOOGLE_NL_API_KEY),
+            ('GOOGLE_TRANSLATE_API_KEY', cls.GOOGLE_TRANSLATE_API_KEY),
             ('GEMINI_API_KEY', cls.GEMINI_API_KEY),
             ('YOUTUBE_API_KEY', cls.YOUTUBE_API_KEY),
             ('SERIKA_ART_KEY', cls.SERIKA_ART_KEY)
