@@ -324,6 +324,12 @@ class TranslationManager:
     def looks_translation_candidate(self, content: str) -> bool:
         """Local pre-check used before consent, so no provider sees data before opt-in."""
         detection_text = self._content_for_detection(content)
+
+        # Check ciphers first — Morse/Binary have zero letter characters and would
+        # be incorrectly rejected by the letter-count guard below.
+        if cipher_decoder.has_cipher(detection_text):
+            return True
+
         letter_chars = LETTER_RE.findall(detection_text)
         has_non_ascii = any(ord(c) > 127 for c in letter_chars)
         if len(letter_chars) < (1 if has_non_ascii else 3):
@@ -331,9 +337,6 @@ class TranslationManager:
 
         if self._is_internet_expression(detection_text):
             return False
-
-        if cipher_decoder.has_cipher(detection_text):
-            return True
 
         if any(char.isalpha() and ord(char) > 127 for char in detection_text):
             return True
@@ -352,20 +355,23 @@ class TranslationManager:
             return None
 
         detection_text = self._content_for_detection(content)
-        letter_chars = LETTER_RE.findall(detection_text)
-        has_non_ascii = any(ord(c) > 127 for c in letter_chars)
-        if len(letter_chars) < (1 if has_non_ascii else 3):
-            return None
 
-        if self._is_internet_expression(detection_text):
-            return None
-
+        # Attempt cipher decode first — Morse/Binary have no letters and would be
+        # rejected by the letter-count guard below.
         decoded, encoding = cipher_decoder.decode_any(content)
-        # Also try with normalized text in case ciphers embedded homoglyphs
         if decoded is None:
             norm_content = _normalize_unicode(content)
             if norm_content != content:
                 decoded, encoding = cipher_decoder.decode_any(norm_content)
+
+        if decoded is None:
+            letter_chars = LETTER_RE.findall(detection_text)
+            has_non_ascii = any(ord(c) > 127 for c in letter_chars)
+            if len(letter_chars) < (1 if has_non_ascii else 3):
+                return None
+
+            if self._is_internet_expression(detection_text):
+                return None
         if decoded is not None:
             detected = await self._detect_language(decoded) if self.api_key else None
             if not detected or detected.lower() == "en":
