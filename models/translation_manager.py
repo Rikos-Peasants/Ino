@@ -37,13 +37,40 @@ DISCORD_TOKEN_RE = re.compile(
 )
 LETTER_RE = re.compile(r"[^\W\d_]", re.UNICODE)
 NON_LATIN_RE = re.compile(r"[^\x00-\x7F]")
-ROMANIZED_TRANSLATION_HINTS = {
-    "aap", "acha", "arigato", "arigatou", "bonjour", "buongiorno", "ciao",
-    "daijoubu", "danke", "dankje", "desu", "dhanyavaad", "genki", "gomawo",
-    "gomennasai", "gracias", "goedemorgen", "goedenavond", "hallo", "kaise",
-    "konnichiwa", "kya", "lekker", "merci", "mujhe", "namaste", "nani",
-    "nederlands", "nahi", "ohayou", "obrigado", "privet", "salam", "sayonara",
-    "shukran", "shukriya", "spasibo", "sugoi", "watashi",
+NON_ENGLISH_WORD_HINTS = {
+    # Romanized / transliterated Asian & Middle-Eastern languages
+    "aap", "acha", "arigato", "arigatou", "daijoubu", "danke", "dankje", "desu",
+    "dhanyavaad", "genki", "gomawo", "gomennasai", "goedemorgen", "goedenavond",
+    "hallo", "kaise", "konnichiwa", "kya", "lekker", "mujhe", "namaste", "nani",
+    "nahi", "ohayou", "obrigado", "privet", "salam", "sayonara", "shukran",
+    "shukriya", "spasibo", "sugoi", "watashi",
+    # French
+    "alors", "après", "apres", "aussi", "beaucoup", "bonsoir", "bonjour",
+    "buongiorno", "ciao", "donc", "encore", "jamais", "maintenant", "merci",
+    "mais", "même", "meme", "salut", "surtout", "toujours", "voici", "voila",
+    "vraiment", "depuis", "parce", "parfait", "pourquoi", "quand", "quelque",
+    "rien", "souvent", "tellement", "très", "tres", "ouais", "ouai", "enfin",
+    "finalement", "franchement", "normalement", "évidemment", "clairement",
+    # Spanish
+    "hola", "gracias", "pero", "pues", "bien", "eres", "estoy", "tengo",
+    "quiero", "puedo", "porque", "cuando", "donde", "como", "hasta", "bueno",
+    "claro", "ahora", "siempre", "nunca", "tambien", "también", "todavía",
+    # Portuguese
+    "obrigado", "obrigada", "tudo", "bom", "boa", "você", "voce", "também",
+    "muito", "agora", "sempre", "nunca", "porque", "quando", "onde",
+    # Italian
+    "ciao", "grazie", "buongiorno", "prego", "subito", "allora", "però",
+    "pero", "perché", "quando", "adesso", "sempre", "anche", "davvero",
+    # German
+    "danke", "bitte", "hallo", "guten", "schön", "schon", "warum", "weil",
+    "immer", "niemals", "jetzt", "heute", "morgen", "gestern", "natürlich",
+    # Dutch / Afrikaans
+    "dankje", "hallo", "goedemorgen", "goedenavond", "lekker", "nederlands",
+    "waarom", "omdat", "altijd", "nooit", "gewoon", "eigenlijk",
+    # Arabic / Farsi romanized
+    "salam", "shukran", "inshallah", "wallah", "habibi", "yalla",
+    # Turkish
+    "merhaba", "teşekkür", "evet", "hayır", "nasılsın",
 }
 
 
@@ -167,7 +194,7 @@ class TranslationManager:
         if len(words) < 2:
             return False
 
-        return bool(set(words) & ROMANIZED_TRANSLATION_HINTS)
+        return bool(set(words) & NON_ENGLISH_WORD_HINTS)
 
     async def translate_to_english(self, content: str) -> Optional[TranslationResult]:
         """Return an English translation for non-English content, otherwise None."""
@@ -405,22 +432,32 @@ class TranslationManager:
 
     async def _ask_gemini_for_romanized_translation(self, content: str) -> Optional[TranslationResult]:
         try:
-            prompt = f"""Analyze this Discord message:
+            prompt = f"""Analyze this Discord message and determine if it is written in a non-English language.
+
+MESSAGE:
 {content}
 
-If the message is normal English, mostly English, names only, slang only, or too ambiguous, return:
-{{"translate": false}}
+Non-English includes ALL of the following:
+- European Latin-script languages: French ("salut comment tu vas"), Spanish ("hola como estas"), Portuguese, Italian, German, Dutch, etc.
+- Romanized/transliterated languages: Hindi/Hinglish ("namaste kaise ho"), Japanese romaji ("konnichiwa genki desu"), Arabic transliteration ("salam habibi"), Turkish, etc.
+- Any other clearly non-English language written in Latin letters.
 
-If it is a non-English language written in Latin letters/romanization, such as Hindi/Hinglish ("namaste kaise ho", "mujhe pata nahi") or Japanese romaji ("konnichiwa genki desu ka"), translate it to natural English.
+If the message is:
+- Clearly English
+- Mostly English with just 1-2 foreign words
+- Only names, usernames, or short tags
+- Too ambiguous to determine
+Return: {{"translate": false}}
 
-Return only valid JSON:
-{{"translate": true, "source_language": "HI", "translated_text": "Hello, how are you?"}}
+Otherwise, translate the full message to natural English and return:
+{{"translate": true, "source_language": "FR", "translated_text": "Hello, how are you?"}}
 
 Rules:
-- Use short uppercase language codes like HI, JA, KO, AR.
-- Preserve Discord placeholders like XQZ0QZX exactly.
-- Do not translate URLs, mentions, custom emoji, names, or placeholders.
-- Do not translate English messages."""
+- Use ISO 639-1 uppercase codes: FR, ES, PT, IT, DE, NL, HI, JA, KO, AR, TR, etc.
+- If the message mixes French and English slang (e.g. "lol c'est ouf"), still translate the non-English parts.
+- Preserve Discord placeholders like XQZ0QZX exactly — do not translate them.
+- Do not translate URLs, mentions, custom emoji, or placeholder tokens.
+- Do not guess — if genuinely unsure, return {{"translate": false}}."""
 
             contents = [
                 genai_types.Content(
@@ -428,14 +465,10 @@ Rules:
                     parts=[genai_types.Part.from_text(text=prompt)],
                 )
             ]
-            config_kwargs = {
-                "temperature": 0,
-                "response_mime_type": "application/json",
-            }
-            thinking_config_type = getattr(genai_types, "ThinkingConfig", None)
-            if thinking_config_type is not None:
-                config_kwargs["thinking_config"] = thinking_config_type(thinking_level="HIGH")
-            generate_content_config = genai_types.GenerateContentConfig(**config_kwargs)
+            generate_content_config = genai_types.GenerateContentConfig(
+                temperature=0,
+                response_mime_type="application/json",
+            )
 
             response_text = extract_gemini_stream_text(self.gemini_client.models.generate_content_stream(
                 model="gemini-flash-latest",
@@ -485,14 +518,14 @@ MESSAGE:
 {content}
 
 Return only valid JSON:
-{{"translate": true, "source_language": "JA", "translated_text": "Hello, how are you?"}}
+{{"translate": true, "source_language": "FR", "translated_text": "Hello, how are you?"}}
 
 Rules:
 - If the message is already English, return {{"translate": false}}.
-- Handle native scripts and romanized text like romaji or Hinglish.
-- Use short uppercase language codes like HI, JA, KO, AR, ES, NL.
-- Preserve Discord placeholders like XQZ0QZX exactly.
-- Do not translate URLs, mentions, custom emoji, names, or placeholders."""
+- Handle ALL non-English languages: French, Spanish, Portuguese, Italian, German, Dutch, Arabic, Hindi/Hinglish, Japanese romaji, Korean, Turkish, etc.
+- Use ISO 639-1 uppercase codes: FR, ES, PT, IT, DE, NL, AR, HI, JA, KO, TR, etc.
+- Preserve Discord placeholders like XQZ0QZX exactly — do not translate them.
+- Do not translate URLs, mentions, custom emoji, names, or placeholder tokens."""
 
             data = await self._ask_gemini_json(prompt)
             if not data or not data.get("translate"):
@@ -519,14 +552,10 @@ Rules:
                     parts=[genai_types.Part.from_text(text=prompt)],
                 )
             ]
-            config_kwargs = {
-                "temperature": 0,
-                "response_mime_type": "application/json",
-            }
-            thinking_config_type = getattr(genai_types, "ThinkingConfig", None)
-            if thinking_config_type is not None:
-                config_kwargs["thinking_config"] = thinking_config_type(thinking_level="HIGH")
-            generate_content_config = genai_types.GenerateContentConfig(**config_kwargs)
+            generate_content_config = genai_types.GenerateContentConfig(
+                temperature=0,
+                response_mime_type="application/json",
+            )
 
             response_text = extract_gemini_stream_text(self.gemini_client.models.generate_content_stream(
                 model="gemini-flash-latest",

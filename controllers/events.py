@@ -382,7 +382,7 @@ class TranslationResponseView(discord.ui.View):
             await interaction.response.send_message("Only the original sender can mark this translation as correct.", ephemeral=True)
             return
 
-        self.remove_item(button)
+        self.clear_items()
         if interaction.message:
             await interaction.response.edit_message(view=self)
         else:
