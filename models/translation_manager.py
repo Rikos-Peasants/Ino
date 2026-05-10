@@ -37,13 +37,64 @@ DISCORD_TOKEN_RE = re.compile(
 )
 LETTER_RE = re.compile(r"[^\W\d_]", re.UNICODE)
 NON_LATIN_RE = re.compile(r"[^\x00-\x7F]")
+
+EXPRESSIVE_ENGLISH_WORDS = frozenset({
+    "no", "yes", "why", "stop", "wait", "oh", "ah", "aw", "ew", "ow",
+    "wow", "go", "hey", "yo", "hi", "bye", "please", "help",
+    "what", "how", "same", "true", "real", "nice",
+    "cool", "good", "bad", "great", "damn", "dang", "bro",
+    "yay", "nay", "ugh", "oof", "ow", "oi", "mhm",
+})
+INTERNET_SLANG_WORDS = frozenset({
+    "lol", "lmao", "lmfao", "rofl", "roflmao",
+    "xd", "omg", "omfg", "wtf", "wth",
+    "ikr", "idk", "idc", "imo", "imho", "ngl", "tbh", "fyi",
+    "brb", "afk", "gg", "ggg", "ff", "rip",
+    "owo", "uwu", "smh", "bruh", "bruv",
+    "ok", "okay", "k", "kk",
+    "nah", "yep", "yup", "nope", "yikes",
+    "hm", "hmm", "hmmm",
+    "fr", "lowkey", "highkey", "bet", "cap", "nocap",
+    "poggers", "pog", "copium", "based", "cringe",
+    "ayo", "ayoo", "npc",
+})
+LAUGH_RE = re.compile(
+    r"^(?:"
+    r"l+o+l+s?|"          # lol, loool, lols
+    r"lm+f?a+o+|"         # lmao, lmfao, lmaooo
+    r"(?:ha){2,}h?|"      # haha, hahaha
+    r"ha+h+a*|"           # haah, haaah
+    r"(?:he){2,}h?|"      # hehe, hehehe
+    r"(?:hi){2,}h?|"      # hihi
+    r"ro+fl+(?:ma+o+)?|" # rofl, roflmao
+    r"x+d+|"              # xd, xdd
+    r"(?:ah)+a?|"         # aha, ahaha
+    r"(?:eh)+e?"          # ehe
+    r")$",
+    re.IGNORECASE,
+)
 NON_ENGLISH_WORD_HINTS = {
-    # Romanized / transliterated Asian & Middle-Eastern languages
-    "aap", "acha", "arigato", "arigatou", "daijoubu", "danke", "dankje", "desu",
-    "dhanyavaad", "genki", "gomawo", "gomennasai", "goedemorgen", "goedenavond",
-    "hallo", "kaise", "konnichiwa", "kya", "lekker", "mujhe", "namaste", "nani",
-    "nahi", "ohayou", "obrigado", "privet", "salam", "sayonara", "shukran",
-    "shukriya", "spasibo", "sugoi", "watashi",
+    # Japanese romanized — common casual/anime/Discord vocab
+    "arigato", "arigatou", "baka", "boku", "daijoubu", "daisuki", "dakara",
+    "dakedo", "dayo", "deshou", "desho", "desu", "genki", "gomennasai",
+    "honto", "hontou", "ikemen", "iya", "kawaii", "kedo", "kimi", "konnichiwa",
+    "kouhai", "kudasai", "maji", "nani", "nanka", "ohayou", "onegai", "otaku",
+    "sayonara", "senpai", "sugoi", "suki", "tsundere", "urusai", "wakatta",
+    "watashi", "yabai", "yamete", "yandere", "yappari", "yoroshiku",
+    # Hindi / South-Asian romanized
+    "aap", "acha", "dhanyavaad", "kaise", "kya", "mujhe", "namaste",
+    "nahi", "privet", "shukriya",
+    # Korean romanized
+    "annyeong", "gomawo", "kamsahamnida", "saranghae", "mianhae", "jinjja",
+    "daebak", "aigo", "omo", "gwenchana",
+    # Other Asian / Middle-Eastern romanized
+    "habibi", "inshallah", "salam", "shukran", "wallah", "yalla",
+    "spasibo", "obrigado",
+    # Shared European
+    "danke", "dankje", "goedemorgen", "goedenavond", "hallo", "lekker",
+    "Nederlands",
+    # Turkish
+    "merhaba", "teşekkür", "evet", "hayır", "nasılsın",
     # French
     "alors", "après", "apres", "aussi", "beaucoup", "bonsoir", "bonjour",
     "buongiorno", "ciao", "donc", "encore", "jamais", "maintenant", "merci",
@@ -181,10 +232,30 @@ class TranslationManager:
             logger.error(f"Error saving translation preference: {e}")
             return False
 
+    def _is_internet_expression(self, text: str) -> bool:
+        """Return True if the text is entirely internet slang/laughter that should never be translated."""
+        words = re.findall(r"[A-Za-z]+", text)
+        if not words:
+            return False
+        for w in words:
+            lw = w.lower()
+            if lw in INTERNET_SLANG_WORDS:
+                continue
+            if LAUGH_RE.match(lw):
+                continue
+            collapsed = re.sub(r"(.)\1+", r"\1", lw)
+            if collapsed in EXPRESSIVE_ENGLISH_WORDS:
+                continue
+            return False
+        return True
+
     def looks_translation_candidate(self, content: str) -> bool:
         """Local pre-check used before consent, so no provider sees data before opt-in."""
         detection_text = self._content_for_detection(content)
         if len(LETTER_RE.findall(detection_text)) < 3:
+            return False
+
+        if self._is_internet_expression(detection_text):
             return False
 
         if any(char.isalpha() and ord(char) > 127 for char in detection_text):
@@ -205,12 +276,21 @@ class TranslationManager:
         if len(LETTER_RE.findall(detection_text)) < 3:
             return None
 
+        if self._is_internet_expression(detection_text):
+            return None
+
         approved = await self.get_approved_translation(content)
         if approved:
             return approved
 
         detected_language = await self._detect_language(detection_text) if self.api_key else None
         if not detected_language or detected_language.lower() == "en":
+            return await self._translate_romanized_if_needed(content, detection_text)
+
+        # Google Translate cannot translate romanized/Latin-script variants (e.g. ja-Latn, zh-Latn).
+        # It identifies them correctly but just echoes the text back unchanged.
+        # Route to Gemini which actually understands romanized content.
+        if "-latn" in detected_language.lower():
             return await self._translate_romanized_if_needed(content, detection_text)
 
         protected_content, tokens = self._protect_discord_tokens(content)
@@ -454,7 +534,7 @@ Otherwise, translate the full message to natural English and return:
 
 Rules:
 - Use ISO 639-1 uppercase codes: FR, ES, PT, IT, DE, NL, HI, JA, KO, AR, TR, etc.
-- If the message mixes French and English slang (e.g. "lol c'est ouf"), still translate the non-English parts.
+- If the message mixes non-English and English (e.g. "lol c'est ouf", "maji yabai lol", "Lost in the hollows, unmei maware", "Zero modori mata saisei"), translate the non-English parts and keep any English parts unchanged.
 - Preserve Discord placeholders like XQZ0QZX exactly — do not translate them.
 - Do not translate URLs, mentions, custom emoji, or placeholder tokens.
 - Do not guess — if genuinely unsure, return {{"translate": false}}."""

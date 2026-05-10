@@ -1071,7 +1071,7 @@ class EventsController:
 
                 view = TranslationConsentView(controller=self, source_message=message)
                 prompt_message = await message.reply(
-                    self._format_translation_consent_prompt(),
+                    embed=self._format_translation_consent_prompt(),
                     mention_author=False,
                     allowed_mentions=discord.AllowedMentions.none(),
                     view=view,
@@ -1127,16 +1127,29 @@ class EventsController:
         available = max_length - len(prefix)
         return f"{prefix}{translated_text[:available - 3].rstrip()}..."
 
-    def _format_translation_consent_prompt(self) -> str:
-        return (
-            "You can help others understand what you are saying by opting into our translation program. "
-            "By doing so, your message data may be processed by services like Serika's internal "
-            "translation model, Google, or DeepL.\n\n"
-            "Press Agree or Deny below. You can change this later with `/translation opt-in` "
-            "or `/translation opt-out`.\n\n"
-            "If you deny, we ask that you only speak English here because our moderators may not be able "
-            "to moderate your language."
+    def _format_translation_consent_prompt(self) -> discord.Embed:
+        embed = discord.Embed(
+            title="🌐 Translation Program",
+            description=(
+                "We noticed your message may not be in English. "
+                "You can help others understand you by opting into our **translation program**.\n\n"
+                "By agreeing, your message text may be processed by translation services "
+                "(Google Translate or our internal AI model) to produce an English translation."
+            ),
+            color=discord.Color.blurple(),
         )
+        embed.add_field(
+            name="✅ If you Agree",
+            value="Your messages will be automatically translated to English for other members to read.",
+            inline=False,
+        )
+        embed.add_field(
+            name="❌ If you Deny",
+            value="No translation will be shown. Please try to write in English so moderators can read your messages.",
+            inline=False,
+        )
+        embed.set_footer(text="You can change this any time with /translation opt-in or /translation opt-out")
+        return embed
 
     async def _is_translation_moderator(self, interaction: discord.Interaction) -> bool:
         try:
