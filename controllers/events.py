@@ -245,8 +245,8 @@ class TranslationResponseView(discord.ui.View):
     """Controls attached to Ino's public translation reply.
 
     Button flow:
-    1. Initially shows "Try Again" + "Translated correctly"
-    2. After retry is used (or fails), shows "Translation Wrong" + "Translated correctly"
+    1. Initially shows "Wrong, Try Again" + "Wrong Language" + "Translated correctly"
+    2. After retry: removes "Wrong, Try Again", adds "Translation Wrong" in its place
     """
 
     def __init__(
@@ -269,19 +269,6 @@ class TranslationResponseView(discord.ui.View):
         self.review_sent = False
         self.retry_used = False
         self.translation_message: Optional[discord.Message] = None
-        # Initially hide the "Translation Wrong" button — only shown after retry
-        self.wrong_button.style = discord.ButtonStyle.gray
-        self.wrong_button.disabled = True
-        self._update_wrong_button_visibility()
-
-    def _update_wrong_button_visibility(self) -> None:
-        """Show/hide Translation Wrong based on whether retry has been used."""
-        if self.retry_used:
-            self.wrong_button.disabled = False
-            self.retry_button.disabled = True
-        else:
-            self.wrong_button.disabled = True
-            self.retry_button.disabled = False
 
     def _disable_button_by_label(self, label: str) -> None:
         for item in self.children:
@@ -299,7 +286,7 @@ class TranslationResponseView(discord.ui.View):
             return True
         return await self.controller._is_translation_moderator(interaction)
 
-    @discord.ui.button(label="Try Again", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="Wrong, Try Again", style=discord.ButtonStyle.blurple)
     async def retry_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._is_allowed_user(interaction):
             await interaction.response.send_message(
@@ -312,19 +299,25 @@ class TranslationResponseView(discord.ui.View):
             return
 
         self.retry_used = True
-        self._update_wrong_button_visibility()
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         retry_result = await self.controller.translation_manager.retry_with_gemini(
             self.original_content,
             self.source_language,
         )
+
+        # Remove retry button, add "Translation Wrong" button in its place
+        self.remove_item(self.retry_button)
+        wrong_btn = discord.ui.Button(label="Translation Wrong", style=discord.ButtonStyle.gray)
+        wrong_btn.callback = self._wrong_button_callback
+        self.add_item(wrong_btn)
+
         if not retry_result:
             if interaction.message:
                 await interaction.message.edit(view=self)
             await interaction.followup.send(
                 f"Could not get a better translation. Detected language: **{self.source_language}**\n"
-                "You can now report it as wrong if needed.",
+                "You can now report it as wrong.",
                 ephemeral=True,
             )
             return
@@ -343,12 +336,12 @@ class TranslationResponseView(discord.ui.View):
             )
         await interaction.followup.send(
             f"Retried with Gemini. Detected language: **{retry_result.source_language}**\n"
-            "If it's still wrong, you can now report it.",
+            "If it's still wrong, press \"Translation Wrong\" to report it.",
             ephemeral=True,
         )
 
-    @discord.ui.button(label="Translation Wrong", style=discord.ButtonStyle.gray)
-    async def wrong_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _wrong_button_callback(self, interaction: discord.Interaction):
+        """Callback for the dynamically added 'Translation Wrong' button."""
         if not await self._is_allowed_user(interaction):
             await interaction.response.send_message(
                 "Only the original sender or a moderator can use this.", ephemeral=True
@@ -364,6 +357,64 @@ class TranslationResponseView(discord.ui.View):
             return
 
         await interaction.response.send_modal(TranslationCorrectionModal(self))
+
+    @discord.ui.button(label="Wrong Language", style=discord.ButtonStyle.red)
+    async def wrong_language_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._is_allowed_user(interaction):
+            await interaction.response.send_message(
+                "Only the original sender or a moderator can use this.", ephemeral=True
+            )
+            return
+
+        if not interaction.guild:
+            await interaction.response.send_message("This can only be used in the server.", ephemeral=True)
+            return
+
+        await interaction.response.send_modal(WrongLanguageModal(self))
+
+    async def submit_wrong_language(self, interaction: discord.Interaction, actual_language: str):
+        """Handle wrong language report — log to review channel."""
+        if not interaction.guild:
+            await interaction.followup.send("This can only be used in the server.", ephemeral=True)
+            return
+
+        review_channel = interaction.guild.get_channel(Config.AUTO_TRANSLATE_REVIEW_CHANNEL_ID)
+        if review_channel is None:
+            try:
+                review_channel = await interaction.guild.fetch_channel(Config.AUTO_TRANSLATE_REVIEW_CHANNEL_ID)
+            except Exception:
+                review_channel = None
+
+        if not review_channel or not hasattr(review_channel, "send"):
+            await interaction.followup.send("Could not find the translation review channel.", ephemeral=True)
+            return
+
+        reporter_is_mod = await self.controller._is_translation_moderator(interaction)
+        embed = discord.Embed(
+            title="Wrong Language Report",
+            color=discord.Color.red(),
+        )
+        embed.add_field(name="Original Text", value=_truncate_text(self.original_content), inline=False)
+        embed.add_field(name="Detected As", value=self.source_language, inline=True)
+        embed.add_field(name="Actual Language", value=actual_language or "Unknown", inline=True)
+        embed.add_field(name="Translation Given", value=_truncate_text(self.translated_text), inline=False)
+        embed.add_field(name="Original Author", value=f"{self.source_author_name} ({self.source_author_id})", inline=True)
+        embed.add_field(
+            name="Reported By",
+            value=f"{getattr(interaction.user, 'display_name', interaction.user.name)} ({interaction.user.id})"
+                  f"{' - moderator' if reporter_is_mod else ''}",
+            inline=False,
+        )
+        embed.add_field(name="Source", value=f"[Jump to message]({self.source_message_url})", inline=False)
+
+        await review_channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+
+        self.wrong_language_button.disabled = True
+        await self._edit_translation_message_view(interaction)
+        await interaction.followup.send(
+            f"Reported wrong language. Detected **{self.source_language}**, you said it's **{actual_language}**.",
+            ephemeral=True,
+        )
 
     async def submit_wrong_translation(self, interaction: discord.Interaction, corrected_translation: str):
         if self.review_sent:
@@ -442,6 +493,30 @@ class TranslationResponseView(discord.ui.View):
             await interaction.response.edit_message(view=self)
         else:
             await interaction.response.send_message("Marked as correct.", ephemeral=True)
+
+
+class WrongLanguageModal(discord.ui.Modal):
+    """Collect the actual language when the detected language was wrong."""
+
+    def __init__(self, response_view: "TranslationResponseView"):
+        super().__init__(title=f"Wrong language (detected: {response_view.source_language})")
+        self.response_view = response_view
+        self.actual_language = discord.ui.TextInput(
+            label="What is the actual language?",
+            style=discord.TextStyle.short,
+            min_length=1,
+            max_length=50,
+            required=True,
+            placeholder="e.g. Russian, Hindi, French, English...",
+        )
+        self.add_item(self.actual_language)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        await self.response_view.submit_wrong_language(
+            interaction,
+            str(self.actual_language.value).strip(),
+        )
 
 
 class EventsController:
