@@ -25,14 +25,14 @@ ES_HINTS: frozenset = frozenset({
     "cerrar", "pagar", "preguntar", "responder", "entender",
     "aprender", "enseñar", "ensenar", "recordar", "olvidar",
     # Verb conjugations
-    "soy", "eres", "somos", "sois", "son", "era", "eras", "éramos",
+    "soy", "eres", "somos", "sois", "era", "eras", "éramos",
     "eramos", "eran", "seré", "sere", "será", "sera",
     "estoy", "estás", "estas", "está", "esta", "estamos", "están", "estan",
     "tengo", "tienes", "tiene", "tenemos", "tienen",
     "hago", "haces", "hace", "hacemos", "hacen",
     "puedo", "puedes", "puede", "podemos", "pueden",
     "quiero", "quieres", "quiere", "queremos", "quieren",
-    "voy", "vas", "vamos", "van",
+    "voy", "vas", "vamos",
     "digo", "dices", "dice", "decimos", "dicen",
     # Common adjectives
     "bueno", "buena", "malo", "mala", "grande", "pequeño", "pequeña",
@@ -89,7 +89,7 @@ ES_HINTS: frozenset = frozenset({
     "por eso", "poreso", "o sea", "osea", "en fin", "enfin",
     "nada", "algo", "alguien", "nadie", "cada",
     # Chat / internet slang
-    "jaja", "jejeje", "omg", "wtf", "ugh", "aw", "uff",
+    "jaja", "jejeje", "ugh", "uff",
     "wey", "güey", "guey", "tío", "tia", "crack", "flojo", "floja",
     "mola", "molón", "molon", "flipar", "alucinante", "qué asco", "queasco",
     "ni modo", "nimodo", "a huevo", "ahuevo", "chale", "nelda",

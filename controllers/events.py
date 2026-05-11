@@ -112,6 +112,10 @@ class TranslationConsentView(discord.ui.View):
             await interaction.followup.send("I could not save your translation choice right now.", ephemeral=True)
             return
 
+        self.controller.translation_manager.reset_consent_prompt_count(
+            user_id=interaction.user.id,
+            guild_id=interaction.guild.id,
+        )
         await self.controller._process_auto_translate_message(self.source_message)
         await interaction.followup.send("You opted into the translation program.", ephemeral=True)
 
@@ -135,6 +139,10 @@ class TranslationConsentView(discord.ui.View):
             guild_id=interaction.guild.id,
             opted_in=False,
             user_name=getattr(interaction.user, "display_name", interaction.user.name),
+        )
+        self.controller.translation_manager.reset_consent_prompt_count(
+            user_id=interaction.user.id,
+            guild_id=interaction.guild.id,
         )
         await self._delete_prompt()
 
@@ -234,7 +242,12 @@ class TranslationCorrectionModal(discord.ui.Modal):
 
 
 class TranslationResponseView(discord.ui.View):
-    """Controls attached to Ino's public translation reply."""
+    """Controls attached to Ino's public translation reply.
+
+    Button flow:
+    1. Initially shows "Try Again" + "Translated correctly"
+    2. After retry is used (or fails), shows "Translation Wrong" + "Translated correctly"
+    """
 
     def __init__(
         self,
@@ -256,6 +269,19 @@ class TranslationResponseView(discord.ui.View):
         self.review_sent = False
         self.retry_used = False
         self.translation_message: Optional[discord.Message] = None
+        # Initially hide the "Translation Wrong" button — only shown after retry
+        self.wrong_button.style = discord.ButtonStyle.gray
+        self.wrong_button.disabled = True
+        self._update_wrong_button_visibility()
+
+    def _update_wrong_button_visibility(self) -> None:
+        """Show/hide Translation Wrong based on whether retry has been used."""
+        if self.retry_used:
+            self.wrong_button.disabled = False
+            self.retry_button.disabled = True
+        else:
+            self.wrong_button.disabled = True
+            self.retry_button.disabled = False
 
     def _disable_button_by_label(self, label: str) -> None:
         for item in self.children:
@@ -267,8 +293,68 @@ class TranslationResponseView(discord.ui.View):
         if target_message:
             await target_message.edit(view=self)
 
+    async def _is_allowed_user(self, interaction: discord.Interaction) -> bool:
+        """Allow the original message sender OR moderators to use buttons."""
+        if interaction.user.id == self.source_author_id:
+            return True
+        return await self.controller._is_translation_moderator(interaction)
+
+    @discord.ui.button(label="Try Again", style=discord.ButtonStyle.blurple)
+    async def retry_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._is_allowed_user(interaction):
+            await interaction.response.send_message(
+                "Only the original sender or a moderator can use this.", ephemeral=True
+            )
+            return
+
+        if self.retry_used:
+            await interaction.response.send_message("You already used the retry for this translation.", ephemeral=True)
+            return
+
+        self.retry_used = True
+        self._update_wrong_button_visibility()
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        retry_result = await self.controller.translation_manager.retry_with_gemini(
+            self.original_content,
+            self.source_language,
+        )
+        if not retry_result:
+            if interaction.message:
+                await interaction.message.edit(view=self)
+            await interaction.followup.send(
+                f"Could not get a better translation. Detected language: **{self.source_language}**\n"
+                "You can now report it as wrong if needed.",
+                ephemeral=True,
+            )
+            return
+
+        self.source_language = retry_result.source_language
+        self.translated_text = retry_result.translated_text
+        if interaction.message:
+            await interaction.message.edit(
+                content=self.controller._format_auto_translation_reply(
+                    retry_result.source_language,
+                    retry_result.translated_text,
+                ),
+                view=self,
+                allowed_mentions=discord.AllowedMentions.none(),
+                suppress=True,
+            )
+        await interaction.followup.send(
+            f"Retried with Gemini. Detected language: **{retry_result.source_language}**\n"
+            "If it's still wrong, you can now report it.",
+            ephemeral=True,
+        )
+
     @discord.ui.button(label="Translation Wrong", style=discord.ButtonStyle.gray)
     async def wrong_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._is_allowed_user(interaction):
+            await interaction.response.send_message(
+                "Only the original sender or a moderator can use this.", ephemeral=True
+            )
+            return
+
         if self.review_sent:
             await interaction.response.send_message("This translation has already been sent for review.", ephemeral=True)
             return
@@ -311,7 +397,8 @@ class TranslationResponseView(discord.ui.View):
         embed.add_field(name="Original", value=_truncate_text(self.original_content), inline=False)
         embed.add_field(name="AI Translation", value=_truncate_text(self.translated_text), inline=False)
         embed.add_field(name="Suggested Correction", value=_truncate_text(corrected_translation), inline=False)
-        embed.add_field(name="Language", value=f"{self.source_language} to EN", inline=True)
+        embed.add_field(name="Detected Language", value=f"{self.source_language}", inline=True)
+        embed.add_field(name="Translation", value=f"{self.source_language} → EN", inline=True)
         embed.add_field(name="Original Author", value=f"{self.source_author_name} ({self.source_author_id})", inline=True)
         embed.add_field(
             name="Reported By",
@@ -337,50 +424,17 @@ class TranslationResponseView(discord.ui.View):
         self.review_sent = True
         self._disable_button_by_label("Translation Wrong")
         await self._edit_translation_message_view(interaction)
-        await interaction.followup.send("I sent this translation for review.", ephemeral=True)
-
-    @discord.ui.button(label="Wrong, Try Again", style=discord.ButtonStyle.blurple)
-    async def retry_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.source_author_id:
-            await interaction.response.send_message("Only the original sender can ask me to try again.", ephemeral=True)
-            return
-
-        if self.retry_used:
-            await interaction.response.send_message("You already used the retry for this translation.", ephemeral=True)
-            return
-
-        self.retry_used = True
-        button.disabled = True
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-        retry_result = await self.controller.translation_manager.retry_with_gemini(
-            self.original_content,
-            self.source_language,
+        await interaction.followup.send(
+            f"Sent for review. Detected language was **{self.source_language}**.",
+            ephemeral=True,
         )
-        if not retry_result:
-            if interaction.message:
-                await interaction.message.edit(view=self)
-            await interaction.followup.send("I could not get a better Gemini translation right now.", ephemeral=True)
-            return
-
-        self.source_language = retry_result.source_language
-        self.translated_text = retry_result.translated_text
-        if interaction.message:
-            await interaction.message.edit(
-                content=self.controller._format_auto_translation_reply(
-                    retry_result.source_language,
-                    retry_result.translated_text,
-                ),
-                view=self,
-                allowed_mentions=discord.AllowedMentions.none(),
-                suppress=True,
-            )
-        await interaction.followup.send("I tried again with Gemini.", ephemeral=True)
 
     @discord.ui.button(label="Translated correctly", style=discord.ButtonStyle.green)
     async def correct_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.source_author_id:
-            await interaction.response.send_message("Only the original sender can mark this translation as correct.", ephemeral=True)
+        if not await self._is_allowed_user(interaction):
+            await interaction.response.send_message(
+                "Only the original sender or a moderator can use this.", ephemeral=True
+            )
             return
 
         self.clear_items()
@@ -415,6 +469,9 @@ class EventsController:
         # Maps original message ID -> translation/consent reply message, so we can
         # delete the reply automatically when the original message is deleted.
         self._translation_replies: Dict[int, discord.Message] = {}
+        # Maps translated message ID -> source language code, for reverse translation
+        # when someone replies to a translated message.
+        self._translated_message_languages: Dict[int, str] = {}
     
     def get_mod_offline_manager(self) -> Optional[ModOfflineManager]:
         """Get the mod offline manager from the commands controller"""
@@ -1062,6 +1119,10 @@ class EventsController:
             if content.startswith(Config.COMMAND_PREFIX) or content.startswith('/'):
                 return
 
+            # Reverse translation: if this message is a reply to a translated message,
+            # translate the reply into the original language so the foreign speaker can read it.
+            await self._maybe_reverse_translate_reply(message)
+
             preference = await self.translation_manager.get_user_preference(
                 user_id=message.author.id,
                 guild_id=message.guild.id,
@@ -1071,6 +1132,34 @@ class EventsController:
 
             if preference is None:
                 if not self.translation_manager.looks_translation_candidate(content):
+                    return
+
+                # Check if we've already asked too many times — auto opt-out
+                prompt_count = self.translation_manager.increment_consent_prompt_count(
+                    user_id=message.author.id,
+                    guild_id=message.guild.id,
+                )
+                if prompt_count > self.translation_manager.MAX_CONSENT_PROMPTS:
+                    await self.translation_manager.set_user_preference(
+                        user_id=message.author.id,
+                        guild_id=message.guild.id,
+                        opted_in=False,
+                        user_name=message.author.display_name,
+                    )
+                    self.translation_manager.reset_consent_prompt_count(
+                        user_id=message.author.id,
+                        guild_id=message.guild.id,
+                    )
+                    try:
+                        await message.reply(
+                            "You've been automatically opted out of translation "
+                            f"after {self.translation_manager.MAX_CONSENT_PROMPTS} unanswered prompts. "
+                            "Use `/translation opt-in` if you'd like to enable it later.",
+                            mention_author=False,
+                            delete_after=30,
+                        )
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
                     return
 
                 view = TranslationConsentView(controller=self, source_message=message)
@@ -1091,6 +1180,51 @@ class EventsController:
             logger.debug("Skipped auto-translation reply because the source message no longer exists")
         except Exception as e:
             logger.error(f"Error auto-translating message: {e}")
+
+    async def _maybe_reverse_translate_reply(self, message: discord.Message):
+        """If someone replies to a previously translated message, translate their reply
+        back into the original language so the foreign-language speaker can read it."""
+        if not message.reference or not message.reference.message_id:
+            return
+
+        parent_id = message.reference.message_id
+        source_language = self._translated_message_languages.get(parent_id)
+        if not source_language:
+            return
+
+        # Don't reverse-translate non-English messages or very short messages
+        content = (message.content or "").strip()
+        if not content or len(content) < 2:
+            return
+
+        # Skip if the reply itself looks non-English (it's probably in the same language)
+        if any(char.isalpha() and ord(char) > 127 for char in content):
+            return
+
+        # Clean language code (strip /CIPHER prefixes, -Latn suffixes etc.)
+        lang_code = source_language.split("/")[-1].split("-")[0].lower()
+        if lang_code == "en":
+            return
+
+        try:
+            result = await self.translation_manager.translate_to_language(content, lang_code)
+            if not result or not result.translated_text:
+                return
+
+            reply_text = f"Translated EN to {lang_code.upper()}: {result.translated_text}"
+            if len(reply_text) > 2000:
+                reply_text = reply_text[:1997] + "..."
+
+            await message.reply(
+                reply_text,
+                mention_author=False,
+                allowed_mentions=discord.AllowedMentions.none(),
+                suppress_embeds=True,
+            )
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+            pass
+        except Exception as e:
+            logger.error(f"Error reverse-translating reply: {e}")
 
     async def _process_auto_translate_message(self, message: discord.Message):
         """Run provider-backed translation for a message that is allowed to be processed."""
@@ -1118,6 +1252,8 @@ class EventsController:
             )
             view.translation_message = translation_reply
             self._translation_replies[message.id] = translation_reply
+            # Track the source language so replies can be reverse-translated
+            self._translated_message_languages[message.id] = result.source_language
         except discord.Forbidden:
             logger.warning(f"Missing permission to send auto-translation in #{message.channel.name}")
         except discord.NotFound:

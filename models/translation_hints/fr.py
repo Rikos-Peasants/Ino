@@ -92,7 +92,7 @@ FR_HINTS: frozenset = frozenset({
     "ouais", "ouai", "mouais", "bof", "pfff", "pff", "ouf", "naze",
     "relou", "chelou", "zarbi", "kiffer", "kif", "grave", "trop",
     "wesh", "wallah", "inshallah", "mdrr", "mdr", "ptdr",
-    "omg", "rip", "gg", "bg", "tb", "jsp", "jpp", "nsp",
+    "tb", "jsp", "jpp", "nsp",
     "tkt", "cmt", "bcp", "stp", "svp", "att", "rdv", "bfbf",
     "frero", "frère", "frere", "meuf", "reuf", "teuf", "keuf",
     "ça", "ca", "c'est", "cest", "t'es", "tes", "j'suis", "jsuis",
@@ -103,7 +103,7 @@ FR_HINTS: frozenset = frozenset({
     # Core negation & affirmation
     "oui", "non", "pas", "si",
     # Common connectors
-    "puis", "car", "mais", "donc", "après",
+    "puis", "mais", "donc", "après",
     # Common adverbs / discourse
     "aussi", "encore", "toujours", "jamais", "souvent", "déjà",
     "deja", "maintenant", "maintenant", "partout", "nulle",

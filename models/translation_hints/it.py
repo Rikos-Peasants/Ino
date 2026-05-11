@@ -63,7 +63,7 @@ IT_HINTS: frozenset = frozenset({
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
     # Nouns — places & things
     "casa", "appartamento", "camera", "cucina", "bagno", "sala",
-    "ufficio", "scuola", "lavoro", "negozio", "ristorante", "bar",
+    "ufficio", "scuola", "lavoro", "negozio", "ristorante",
     "strada", "città", "paese", "quartiere", "macchina", "bici",
     "treno", "aereo", "autobus", "soldi", "cosa", "problema", "domanda", "risposta", "motivo",
     # Food
@@ -81,7 +81,7 @@ IT_HINTS: frozenset = frozenset({
     "insomma", "dunque", "quindi", "perciò", "percio", "oppure",
     "niente", "nulla", "qualcosa", "tutto", "tutti", "ogni", "altro",
     # Chat / internet slang
-    "ahah", "ahahah", "omg", "dai", "vabbè", "vabbe",
+    "ahah", "ahahah", "dai", "vabbè", "vabbe",
     "mah", "boh", "uff", "basta", "figurati", "tranquillo", "dai",
     "pazza", "pazzo", "figo", "figa", "ganzo", "ganzer", "forte",
     "fico", "fichissimo", "bella", "anzi", "cioè", "cioe",

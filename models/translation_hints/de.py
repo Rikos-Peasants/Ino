@@ -28,7 +28,7 @@ DE_HINTS: frozenset = frozenset({
     # Verb conjugations
     "bin", "bist", "ist", "sind", "seid", "warst", "waren",
     "werde", "wirst", "wird", "werden", "werdet",
-    "habe", "hast", "hat", "haben", "habt",
+    "habe", "hast", "haben", "habt",
     "kann", "kannst", "können", "konnt",
     "muss", "musst", "müssen", "mussten",
     "willst", "wollen", "wollt",
@@ -52,7 +52,7 @@ DE_HINTS: frozenset = frozenset({
     "super", "klasse", "spitze", "prima", "perfekt", "fantastisch",
     "furchtbar", "erschreckend", "nervös", "nervos", "aufgeregt",
     # Nouns — people & social
-    "mann", "frau", "junge", "mädchen", "madchen", "kind", "baby",
+    "mann", "frau", "junge", "mädchen", "madchen", "baby",
     "freund", "freundin", "typ", "kollege", "kollegin", "nachbar",
     "nachbarin", "familie", "vater", "mutter", "bruder", "schwester",
     "sohn", "tochter", "opa", "oma", "onkel", "tante", "cousin",
@@ -68,9 +68,9 @@ DE_HINTS: frozenset = frozenset({
     "januar", "februar", "märz", "marz", "april", "mai", "juni",
     "juli", "august", "september", "oktober", "november", "dezember",
     # Nouns — places & things
-    "haus", "wohnung", "zimmer", "küche", "kuche", "bad", "wohnzimmer",
+    "haus", "wohnung", "zimmer", "küche", "kuche", "wohnzimmer",
     "büro", "buro", "schule", "arbeit", "geschäft", "geschaft",
-    "restaurant", "straße", "strasse", "stadt", "land", "weg",
+    "restaurant", "straße", "strasse", "stadt", "weg",
     "auto", "fahrrad", "zug", "flugzeug", "bus", "geld", "ding",
     "idee", "frage", "antwort", "grund",
     # Food

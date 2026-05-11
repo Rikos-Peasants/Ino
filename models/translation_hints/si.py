@@ -34,7 +34,7 @@ SI_HINTS: frozenset = frozenset({
     "sthutiy", "honda ne", "hari honda",
     # Nouns & useful words
     "gedara", "iskola", "kantoruwa", "kadaya",
-    "game", "nagaraya", "ape",
+    "nagaraya", "ape",
     "paan", "bath", "thel", "amba",
     "watura", "kiri", "thee", "kopi",
     "amma", "thaththi", "aiya", "nangi",

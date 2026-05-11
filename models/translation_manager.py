@@ -229,6 +229,7 @@ class TranslationManager:
         self.preference_collection = None
         self._approved_cache: dict[str, TranslationResult] = {}
         self._preference_cache: dict[tuple[int, int], bool] = {}
+        self._consent_prompt_count: dict[tuple[int, int], int] = {}
         self.gemini_api_key = Config.GEMINI_API_KEY
         self.gemini_client = None
         self.gemini_permission_denied = False
@@ -257,6 +258,9 @@ class TranslationManager:
     def is_configured(self) -> bool:
         return bool(self.api_key or self.gemini_client)
 
+    # Maximum number of consent prompts before auto opt-out
+    MAX_CONSENT_PROMPTS = 3
+
     async def get_user_preference(self, user_id: int, guild_id: int) -> Optional[bool]:
         """Return True for opt-in, False for opt-out, or None when the user has not chosen."""
         cache_key = (int(guild_id), int(user_id))
@@ -280,6 +284,21 @@ class TranslationManager:
         except Exception as e:
             logger.error(f"Error reading translation preference: {e}")
             return None
+
+    def get_consent_prompt_count(self, user_id: int, guild_id: int) -> int:
+        """Return how many times the consent prompt has been shown to this user."""
+        return self._consent_prompt_count.get((int(guild_id), int(user_id)), 0)
+
+    def increment_consent_prompt_count(self, user_id: int, guild_id: int) -> int:
+        """Increment and return the new consent prompt count."""
+        key = (int(guild_id), int(user_id))
+        count = self._consent_prompt_count.get(key, 0) + 1
+        self._consent_prompt_count[key] = count
+        return count
+
+    def reset_consent_prompt_count(self, user_id: int, guild_id: int) -> None:
+        """Reset the consent prompt count (called after user makes a choice)."""
+        self._consent_prompt_count.pop((int(guild_id), int(user_id)), None)
 
     async def set_user_preference(
         self,
@@ -598,6 +617,56 @@ class TranslationManager:
         except Exception as e:
             logger.error(f"Error translating message: {e}")
             return ""
+
+    async def translate_to_language(self, content: str, target_language: str) -> Optional[TranslationResult]:
+        """Translate English content to a specified target language (reverse translation)."""
+        if not self.api_key:
+            return None
+
+        detection_text = self._content_for_detection(content)
+        if not detection_text.strip():
+            return None
+
+        protected_content, tokens = self._protect_discord_tokens(content)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.translate_endpoint,
+                    params={"key": self.api_key},
+                    json={
+                        "q": protected_content,
+                        "source": "en",
+                        "target": target_language.lower().split("-")[0],
+                        "format": "text",
+                    },
+                    timeout=aiohttp.ClientTimeout(total=8),
+                ) as response:
+                    if response.status != 200:
+                        logger.warning(
+                            "Google Translate API error (reverse): %s - %s",
+                            response.status,
+                            await response.text(),
+                        )
+                        return None
+
+                    data = await response.json()
+                    translations = data.get("data", {}).get("translations", [])
+                    if not translations:
+                        return None
+
+                    translated = html.unescape(translations[0].get("translatedText", ""))
+                    translated = self._restore_discord_tokens(translated, tokens).strip()
+                    if not translated:
+                        return None
+
+                    return TranslationResult(
+                        source_language="EN",
+                        translated_text=_sanitize_mentions(translated),
+                        provider="google",
+                    )
+        except Exception as e:
+            logger.error(f"Error translating to {target_language}: {e}")
+            return None
 
     def _content_for_detection(self, content: str) -> str:
         return DISCORD_TOKEN_RE.sub(" ", content).strip()

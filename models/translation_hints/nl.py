@@ -1,7 +1,7 @@
 NL_HINTS: frozenset = frozenset({
     # Greetings & interjections
-    "hallo", "hoi", "hey", "goedemorgen", "goedemiddag", "goedenavond",
-    "goedenacht", "doei", "dag", "tot", "ziens", "welkom", "bedankt",
+    "hallo", "hoi", "goedemorgen", "goedemiddag", "goedenavond",
+    "goedenacht", "doei", "dag", "ziens", "welkom", "bedankt",
     "dank", "dankjewel", "dankuwel", "alsjeblieft", "alstublieft",
     "pardon", "excuseer", "gefeliciteerd", "proost", "gezondheid",
     "geweldig", "super", "prima", "fijn", "leuk",
@@ -38,10 +38,10 @@ NL_HINTS: frozenset = frozenset({
     "ongelooflijk", "prachtig", "verschrikkelijk",
     "lekker", "lief", "sterk", "zwak", "druk", "stil",
     # Nouns — people & social
-    "man", "vrouw", "jongen", "meisje", "kind", "baby",
+    "vrouw", "jongen", "meisje", "baby",
     "vriend", "vriendin", "vent", "collega", "buur", "buurvrouw",
     "familie", "vader", "moeder", "broer", "zus", "zoon", "dochter",
-    "opa", "oma", "oom", "tante", "neef", "nicht", "man", "vrouw",
+    "opa", "oma", "oom", "tante", "neef", "nicht", "vrouw",
     # Nouns — time
     "vandaag", "morgen", "gisteren", "nu", "straks", "later", "eerder",
     "tijdens", "al", "altijd", "nooit", "soms", "vaak", "zelden",
@@ -52,12 +52,12 @@ NL_HINTS: frozenset = frozenset({
     "juli", "augustus", "september", "oktober", "november", "december",
     # Nouns — places & things
     "huis", "appartement", "kamer", "keuken", "badkamer", "woonkamer",
-    "kantoor", "school", "werk", "winkel", "restaurant", "straat",
-    "stad", "land", "weg", "auto", "fiets", "trein", "vliegtuig",
+    "kantoor", "werk", "winkel", "restaurant", "straat",
+    "stad", "weg", "auto", "fiets", "trein", "vliegtuig",
     "bus", "geld", "ding", "probleem", "idee", "vraag", "antwoord",
     # Food
     "brood", "rijst", "vlees", "kip", "vis", "groente", "fruit",
-    "water", "melk", "wijn", "bier", "koffie", "sap", "ontbijt",
+    "melk", "wijn", "bier", "koffie", "sap", "ontbijt",
     "lunch", "avondeten", "eten", "stroopwafel", "kaas", "hagelslag",
     "pannenkoek", "bitterballen", "stamppot",
     # Connectors, adverbs & expressions
@@ -69,7 +69,7 @@ NL_HINTS: frozenset = frozenset({
     "kortom", "tenslotte", "alvast", "alweer", "alles", "niets",
     "iedereen", "niemand", "elke", "andere", "wat", "nog",
     # Chat / internet slang
-    "haha", "omg", "wtf", "jeetje", "gatverdamme",
+    "haha", "jeetje", "gatverdamme",
     "gossiemijne", "joh", "toch", "echt", "maat", "vriend", "kerel",
     "knap", "tof", "stoer", "wauw", "wow", "hé", "nee",
     "ja", "jep", "nep", "oke", "oké", "okee", "tja",

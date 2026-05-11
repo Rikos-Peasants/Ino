@@ -48,7 +48,7 @@ KO_HINTS: frozenset = frozenset({
     "eolma", "myeot", "nuggu", "nugu", "neoga", "nega",
     # Internet / K-pop / K-drama slang
     "daebakida", "heolleosseo", "heollyo", "mansae", "aja",
-    "ajaaja", "idk", "bts", "exo", "kpop", "kdrama", "webtoon",
+    "ajaaja", "bts", "exo", "kpop", "kdrama", "webtoon",
     "eonniwa", "eoppa", "oppan", "jinjja", "jeongmal", "jeonmal",
     "neomu", "neomoyo", "neomu", "meori", "meoriga",
     "chinguya", "yah", "ya", "yaa", "aish", "aisssh",

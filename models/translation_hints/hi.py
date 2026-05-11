@@ -8,7 +8,7 @@ HI_HINTS: frozenset = frozenset({
     "arre", "arrey", "oye", "oye", "yaar", "bhai", "dost",
     "beti", "beta", "baba", "didi", "bhaiya",
     # Pronouns
-    "mein", "main", "tu", "tum", "aap", "woh", "hum", "yeh",
+    "mein", "tu", "tum", "aap", "woh", "hum", "yeh",
     "mujhe", "tujhe", "hume", "inhe", "unhe",
     "mera", "meri", "tera", "teri", "apna", "apni",
     "uska", "uski", "unka", "unki", "hamara", "hamari",
@@ -65,7 +65,7 @@ HI_HINTS: frozenset = frozenset({
     "somvar", "mangalvar", "budhvar", "guruvar", "shukravar",
     "shanivar", "ravivar",
     # Common nouns — things & places
-    "ghar", "kamra", "rasoi", "dukan", "school", "kaam",
+    "ghar", "kamra", "rasoi", "dukan", "kaam",
     "sadak", "sheher", "desh", "mohalla",
     "gaadi", "bus", "hawai", "jahaj",
     "paisa", "cheez", "masla", "khayaal", "sawaal",
