@@ -11,7 +11,7 @@ TR_HINTS: frozenset = frozenset({
     "şerefe", "serefe", "kolay gelsin",
     # Pronouns
     "ben", "sen", "biz", "siz", "onlar", "beni", "seni",
-    "bize", "size", "onlara", "benim", "senin", "bizim",
+    "bize", "onlara", "benim", "senin", "bizim",
     "sizin", "onların", "onlarin", "bu", "şu", "su", "o",
     "bunlar", "şunlar", "sunlar", "onlar", "kim", "ne",
     "nerede", "nereye", "nereden", "ne zaman", "neden", "nasıl",
@@ -47,7 +47,7 @@ TR_HINTS: frozenset = frozenset({
     "sinirli", "sakin", "tatlı", "tatli", "zeki", "aptal",
     "güçlü", "guclu", "zayıf", "zayif", "harika", "muhteşem",
     "muhtesem", "berbat", "kötü", "mükemmel", "mukemmel",
-    "süper", "super", "acayip", "garip", "normal", "özel", "ozel",
+    "süper", "super", "acayip", "garip", "özel", "ozel",
     # Nouns — people & social
     "adam", "kadın", "kadin", "erkek", "kız", "kiz",
     "çocuk", "cocuk", "bebek", "arkadaş", "arkadas",

@@ -26,7 +26,7 @@ DE_HINTS: frozenset = frozenset({
     "suchen", "brauchen", "lieben", "hassen", "hoffen", "warten",
     "antworten", "fragen", "bezahlen", "schauen", "zeigen", "halten",
     # Verb conjugations
-    "bin", "bist", "ist", "sind", "seid", "war", "warst", "waren",
+    "bin", "bist", "ist", "sind", "seid", "warst", "waren",
     "werde", "wirst", "wird", "werden", "werdet",
     "habe", "hast", "hat", "haben", "habt",
     "kann", "kannst", "können", "konnt",
@@ -62,7 +62,7 @@ DE_HINTS: frozenset = frozenset({
     "spater", "vorher", "während", "wahrend", "seit", "bis", "immer",
     "niemals", "manchmal", "oft", "selten", "noch", "schon",
     "früh", "fruh", "spät", "spat", "morgens", "abends", "nachts",
-    "mittags", "mitternacht", "woche", "monat", "jahr", "uhr", "minute",
+    "mittags", "mitternacht", "woche", "monat", "jahr", "uhr",
     "montag", "dienstag", "mittwoch", "donnerstag", "freitag",
     "samstag", "sonntag",
     "januar", "februar", "märz", "marz", "april", "mai", "juni",
@@ -72,7 +72,7 @@ DE_HINTS: frozenset = frozenset({
     "büro", "buro", "schule", "arbeit", "geschäft", "geschaft",
     "restaurant", "straße", "strasse", "stadt", "land", "weg",
     "auto", "fahrrad", "zug", "flugzeug", "bus", "geld", "ding",
-    "problem", "idee", "frage", "antwort", "grund",
+    "idee", "frage", "antwort", "grund",
     # Food
     "brot", "reis", "fleisch", "huhn", "fisch", "gemüse", "gemuse",
     "obst", "wasser", "milch", "wein", "bier", "kaffee", "saft",

@@ -6,7 +6,7 @@ FR_HINTS: frozenset = frozenset({
     "felicitations", "bonne", "santé", "sante",
     # Pronouns & determiners
     "je", "tu", "il", "elle", "nous", "vous", "ils", "elles",
-    "moi", "toi", "lui", "soi", "mon", "ton", "son", "notre",
+    "moi", "toi", "lui", "soi", "mon", "ton", "notre",
     "votre", "leur", "mes", "tes", "ses", "nos", "vos", "leurs",
     "ce", "cet", "cette", "ces", "ceci", "cela", "ça", "ca",
     "qui", "que", "quoi", "dont", "où", "ou",
@@ -34,17 +34,17 @@ FR_HINTS: frozenset = frozenset({
     "petit", "petite", "gros", "grosse", "vieux", "vieille",
     "jeune", "nouveau", "nouvelle", "beau", "belle", "laid", "laide",
     "fort", "forte", "faible", "rapide", "lent", "lente",
-    "facile", "difficile", "simple", "compliqué", "complique",
-    "important", "nécessaire", "necessaire", "possible", "impossible",
+    "facile", "difficile", "compliqué", "complique",
+    "nécessaire", "necessaire",
     "vrai", "faux", "juste", "injuste", "libre", "occupé", "occupe",
     "content", "triste", "heureux", "heureuse", "malheureuse",
     "fatigue", "fatigué", "énervé", "enerve", "calme", "nerveux",
     "sympa", "gentil", "gentille", "méchant", "mechant", "drôle", "drole",
-    "ennuyeux", "intéressant", "interessant", "bizarre", "normal",
+    "ennuyeux", "intéressant", "interessant", "bizarre",
     "super", "nul", "chouette", "génial", "genial", "incroyable",
     "magnifique", "terrible", "horrible", "formidable", "parfait",
     "exact", "fini", "ouvert", "fermé", "ferme", "chaud", "froid",
-    "propre", "sale", "plein", "vide", "premier", "dernier",
+    "propre", "plein", "vide", "premier", "dernier",
     # Common nouns — people & social
     "homme", "femme", "garçon", "garcon", "fille", "enfant", "bébé", "bebe",
     "ami", "amie", "copain", "copine", "mec", "meuf", "gars", "fille",
@@ -57,7 +57,7 @@ FR_HINTS: frozenset = frozenset({
     "bientot", "après", "apres", "avant", "pendant", "depuis", "jusqu",
     "toujours", "jamais", "souvent", "parfois", "quelquefois", "encore",
     "déjà", "deja", "enfin", "bientôt", "soudain", "soudainement",
-    "matin", "soir", "nuit", "midi", "minuit", "heure", "minute",
+    "matin", "soir", "nuit", "midi", "minuit", "heure",
     "semaine", "mois", "année", "annee", "jour", "journée", "journee",
     "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
     "janvier", "février", "fevrier", "mars", "avril", "mai", "juin",
@@ -66,9 +66,9 @@ FR_HINTS: frozenset = frozenset({
     "maison", "appartement", "chambre", "cuisine", "salle", "bureau",
     "école", "ecole", "travail", "magasin", "restaurant", "café", "cafe",
     "rue", "ville", "pays", "quartier", "chemin", "route", "pont",
-    "voiture", "vélo", "velo", "train", "avion", "bus", "métro", "metro",
+    "voiture", "vélo", "velo", "avion", "bus", "métro", "metro",
     "argent", "truc", "machin", "affaire", "problème", "probleme",
-    "idée", "idee", "question", "réponse", "reponse", "raison", "façon",
+    "idée", "idee", "réponse", "reponse", "raison", "façon",
     # Food
     "pain", "baguette", "fromage", "beurre", "lait", "viande", "poisson",
     "légume", "legume", "fruit", "café", "café", "vin", "bière", "biere",
@@ -103,7 +103,7 @@ FR_HINTS: frozenset = frozenset({
     # Core negation & affirmation
     "oui", "non", "pas", "si",
     # Common connectors
-    "puis", "car", "mais", "donc", "ni", "après",
+    "puis", "car", "mais", "donc", "après",
     # Common adverbs / discourse
     "aussi", "encore", "toujours", "jamais", "souvent", "déjà",
     "deja", "maintenant", "maintenant", "partout", "nulle",
@@ -113,8 +113,8 @@ FR_HINTS: frozenset = frozenset({
     "texte", "langue", "langage", "français", "francais",
     "anglais", "espagnol", "allemand", "parole", "discours",
     # Common nouns frequently missing
-    "message", "messages", "mot", "mots", "phrase", "phrases",
-    "question", "réponse", "reponse", "réponses", "reponses",
+    "mot", "mots", "phrase", "phrases",
+    "réponse", "reponse", "réponses", "reponses",
     "erreur", "problème", "probleme", "résultat",
     "réseau", "reseau", "compte", "comptes",
 })

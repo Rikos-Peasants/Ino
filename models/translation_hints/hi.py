@@ -48,7 +48,7 @@ HI_HINTS: frozenset = frozenset({
     "jhooth", "jhoothaa", "theek", "galat", "sahi",
     "khush", "udaas", "thaka", "thaki", "gussa",
     "shant", "pyara", "pyari", "mazedaar", "boring",
-    "dilchasp", "ajeeb", "normal", "khaas", "anokha",
+    "dilchasp", "ajeeb", "khaas", "anokha",
     "kamaal", "zabardast", "shandar", "waah", "bekar",
     "bekaar", "kharab", "mazedar", "tasty", "bekaar",
     # Common nouns — people & social
@@ -61,13 +61,13 @@ HI_HINTS: frozenset = frozenset({
     "aaj", "kal", "parso", "abhi", "jaldi", "baad",
     "pehle", "kabhi", "hamesha", "kabhi", "aksar",
     "subah", "dopahar", "shaam", "raat", "aadhi raat",
-    "ghante", "minute", "hafta", "mahina", "saal",
+    "ghante", "hafta", "mahina", "saal",
     "somvar", "mangalvar", "budhvar", "guruvar", "shukravar",
     "shanivar", "ravivar",
     # Common nouns — things & places
     "ghar", "kamra", "rasoi", "dukan", "school", "kaam",
     "sadak", "sheher", "desh", "mohalla",
-    "gaadi", "bus", "train", "hawai", "jahaj",
+    "gaadi", "bus", "hawai", "jahaj",
     "paisa", "cheez", "masla", "khayaal", "sawaal",
     "jawab", "wajah", "tarika",
     # Food

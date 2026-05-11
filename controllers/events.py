@@ -1099,7 +1099,7 @@ class EventsController:
             return
 
         try:
-            result = await self.translation_manager.translate_to_english(content)
+            result = await self.translation_manager.translate_to_english(content, opted_in=True)
             if not result:
                 return
 

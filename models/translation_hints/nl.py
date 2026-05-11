@@ -35,7 +35,7 @@ NL_HINTS: frozenset = frozenset({
     "blij", "verdrietig", "gelukkig", "ongelukkig", "moe",
     "boos", "rustig", "aardig", "vriendelijk", "grappig", "saai",
     "interessant", "raar", "normaal", "speciaal", "geweldig",
-    "ongelooflijk", "prachtig", "verschrikkelijk", "perfect",
+    "ongelooflijk", "prachtig", "verschrikkelijk",
     "lekker", "lief", "sterk", "zwak", "druk", "stil",
     # Nouns — people & social
     "man", "vrouw", "jongen", "meisje", "kind", "baby",
@@ -45,7 +45,7 @@ NL_HINTS: frozenset = frozenset({
     # Nouns — time
     "vandaag", "morgen", "gisteren", "nu", "straks", "later", "eerder",
     "tijdens", "al", "altijd", "nooit", "soms", "vaak", "zelden",
-    "nog", "ochtend", "middag", "avond", "nacht", "week", "maand",
+    "nog", "ochtend", "middag", "avond", "nacht", "maand",
     "jaar", "uur", "minuut", "maandag", "dinsdag", "woensdag",
     "donderdag", "vrijdag", "zaterdag", "zondag",
     "januari", "februari", "maart", "april", "mei", "juni",

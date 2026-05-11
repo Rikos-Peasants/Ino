@@ -362,8 +362,14 @@ class TranslationManager:
 
         return bool(set(words) & NON_ENGLISH_WORD_HINTS)
 
-    async def translate_to_english(self, content: str) -> Optional[TranslationResult]:
-        """Return an English translation for non-English content, otherwise None."""
+    async def translate_to_english(self, content: str, opted_in: bool = False) -> Optional[TranslationResult]:
+        """Return an English translation for non-English content, otherwise None.
+
+        When *opted_in* is True the user has explicitly enabled translation, so
+        Google language detection is used as the authoritative gate instead of
+        local heuristics — this catches non-English messages that have no hint
+        words and are not marked as internet slang.
+        """
         if not self.is_configured:
             return None
 
@@ -385,7 +391,10 @@ class TranslationManager:
             if len(letter_chars) < (1 if has_non_ascii else 3):
                 return None
 
-            if self._is_internet_expression(detection_text):
+            # For opted-in users let Google decide; skip the local internet-slang
+            # guard so genuinely foreign messages that look like slang still get
+            # detected (e.g. Russian romanized "nu davay" or French "mdr").
+            if not opted_in and self._is_internet_expression(detection_text):
                 return None
         if decoded is not None:
             detected = await self._detect_language(decoded) if self.api_key else None

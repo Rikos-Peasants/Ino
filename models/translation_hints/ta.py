@@ -276,7 +276,7 @@ TA_HINTS: frozenset = frozenset({
     "kodumai", "kodumaiyaana",
     "kalakku", "kalakkutha", "kalakkura",
     "jolly", "jollya",
-    "scene", "scena", "settla", "setta",
+    "scena", "settla", "setta",
 
     # ── Internet / modern Tamil slang ──
     "vera maari", "veramari",
