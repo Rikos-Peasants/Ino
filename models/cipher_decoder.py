@@ -322,9 +322,18 @@ _LEET_MAP: dict[str, str] = {
 _LEET_CHARS = set(_LEET_MAP.keys())
 
 def _decode_leet(text: str) -> Optional[str]:
-    alpha_and_leet = [c for c in text if c.isalpha() or c in _LEET_CHARS]
-    leet_count = sum(1 for c in alpha_and_leet if c in _LEET_CHARS)
-    if leet_count < 2 or leet_count / max(len(alpha_and_leet), 1) < 0.20:
+    # Only count leet chars that appear within tokens that ALSO contain alpha chars.
+    # Standalone numeric tokens (e.g. "10", "42", "01") are excluded so plain
+    # text like "day 10" or "stage 1 2 3" never triggers leet detection.
+    mixed_leet = 0
+    mixed_alpha = 0
+    for token in text.split():
+        tok_has_alpha = any(c.isalpha() for c in token)
+        tok_has_leet = any(c in _LEET_CHARS for c in token)
+        if tok_has_alpha and tok_has_leet:
+            mixed_leet += sum(1 for c in token if c in _LEET_CHARS)
+            mixed_alpha += sum(1 for c in token if c.isalpha())
+    if mixed_leet < 2 or mixed_alpha < 2 or mixed_leet / max(mixed_leet + mixed_alpha, 1) < 0.25:
         return None
     return "".join(_LEET_MAP.get(c, c) for c in text.lower()).strip() or None
 
@@ -368,9 +377,11 @@ def has_cipher(text: str) -> bool:
     # Morse-like
     if _MORSE_PATTERN.match(text.strip()) and len(text.strip()) > 4:
         return True
-    # Binary
-    if _BINARY_PATTERN.match(text.strip()) and len(text.strip().split()) >= 3:
-        return True
+    # Binary — require 8-bit groups to avoid matching plain numbers like "01 10"
+    if _BINARY_PATTERN.match(text.strip()):
+        groups = text.strip().split()
+        if len(groups) >= 3 and all(len(g) == 8 for g in groups):
+            return True
     # Flip chars
     if sum(1 for c in text if c in _FLIP_CHARS) >= 3:
         return True
