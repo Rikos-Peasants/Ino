@@ -990,6 +990,13 @@ class EventsController:
         
         # Ignore bot messages for regular processing
         if message.author.bot:
+            if (
+                getattr(Config, "SCAM_IMAGE_SCAN_BOT_MESSAGES", False)
+                and message.guild
+                and message.guild.id == Config.GUILD_ID
+                and message.attachments
+            ):
+                await self._handle_scam_image_detection(message)
             return
         
         # Handle mod offline system (auto-logon and ping detection)
