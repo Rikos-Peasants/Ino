@@ -1579,9 +1579,11 @@ class EventsController:
         
         for target_id, count in target_counts.items():
             if count >= PING_SPAM_SAME_USER_LIMIT:
-                # Before timing out, check if the target has replied in the channel
-                # If they replied, it's a conversation — put the check on hold
-                if await self._has_target_replied(message.channel, target_id, author_id, cutoff):
+                # Before timing out, check if the target has replied in the channel.
+                # Use a wider lookback (10 min) so conversations that started before
+                # the 2-minute spam window are still detected as legitimate.
+                conversation_since = now - timedelta(minutes=10)
+                if await self._has_target_replied(message.channel, target_id, author_id, conversation_since):
                     logger.info(
                         f"Ping spam check: {message.author.display_name} pinged user {target_id} "
                         f"{count}x but target replied — treating as conversation, no action"
@@ -1613,18 +1615,22 @@ class EventsController:
     async def _has_target_replied(self, channel, target_id: int, author_id: int, since: datetime) -> bool:
         """
         Check if the pinged target has sent a message in the channel recently.
-        If they replied, it's a conversation and we shouldn't timeout the pinger.
+        If they replied (or the bot sent a message indicating active conversation),
+        treat it as a conversation and don't timeout the pinger.
         """
         try:
-            # Look through recent messages for a reply from the target
-            async for msg in channel.history(limit=30, after=since):
+            bot_user_id = self.bot.user.id if self.bot.user else None
+            async for msg in channel.history(limit=75, after=since):
                 if msg.author.id == target_id:
-                    # Target posted in this channel after being pinged — it's a conversation
+                    # Target posted in this channel — it's a conversation
+                    return True
+                if bot_user_id and msg.author.id == bot_user_id:
+                    # Bot sent a message (e.g. translation reply) — active channel interaction
                     return True
             return False
         except Exception as e:
             logger.error(f"Error checking if target replied in ping spam check: {e}")
-            return False  # Err on the side of caution — don't timeout
+            return True  # Err on the side of caution — don't timeout on fetch error
     
     async def _apply_ping_spam_timeout(self, message: discord.Message, reason: str, violation_type: str, details: str):
         """Apply timeout and notify for ping spam violations."""
