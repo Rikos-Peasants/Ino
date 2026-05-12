@@ -168,12 +168,14 @@ SERIKA_ART_URL_BASE=https://serika.art/api/v1
 # Scam Image Detection
 SCAM_IMAGE_DETECTION_ENABLED=true
 SCAM_IMAGE_DELETE_MATCHES=true
+SCAM_IMAGE_SCAN_BOT_MESSAGES=false
 SCAM_IMAGE_DHASH_DISTANCE=6
 SCAM_IMAGE_MAX_ATTACHMENT_BYTES=8388608
 SCAM_IMAGE_CROSS_CHANNEL_THRESHOLD=3
 SCAM_IMAGE_CROSS_CHANNEL_WINDOW_SECONDS=15
 SCAM_IMAGE_CROSS_CHANNEL_ALERT_COOLDOWN_MINUTES=10
 SCAM_IMAGE_BURST_SCAN_ENABLED=true
+SCAM_IMAGE_BURST_WINDOW_SECONDS=70
 SCAM_IMAGE_BURST_DELETE_MESSAGES=false
 SCAM_IMAGE_BURST_TIMEOUT_ENABLED=true
 SCAM_IMAGE_BURST_TIMEOUT_SECONDS=60
@@ -228,6 +230,7 @@ Enable these intents in the Discord Developer Portal:
 | `/scamimage status` | View scam image detector status | Moderators/Admins |
 | `/scamimage scan <image>` | Scan an image without adding it | Moderators/Admins |
 | `/scamimage scan_recent [limit] [channel] [delete_matches]` | Scan recent channel images for known scam signatures | Moderators/Admins |
+| `/scamimage image_timeline [user] [minutes] [per_channel_limit] [include_ignored] [post_to_modlog]` | Inspect recent image timing across server channels without actions | Moderators/Admins |
 | `/scamimage add <image> <label>` | Add an image signature | Moderators/Admins |
 | `/scamimage add_url` | Add an image signature from a URL modal | Moderators/Admins |
 | `/scamimage bulk_recent <label> [limit] [channel]` | Bulk-add recent channel images | Moderators/Admins |
@@ -236,6 +239,16 @@ Enable these intents in the Discord Developer Portal:
 | `/scamimage disable <sha256_prefix>` | Disable a signature | Moderators/Admins |
 | `/scamimage recent [limit]` | View recent detections and delete status | Moderators/Admins |
 | `/scamimage seed_defaults` | Import bundled known scam image signatures | Moderators/Admins |
+
+### Manual Repeated Image Burst Test
+
+Use `tools/repeated_image_burst_tester.py` with a normal test bot token to simulate repeated image posting across channels. It defaults to dry-run; add `--send` only when you want it to post. Set `SCAM_IMAGE_SCAN_BOT_MESSAGES=true` temporarily if you want Ino to scan the tester bot's image messages.
+
+```bash
+python tools/repeated_image_burst_tester.py --channels 123,456,789 --image-dir C:\path\to\images --delay 20 --rounds 1 --send
+```
+
+Environment variables are also supported: `DISCORD_TEST_BOT_TOKEN`, `DISCORD_TEST_CHANNEL_IDS`, `DISCORD_TEST_IMAGE_DIR`, `DISCORD_TEST_DELAY_SECONDS`, `DISCORD_TEST_ROUNDS`, and `DISCORD_TEST_MESSAGE`.
 
 ### Owner Commands
 
