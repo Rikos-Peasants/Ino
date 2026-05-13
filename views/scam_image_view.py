@@ -76,6 +76,10 @@ def image_burst_alert_embed(
         channel_id = entry.get("channel_id")
         if channel_id and channel_id not in channel_ids:
             channel_ids.append(channel_id)
+    created_times = sorted(entry.get("created_at") for entry in entries if entry.get("created_at"))
+    first_seen = created_times[0] if created_times else None
+    last_seen = created_times[-1] if created_times else None
+    span_seconds = int((last_seen - first_seen).total_seconds()) if first_seen and last_seen else 0
 
     embed = discord.Embed(
         title="Repeated Image Burst Alert",
@@ -89,9 +93,21 @@ def image_burst_alert_embed(
     embed.add_field(name="User", value=f"{message.author.mention}\n`{message.author}`", inline=True)
     embed.add_field(name="Threshold", value=f"{threshold}+ channels", inline=True)
     embed.add_field(name="Match", value=match_kind, inline=True)
+    embed.add_field(name="Images", value=str(len(entries)), inline=True)
+    embed.add_field(name="Channels", value=str(len(channel_ids)), inline=True)
+    embed.add_field(name="Span", value=f"{span_seconds}s", inline=True)
+    if first_seen and last_seen:
+        embed.add_field(
+            name="Timing",
+            value=(
+                f"First: <t:{int(first_seen.timestamp())}:T>\n"
+                f"Latest: <t:{int(last_seen.timestamp())}:T>"
+            ),
+            inline=True,
+        )
     if actions:
         embed.add_field(name="Actions", value="\n".join(actions), inline=False)
-    embed.add_field(name="Channels", value="\n".join(f"<#{channel_id}>" for channel_id in channel_ids[:10]), inline=False)
+    embed.add_field(name="Affected Channels", value="\n".join(f"<#{channel_id}>" for channel_id in channel_ids[:10]), inline=False)
 
     recent = []
     for entry in entries[:5]:

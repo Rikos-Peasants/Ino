@@ -48,9 +48,10 @@ class ScamImageController:
         )
         self.image_burst_ignored_channel_ids = set(getattr(Config, "IMAGE_REACTION_CHANNELS", []))
         self.image_burst_ignored_channel_ids.update(getattr(Config, "ART_CHALLENGE_CHANNELS", []))
-        self.image_burst_delete_messages = getattr(Config, "SCAM_IMAGE_BURST_DELETE_MESSAGES", False)
+        self.image_burst_delete_messages = getattr(Config, "SCAM_IMAGE_BURST_DELETE_MESSAGES", True)
         self.image_burst_timeout_enabled = getattr(Config, "SCAM_IMAGE_BURST_TIMEOUT_ENABLED", True)
-        self.image_burst_timeout_seconds = getattr(Config, "SCAM_IMAGE_BURST_TIMEOUT_SECONDS", 60)
+        self.image_burst_timeout_seconds = getattr(Config, "SCAM_IMAGE_BURST_TIMEOUT_SECONDS", 180)
+        self.image_burst_dm_security_notice = getattr(Config, "SCAM_IMAGE_BURST_DM_SECURITY_NOTICE", True)
         self._image_burst_entries = []
         self._image_burst_confirmation_keys = set()
         self._image_burst_suppressed_until = {}
@@ -88,7 +89,8 @@ class ScamImageController:
                     f"window={self.image_burst_window_seconds}s, "
                     f"timeout={self.image_burst_timeout_enabled} "
                     f"({self.image_burst_timeout_seconds}s), "
-                    f"delete={self.image_burst_delete_messages}"
+                    f"delete={self.image_burst_delete_messages}, "
+                    f"dm={self.image_burst_dm_security_notice}"
                 ),
                 inline=False,
             )
@@ -351,6 +353,7 @@ class ScamImageController:
             delete_messages="Delete burst messages after an alert",
             timeout_enabled="Timeout users after a burst alert",
             timeout_seconds="Timeout duration in seconds",
+            dm_security_notice="DM account-security guidance after a burst alert",
         )
         async def burst_config(
             interaction: discord.Interaction,
@@ -359,6 +362,7 @@ class ScamImageController:
             delete_messages: Optional[bool] = None,
             timeout_enabled: Optional[bool] = None,
             timeout_seconds: Optional[app_commands.Range[int, 1, 86400]] = None,
+            dm_security_notice: Optional[bool] = None,
         ):
             if not await self.can_manage_scam_images(interaction):
                 await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
@@ -374,6 +378,7 @@ class ScamImageController:
                 "scam_image_burst_delete_messages": delete_messages,
                 "scam_image_burst_timeout_enabled": timeout_enabled,
                 "scam_image_burst_timeout_seconds": timeout_seconds,
+                "scam_image_burst_dm_security_notice": dm_security_notice,
             }
             changed = await self._save_image_burst_settings(interaction.guild, updates)
             embed = await self._image_burst_settings_embed(interaction.guild, changed=changed)
@@ -503,6 +508,14 @@ class ScamImageController:
             ),
             self.image_burst_timeout_seconds,
         )
+        self.image_burst_dm_security_notice = self._coerce_bool(
+            await moderation_manager.get_moderation_setting(
+                guild_id,
+                "scam_image_burst_dm_security_notice",
+                self.image_burst_dm_security_notice,
+            ),
+            self.image_burst_dm_security_notice,
+        )
         self._image_burst_settings_loaded_guilds.add(guild_id)
 
     async def _save_image_burst_settings(self, guild: discord.Guild, updates: dict) -> list[str]:
@@ -530,6 +543,7 @@ class ScamImageController:
         embed.add_field(name="Delete Messages", value=str(self.image_burst_delete_messages), inline=True)
         embed.add_field(name="Timeout Enabled", value=str(self.image_burst_timeout_enabled), inline=True)
         embed.add_field(name="Timeout Duration", value=f"{self.image_burst_timeout_seconds}s", inline=True)
+        embed.add_field(name="Security DM", value=str(self.image_burst_dm_security_notice), inline=True)
         if changed:
             labels = [name.replace("scam_image_burst_", "").replace("_", " ") for name in changed]
             embed.add_field(name="Updated", value=", ".join(labels), inline=False)
@@ -544,6 +558,7 @@ class ScamImageController:
             "scam_image_burst_delete_messages": "image_burst_delete_messages",
             "scam_image_burst_timeout_enabled": "image_burst_timeout_enabled",
             "scam_image_burst_timeout_seconds": "image_burst_timeout_seconds",
+            "scam_image_burst_dm_security_notice": "image_burst_dm_security_notice",
         }[setting_name]
 
     def _coerce_bool(self, value, default: bool) -> bool:
@@ -1058,6 +1073,40 @@ class ScamImageController:
                 results.append(f"Deleted {deleted} burst messages" if failed == 0 else f"Deleted {deleted} burst messages; failed {failed}")
         else:
             results.append("Message deletion disabled")
+
+        if self.image_burst_dm_security_notice:
+            try:
+                action_text = "temporarily restricted"
+                if not self.image_burst_timeout_enabled:
+                    action_text = "flagged for moderator review"
+                embed = discord.Embed(
+                    title="Account Security Notice",
+                    description=(
+                        f"Your account was {action_text} in **{message.guild.name}** because it posted "
+                        "the same or visually similar image across multiple channels in a short period."
+                    ),
+                    color=discord.Color.orange(),
+                    timestamp=datetime.utcnow(),
+                )
+                embed.add_field(
+                    name="If this was not you",
+                    value=(
+                        "Change your Discord password, enable 2FA, review authorized apps, "
+                        "and contact the server moderators after your account is secure."
+                    ),
+                    inline=False,
+                )
+                if self.image_burst_timeout_enabled:
+                    embed.add_field(name="Timeout", value=f"{self.image_burst_timeout_seconds}s", inline=True)
+                embed.set_footer(text="This is an automated anti-scam safety action.")
+                await message.author.send(embed=embed)
+                results.append("Security DM sent")
+            except discord.Forbidden:
+                results.append("Security DM skipped: DMs disabled")
+            except discord.HTTPException as e:
+                results.append(f"Security DM failed: {e}")
+        else:
+            results.append("Security DM disabled")
 
         return results
 
