@@ -380,7 +380,11 @@ class ScamImageController:
                 "scam_image_burst_timeout_seconds": timeout_seconds,
                 "scam_image_burst_dm_security_notice": dm_security_notice,
             }
-            changed = await self._save_image_burst_settings(interaction.guild, updates)
+            try:
+                changed = await self._save_image_burst_settings(interaction.guild, updates)
+            except RuntimeError as e:
+                await interaction.followup.send(str(e), ephemeral=True)
+                return
             embed = await self._image_burst_settings_embed(interaction.guild, changed=changed)
             await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -520,15 +524,17 @@ class ScamImageController:
 
     async def _save_image_burst_settings(self, guild: discord.Guild, updates: dict) -> list[str]:
         moderation_manager = self._get_moderation_manager()
+        has_updates = any(value is not None for value in updates.values())
+        if has_updates and not moderation_manager:
+            raise RuntimeError("Could not update repeated-image burst config: moderation settings are unavailable.")
         changed = []
         for setting_name, value in updates.items():
             if value is None:
                 continue
-            if moderation_manager:
-                saved = await moderation_manager.set_moderation_setting(str(guild.id), setting_name, value)
-                if not saved:
-                    logger.warning("Could not save scam image burst setting %s for guild %s", setting_name, guild.id)
-                    continue
+            saved = await moderation_manager.set_moderation_setting(str(guild.id), setting_name, value)
+            if not saved:
+                logger.warning("Could not save scam image burst setting %s for guild %s", setting_name, guild.id)
+                continue
             setattr(self, self._image_burst_setting_attribute(setting_name), value)
             changed.append(setting_name)
         self._image_burst_settings_loaded_guilds.discard(str(guild.id))
