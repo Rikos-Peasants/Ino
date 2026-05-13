@@ -54,6 +54,7 @@ class ScamImageController:
         self._image_burst_entries = []
         self._image_burst_confirmation_keys = set()
         self._image_burst_suppressed_until = {}
+        self._image_burst_settings_loaded_guilds = set()
         self.allowed_url_content_types = {"image/jpeg", "image/png", "image/webp", "image/bmp", "image/x-ms-bmp"}
 
     def register_commands(self):
@@ -68,6 +69,7 @@ class ScamImageController:
                 await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
                 return
 
+            await self._load_image_burst_settings(interaction.guild, force=True)
             counts = await asyncio.to_thread(self.manager.counts)
             embed = discord.Embed(title="Scam Image Detection", color=discord.Color.blurple())
             embed.add_field(name="Enabled", value=str(self.enabled), inline=True)
@@ -304,6 +306,7 @@ class ScamImageController:
                 return
 
             await interaction.response.defer(ephemeral=True)
+            await self._load_image_burst_settings(interaction.guild)
             report = await self._build_image_timeline_report(
                 interaction.guild,
                 requester=interaction.user,
@@ -340,6 +343,41 @@ class ScamImageController:
                 )
                 return
             await interaction.followup.send(embed=report, ephemeral=True)
+
+        @group.command(name="burst_config", description="View or update repeated-image burst actions")
+        @app_commands.describe(
+            scan_enabled="Enable repeated-image burst scanning",
+            window_seconds="Repeated-image burst window in seconds",
+            delete_messages="Delete burst messages after an alert",
+            timeout_enabled="Timeout users after a burst alert",
+            timeout_seconds="Timeout duration in seconds",
+        )
+        async def burst_config(
+            interaction: discord.Interaction,
+            scan_enabled: Optional[bool] = None,
+            window_seconds: Optional[app_commands.Range[int, 5, 600]] = None,
+            delete_messages: Optional[bool] = None,
+            timeout_enabled: Optional[bool] = None,
+            timeout_seconds: Optional[app_commands.Range[int, 1, 86400]] = None,
+        ):
+            if not await self.can_manage_scam_images(interaction):
+                await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
+                return
+            if not interaction.guild:
+                await interaction.response.send_message("Run this in a server.", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+            updates = {
+                "scam_image_burst_scan_enabled": scan_enabled,
+                "scam_image_burst_window_seconds": window_seconds,
+                "scam_image_burst_delete_messages": delete_messages,
+                "scam_image_burst_timeout_enabled": timeout_enabled,
+                "scam_image_burst_timeout_seconds": timeout_seconds,
+            }
+            changed = await self._save_image_burst_settings(interaction.guild, updates)
+            embed = await self._image_burst_settings_embed(interaction.guild, changed=changed)
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
         @group.command(name="list", description="List scam image signatures")
         async def list_signatures(
@@ -414,6 +452,112 @@ class ScamImageController:
         if any(role_id and discord.utils.get(interaction.user.roles, id=role_id) for role_id in role_ids):
             return True
         return False
+
+    async def _load_image_burst_settings(self, guild: Optional[discord.Guild], *, force: bool = False):
+        if not guild:
+            return
+        guild_id = str(guild.id)
+        if not force and guild_id in self._image_burst_settings_loaded_guilds:
+            return
+        moderation_manager = self._get_moderation_manager()
+        if not moderation_manager:
+            return
+
+        self.image_burst_scan_enabled = self._coerce_bool(
+            await moderation_manager.get_moderation_setting(
+                guild_id,
+                "scam_image_burst_scan_enabled",
+                self.image_burst_scan_enabled,
+            ),
+            self.image_burst_scan_enabled,
+        )
+        self.image_burst_window_seconds = self._coerce_int(
+            await moderation_manager.get_moderation_setting(
+                guild_id,
+                "scam_image_burst_window_seconds",
+                self.image_burst_window_seconds,
+            ),
+            self.image_burst_window_seconds,
+        )
+        self.image_burst_delete_messages = self._coerce_bool(
+            await moderation_manager.get_moderation_setting(
+                guild_id,
+                "scam_image_burst_delete_messages",
+                self.image_burst_delete_messages,
+            ),
+            self.image_burst_delete_messages,
+        )
+        self.image_burst_timeout_enabled = self._coerce_bool(
+            await moderation_manager.get_moderation_setting(
+                guild_id,
+                "scam_image_burst_timeout_enabled",
+                self.image_burst_timeout_enabled,
+            ),
+            self.image_burst_timeout_enabled,
+        )
+        self.image_burst_timeout_seconds = self._coerce_int(
+            await moderation_manager.get_moderation_setting(
+                guild_id,
+                "scam_image_burst_timeout_seconds",
+                self.image_burst_timeout_seconds,
+            ),
+            self.image_burst_timeout_seconds,
+        )
+        self._image_burst_settings_loaded_guilds.add(guild_id)
+
+    async def _save_image_burst_settings(self, guild: discord.Guild, updates: dict) -> list[str]:
+        moderation_manager = self._get_moderation_manager()
+        changed = []
+        for setting_name, value in updates.items():
+            if value is None:
+                continue
+            if moderation_manager:
+                saved = await moderation_manager.set_moderation_setting(str(guild.id), setting_name, value)
+                if not saved:
+                    logger.warning("Could not save scam image burst setting %s for guild %s", setting_name, guild.id)
+                    continue
+            setattr(self, self._image_burst_setting_attribute(setting_name), value)
+            changed.append(setting_name)
+        self._image_burst_settings_loaded_guilds.discard(str(guild.id))
+        await self._load_image_burst_settings(guild, force=True)
+        return changed
+
+    async def _image_burst_settings_embed(self, guild: discord.Guild, *, changed: list[str]) -> discord.Embed:
+        await self._load_image_burst_settings(guild, force=True)
+        embed = discord.Embed(title="Repeated Image Burst Config", color=discord.Color.blurple())
+        embed.add_field(name="Scan Enabled", value=str(self.image_burst_scan_enabled), inline=True)
+        embed.add_field(name="Window", value=f"{self.image_burst_window_seconds}s", inline=True)
+        embed.add_field(name="Delete Messages", value=str(self.image_burst_delete_messages), inline=True)
+        embed.add_field(name="Timeout Enabled", value=str(self.image_burst_timeout_enabled), inline=True)
+        embed.add_field(name="Timeout Duration", value=f"{self.image_burst_timeout_seconds}s", inline=True)
+        if changed:
+            labels = [name.replace("scam_image_burst_", "").replace("_", " ") for name in changed]
+            embed.add_field(name="Updated", value=", ".join(labels), inline=False)
+        else:
+            embed.add_field(name="Updated", value="No changes; showing current config.", inline=False)
+        return embed
+
+    def _image_burst_setting_attribute(self, setting_name: str) -> str:
+        return {
+            "scam_image_burst_scan_enabled": "image_burst_scan_enabled",
+            "scam_image_burst_window_seconds": "image_burst_window_seconds",
+            "scam_image_burst_delete_messages": "image_burst_delete_messages",
+            "scam_image_burst_timeout_enabled": "image_burst_timeout_enabled",
+            "scam_image_burst_timeout_seconds": "image_burst_timeout_seconds",
+        }[setting_name]
+
+    def _coerce_bool(self, value, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() == "true"
+        return default
+
+    def _coerce_int(self, value, default: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
 
     async def _build_image_timeline_report(
         self,
@@ -703,9 +847,11 @@ class ScamImageController:
         )
 
     async def _maybe_send_repeated_image_burst_alert(self, message: discord.Message, attachment):
+        if not message.guild:
+            return
+        await self._load_image_burst_settings(message.guild)
         if (
-            not message.guild
-            or not self.image_burst_scan_enabled
+            not self.image_burst_scan_enabled
             or not self.manager.is_supported_image(attachment.filename)
             or message.channel.id in self.image_burst_ignored_channel_ids
             or self.cross_channel_threshold <= 1

@@ -231,6 +231,7 @@ Enable these intents in the Discord Developer Portal:
 | `/scamimage scan <image>` | Scan an image without adding it | Moderators/Admins |
 | `/scamimage scan_recent [limit] [channel] [delete_matches]` | Scan recent channel images for known scam signatures | Moderators/Admins |
 | `/scamimage image_timeline [user] [minutes] [per_channel_limit] [include_ignored] [post_to_modlog]` | Inspect recent image timing across server channels without actions | Moderators/Admins |
+| `/scamimage burst_config [scan_enabled] [window_seconds] [delete_messages] [timeout_enabled] [timeout_seconds]` | View or update repeated-image burst actions | Moderators/Admins |
 | `/scamimage add <image> <label>` | Add an image signature | Moderators/Admins |
 | `/scamimage add_url` | Add an image signature from a URL modal | Moderators/Admins |
 | `/scamimage bulk_recent <label> [limit] [channel]` | Bulk-add recent channel images | Moderators/Admins |
