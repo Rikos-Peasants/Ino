@@ -70,9 +70,10 @@ class Config:
         'SCAM_IMAGE_BURST_WINDOW_SECONDS',
         max(SCAM_IMAGE_CROSS_CHANNEL_WINDOW_SECONDS, 70)
     )
-    SCAM_IMAGE_BURST_DELETE_MESSAGES = os.getenv('SCAM_IMAGE_BURST_DELETE_MESSAGES', 'false').lower() == 'true'
+    SCAM_IMAGE_BURST_DELETE_MESSAGES = os.getenv('SCAM_IMAGE_BURST_DELETE_MESSAGES', 'true').lower() == 'true'
     SCAM_IMAGE_BURST_TIMEOUT_ENABLED = os.getenv('SCAM_IMAGE_BURST_TIMEOUT_ENABLED', 'true').lower() == 'true'
-    SCAM_IMAGE_BURST_TIMEOUT_SECONDS = get_int_env('SCAM_IMAGE_BURST_TIMEOUT_SECONDS', 60)
+    SCAM_IMAGE_BURST_TIMEOUT_SECONDS = get_int_env('SCAM_IMAGE_BURST_TIMEOUT_SECONDS', 180)
+    SCAM_IMAGE_BURST_DM_SECURITY_NOTICE = os.getenv('SCAM_IMAGE_BURST_DM_SECURITY_NOTICE', 'true').lower() == 'true'
     
     # Moderation system default role IDs (can be configured per guild)
     DEFAULT_MODERATION_REVIEW_ROLE_ID = 1372477845997359244  # Seraphs role (default reviewers)

@@ -176,9 +176,10 @@ SCAM_IMAGE_CROSS_CHANNEL_WINDOW_SECONDS=15
 SCAM_IMAGE_CROSS_CHANNEL_ALERT_COOLDOWN_MINUTES=10
 SCAM_IMAGE_BURST_SCAN_ENABLED=true
 SCAM_IMAGE_BURST_WINDOW_SECONDS=70
-SCAM_IMAGE_BURST_DELETE_MESSAGES=false
+SCAM_IMAGE_BURST_DELETE_MESSAGES=true
 SCAM_IMAGE_BURST_TIMEOUT_ENABLED=true
-SCAM_IMAGE_BURST_TIMEOUT_SECONDS=60
+SCAM_IMAGE_BURST_TIMEOUT_SECONDS=180
+SCAM_IMAGE_BURST_DM_SECURITY_NOTICE=true
 
 # Patreon Integration
 PATREON_ROLE_ID=your_patreon_role_id         # Role for Patreon supporters
@@ -231,6 +232,7 @@ Enable these intents in the Discord Developer Portal:
 | `/scamimage scan <image>` | Scan an image without adding it | Moderators/Admins |
 | `/scamimage scan_recent [limit] [channel] [delete_matches]` | Scan recent channel images for known scam signatures | Moderators/Admins |
 | `/scamimage image_timeline [user] [minutes] [per_channel_limit] [include_ignored] [post_to_modlog]` | Inspect recent image timing across server channels without actions | Moderators/Admins |
+| `/scamimage burst_config [scan_enabled] [window_seconds] [delete_messages] [timeout_enabled] [timeout_seconds] [dm_security_notice]` | View or update repeated-image burst actions | Moderators/Admins |
 | `/scamimage add <image> <label>` | Add an image signature | Moderators/Admins |
 | `/scamimage add_url` | Add an image signature from a URL modal | Moderators/Admins |
 | `/scamimage bulk_recent <label> [limit] [channel]` | Bulk-add recent channel images | Moderators/Admins |
