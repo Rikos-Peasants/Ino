@@ -6597,14 +6597,23 @@ class CommandsController:
                 await ctx.send("❌ An error occurred.", ephemeral=True)
         
         @self.bot.hybrid_command(name="forcechallenge", description="[Admin] Force drop an art challenge")
+        @app_commands.describe(
+            challenge_type="Type of challenge (remake, tags, mixed, edit, scene_move, palette, time_shift). Random if not specified.",
+            time="Duration of the challenge in hours (default: 4)",
+            disablefilters="Disable all filters and allow explicit content (default: False)"
+        )
         @admin_command
-        async def force_challenge_command(ctx, challenge_type: Optional[str] = None):
+        async def force_challenge_command(ctx, challenge_type: Optional[str] = None, time: Optional[int] = None, disablefilters: Optional[bool] = None):
             """Force drop an art challenge (Admin only)
             
             Parameters
             ----------
             challenge_type : str, optional
                 Type of challenge. Random if not specified.
+            time : int, optional
+                Duration of the challenge in hours. Default is 4 hours.
+            disablefilters : bool, optional
+                If True, disables all filters and allows explicit content.
             """
             try:
                 art_manager = getattr(self.bot, 'art_challenge_manager', None)
@@ -6640,17 +6649,28 @@ class CommandsController:
                     )
                     return
                 
+                # Validate time parameter
+                duration_hours = time if time is not None else 4
+                if duration_hours < 1 or duration_hours > 168:  # Max 1 week
+                    await ctx.send("❌ Time must be between 1 and 168 hours (1 week).", ephemeral=True)
+                    return
+                
                 await ctx.defer()
                 
-                # Get the appropriate rating for this channel
-                rating = art_manager.get_channel_rating(ctx.channel.id)
+                # Get the appropriate rating for this channel (or explicit if filters disabled)
+                disable_filters = disablefilters if disablefilters is not None else False
+                if disable_filters:
+                    rating = "explicit"
+                else:
+                    rating = art_manager.get_channel_rating(ctx.channel.id)
                 
-                # Create the challenge with appropriate rating
+                # Create the challenge with appropriate rating and duration
                 challenge_data = await art_manager.create_challenge(
                     channel_id=ctx.channel.id,
                     guild_id=ctx.guild.id,
                     challenge_type=normalized_challenge_type,
-                    rating=rating
+                    rating=rating,
+                    duration_hours=duration_hours
                 )
                 
                 # Helper to send response (handles both slash and text commands)
@@ -6668,7 +6688,8 @@ class CommandsController:
                 message = await art_view_manager.post_challenge(ctx.channel, challenge_data)
                 
                 if message:
-                    await send_response(f"✅ Art challenge dropped! (Rating: {rating})", ephemeral=True)
+                    filter_status = " (Filters: DISABLED - Explicit allowed)" if disable_filters else f" (Rating: {rating})"
+                    await send_response(f"✅ Art challenge dropped!{filter_status} - Duration: {duration_hours}h", ephemeral=True)
                 else:
                     await send_response("❌ Failed to post challenge.")
                 

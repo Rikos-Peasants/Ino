@@ -1111,16 +1111,18 @@ Please verify if this submission includes all the required elements.
             return "questionable"
         return "safe"
     
-    async def create_challenge(self, channel_id: int, guild_id: int, 
+    async def create_challenge(self, channel_id: int, guild_id: int,
                                 challenge_type: Optional[str] = None,
-                                rating: str = "safe") -> Optional[Dict]:
+                                rating: str = "safe",
+                                duration_hours: int = 4) -> Optional[Dict]:
         """Create a new art challenge
-        
+
         Args:
             channel_id: The channel to create the challenge in
             guild_id: The guild ID
             challenge_type: 'remake', 'tags', 'mixed', 'edit', 'scene_move', 'palette', or 'time_shift', random if None
-            rating: Image rating - 'safe' for SFW, 'questionable' for NSFW channels
+            rating: Image rating - 'safe' for SFW, 'questionable' for NSFW, 'explicit' for all content
+            duration_hours: Duration of the challenge in hours (default: 4)
         """
         if not self._ensure_connected():
             logger.error("Database not connected")
@@ -1146,7 +1148,8 @@ Please verify if this submission includes all the required elements.
             "rating": rating,  # Store the rating used
             "state": self.STATE_ACTIVE,
             "created_at": datetime.utcnow(),
-            "end_time": datetime.utcnow() + timedelta(hours=4),  # 4 hour duration
+            "end_time": datetime.utcnow() + timedelta(hours=duration_hours),
+            "duration_hours": duration_hours,  # Store the custom duration
             "message_id": None,  # Will be set after posting
             "submissions_count": 0,
             "verified_count": 0,
