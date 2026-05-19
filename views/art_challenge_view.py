@@ -748,7 +748,7 @@ class ArtChallengeViewManager:
             
             # Check if NSFW channel or mixed challenge - upload images as files
             rating = challenge_data.get("rating", "safe")
-            is_nsfw = rating == "questionable"
+            is_nsfw = rating in ("questionable", "explicit")
             challenge_type = challenge_data.get("challenge_type")
             files: List[discord.File] = []
             
