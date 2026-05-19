@@ -1475,7 +1475,22 @@ Please verify if this submission includes all the required elements.
                     logger.info(f"🐟 Fishy Jumpscare triggered! Required item: {fishy}")
             except Exception as e:
                 logger.error(f"Error checking for fishy jumpscare: {e}")
-            
+
+            # Event 2: Time Warp (8% chance) - Reduces challenge time
+            try:
+                from models.art_random_events_manager import ArtRandomEventsManager
+                events_manager = ArtRandomEventsManager()
+                time_warp = events_manager.roll_time_warp()
+                if time_warp:
+                    # Reduce the end_time
+                    new_end_time = challenge_data["end_time"] - timedelta(minutes=time_warp["reduction_minutes"])
+                    challenge_data["end_time"] = new_end_time
+                    challenge_data["time_warp"] = time_warp
+                    challenge_data["time_warp_active"] = True
+                    logger.info(f"⏰ Time Warp triggered! Challenge time reduced by {time_warp['reduction_minutes']} minutes")
+            except Exception as e:
+                logger.error(f"Error checking for time warp: {e}")
+
             # Insert into database
             result = self.challenges_collection.insert_one(challenge_data)
             challenge_data["_id"] = result.inserted_id
@@ -1859,41 +1874,111 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 "is_duplicate": is_duplicate
             }
             
+            # ==================== RANDOM EVENTS CHECK (before saving) ====================
+            events_manager = None
+            try:
+                from models.art_random_events_manager import ArtRandomEventsManager
+                events_manager = ArtRandomEventsManager()
+            except Exception:
+                pass
+
+            # Random "Wait who was that?" character commission (15% chance on verified submissions)
+            # This DISQUALIFIES the submission - user must resubmit with the character
+            character_commission = None
+            requires_resubmission = False
+            if is_verified and not already_verified and events_manager:
+                try:
+                    if random.random() < 0.15:  # 15% chance
+                        character_commission = await events_manager.generate_character_commission(image_url)
+                        if character_commission:
+                            logger.info(f"🎭 Character commission by {character_commission.get('character_name')} for user {user_id} - DISQUALIFYING submission!")
+                            # DISQUALIFY: Mark as not verified and require resubmission
+                            is_verified = False
+                            points_awarded = 0
+                            requires_resubmission = True
+                            verification_result["requires_character"] = character_commission.get("character_name")
+                            verification_result["character_personality"] = character_commission.get("character_personality")
+                except Exception as e:
+                    logger.error(f"Error generating character commission: {e}")
+
+            # Event 1: Art Critique (10% chance) - Reduces points by 50%
+            art_critique = None
+            if is_verified and not requires_resubmission and events_manager:
+                try:
+                    art_critique = await events_manager.roll_art_critique(image_url)
+                    if art_critique:
+                        points_awarded = int(points_awarded * 0.5)  # 50% penalty
+                        logger.info(f"🎭 Art critique by {art_critique['critic']} - points reduced to {points_awarded}")
+                except Exception as e:
+                    logger.error(f"Error in art critique: {e}")
+
+            # Event 4: Golden Hour (6% chance) - Doubles points
+            golden_hour = None
+            if is_verified and not requires_resubmission and events_manager:
+                try:
+                    golden_hour = events_manager.roll_golden_hour()
+                    if golden_hour:
+                        points_awarded = int(points_awarded * golden_hour["multiplier"])
+                        logger.info(f"✨ Golden Hour triggered! Points doubled to {points_awarded}")
+                except Exception as e:
+                    logger.error(f"Error in golden hour: {e}")
+
+            # Event 3: Copycat detection (7% chance) - Delays verification
+            copycat_event = None
+            if is_verified and not requires_resubmission and events_manager:
+                try:
+                    copycat_event = events_manager.roll_copycat()
+                    if copycat_event:
+                        # Don't save submission yet - it's "under investigation"
+                        logger.info(f"🐱 Copycat event triggered! Verification delayed")
+                        return {
+                            "success": True,
+                            "verified": False,
+                            "verification_result": verification_result,
+                            "points_awarded": 0,
+                            "is_resubmission": is_resubmission,
+                            "already_verified": already_verified,
+                            "submission_number": submission_count + 1,
+                            "is_duplicate": is_duplicate,
+                            "copycat_event": copycat_event,
+                            "delayed_verification": True,
+                            "delay_minutes": copycat_event["delay_minutes"]
+                        }
+                except Exception as e:
+                    logger.error(f"Error in copycat check: {e}")
+
+            # Event 5: The Curse (5% chance) - Applies random debuff
+            curse_event = None
+            if events_manager:
+                try:
+                    curse_event = events_manager.roll_curse(user_id)
+                    if curse_event:
+                        logger.info(f"🔮 Curse applied to user {user_id}")
+                except Exception as e:
+                    logger.error(f"Error in curse event: {e}")
+
             # Use upsert to handle resubmissions - replaces existing submission
             self.submissions_collection.update_one(
                 {"challenge_id": challenge_id, "user_id": user_id},
                 {"$set": submission_data},
                 upsert=True
             )
-            
+
             # Update challenge stats
             from bson import ObjectId
             update_fields = {"$inc": {"submissions_count": 1}}
             if is_verified and not already_verified:
                 # Only increment verified count if this is their first verified submission
                 update_fields["$inc"]["verified_count"] = 1
-            
+
             self.challenges_collection.update_one(
                 {"_id": ObjectId(challenge_id)},
                 update_fields
             )
-            
+
             # Update user stats (only count points if awarded)
             self._update_user_stats(user_id, user_name, is_verified and not already_verified, points_awarded)
-            
-            # Random "Wait who was that?" character commission (15% chance on verified submissions)
-            character_commission = None
-            if is_verified and not already_verified:
-                try:
-                    from models.art_random_events_manager import ArtRandomEventsManager
-                    events_manager = ArtRandomEventsManager()
-                    if random.random() < 0.15:  # 15% chance
-                        character_commission = await events_manager.generate_character_commission(image_url)
-                        if character_commission:
-                            logger.info(f"🎭 Character commission by {character_commission.get('character_name')} for user {user_id}")
-                except Exception as e:
-                    logger.error(f"Error generating character commission: {e}")
-            
+
             return {
                 "success": True,
                 "verified": is_verified,
@@ -1903,7 +1988,12 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 "already_verified": already_verified,
                 "submission_number": submission_count + 1,
                 "is_duplicate": is_duplicate,
-                "character_commission": character_commission
+                "character_commission": character_commission,
+                "requires_resubmission": requires_resubmission,
+                "art_critique": art_critique,
+                "golden_hour": golden_hour,
+                "curse_event": curse_event,
+                "copycat_event": copycat_event
             }
             
         except Exception as e:

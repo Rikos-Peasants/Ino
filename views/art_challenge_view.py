@@ -187,7 +187,16 @@ class ArtChallengeEmbed:
                 value=f"⚠️ **MUST include: {challenge_data.get('fishy_required_item')}**\nRare fish catch event!",
                 inline=False
             )
-        
+
+        # Time Warp - rare event
+        if challenge_data.get("time_warp_active") and challenge_data.get("time_warp"):
+            time_warp = challenge_data.get("time_warp", {})
+            embed.add_field(
+                name="⏰ TIME WARP!",
+                value=f"⚡ **{time_warp.get('message', 'Time has warped!')}**\nChallenge ends earlier than expected!",
+                inline=False
+            )
+
         embed.add_field(
             name="📤 How to Submit",
             value="Post your artwork in this channel and click the **Submit** button below!",
@@ -339,18 +348,84 @@ class ArtChallengeEmbed:
                 inline=False
             )
         
-        # Character commission (Wait who was that?)
-        character_commission = result.get("character_commission")
-        if character_commission:
+        # Copycat event (delayed verification)
+        copycat_event = result.get("copycat_event")
+        if copycat_event:
             embed.add_field(
-                name=f"🎭 Wait who was that? - {character_commission.get('character_name')}!",
+                name="🐱 Under Investigation",
+                value=copycat_event.get("message", "Verification delayed for similarity check"),
+                inline=False
+            )
+            embed.add_field(
+                name="⏰ Delay",
+                value=f"{copycat_event.get('delay_minutes', 10)} minutes",
+                inline=True
+            )
+            embed.color = discord.Color.orange()
+
+        # Character commission (Wait who was that?) - NOW DISQUALIFIES
+        character_commission = result.get("character_commission")
+        requires_resubmission = result.get("requires_resubmission", False)
+        if character_commission and requires_resubmission:
+            # This is a DISQUALIFICATION - they must resubmit with the character
+            embed.title = "🎭 CHARACTER COMMISSION!"
+            embed.description = f"{user.mention}, **{character_commission.get('character_name')}** has commissioned you for artwork!"
+            embed.color = discord.Color.purple()
+            embed.add_field(
+                name=f"� Required Character: {character_commission.get('character_name')}",
+                value=f"**Personality:** {character_commission.get('character_personality', 'Mysterious')}\n\n"
+                      f"{character_commission.get('reaction', '')}\n\n"
+                      f"⭐ **Initial Rating: {character_commission.get('rating', 'N/A')}/10**\n"
+                      f"{character_commission.get('comment', '')}",
+                inline=False
+            )
+            embed.add_field(
+                name="⚠️ SUBMISSION DISQUALIFIED",
+                value=f"**You must resubmit artwork featuring {character_commission.get('character_name')}!**\n\n"
+                       "Your original submission has been rejected. Create new artwork with this character included to earn points.",
+                inline=False
+            )
+        elif character_commission:
+            # Old behavior for backwards compatibility (if somehow triggered without resubmission flag)
+            embed.add_field(
+                name=f"�� Wait who was that? - {character_commission.get('character_name')}!",
                 value=f"{character_commission.get('reaction', '')}\n⭐ **Rating: {character_commission.get('rating', 'N/A')}/10**\n{character_commission.get('comment', '')}",
                 inline=False
             )
-        
+
+        # Art Critique event
+        art_critique = result.get("art_critique")
+        if art_critique:
+            embed.add_field(
+                name=f"🎭 Harsh Critique by {art_critique.get('critic')}!",
+                value=f"{art_critique.get('critique', 'Brutal criticism delivered!')}\n\n"
+                      f"💰 **Points Penalty:** 50% reduction",
+                inline=False
+            )
+
+        # Golden Hour event
+        golden_hour = result.get("golden_hour")
+        if golden_hour:
+            embed.add_field(
+                name="✨ GOLDEN HOUR!",
+                value=golden_hour.get("message", "Points doubled!"),
+                inline=False
+            )
+
+        # Curse event
+        curse_event = result.get("curse_event")
+        if curse_event:
+            debuff = curse_event.get("debuff", {})
+            embed.add_field(
+                name="🔮 THE CURSE!",
+                value=f"{curse_event.get('message', 'You have been cursed!')}\n\n"
+                      f"**Debuff Applied:** {debuff.get('emoji', '😒')} {debuff.get('name', 'Unknown')}",
+                inline=False
+            )
+
         embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
         embed.timestamp = datetime.utcnow()
-        
+
         return embed
     
     @staticmethod

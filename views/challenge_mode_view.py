@@ -22,6 +22,15 @@ class ChallengeModeEmbed:
         theme = challenge_data.get("challenge_theme")
         if theme:
             embed.add_field(name="🎯 Theme", value=theme, inline=True)
+
+        # Fishy Jumpscare - rare event
+        if challenge_data.get("fishy_active") and challenge_data.get("fishy_required_item"):
+            embed.add_field(
+                name="🐟 FISHY JUMPSCARE!",
+                value=f"⚠️ **BOTH artists MUST include: {challenge_data.get('fishy_required_item')}**\nRare fish catch event!",
+                inline=False
+            )
+
         deadline = challenge_data.get("submission_deadline")
         if deadline:
             embed.add_field(name="⏰ Submit By", value=f"<t:{int(deadline.timestamp())}:R>", inline=True)

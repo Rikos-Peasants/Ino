@@ -1,4 +1,5 @@
 import logging
+import random
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from pymongo import MongoClient, DESCENDING
@@ -36,6 +37,15 @@ class ChallengeModeManager:
         "Star festival", "The sound of silence", "Overgrown ruins",
         "A dream you can almost remember", "Parallel worlds collide", "The lighthouse keeper",
         "First snowfall of the year", "A marketplace of magical goods", "End of an era",
+    ]
+
+    # Fish types for the Fishy Jumpscare (5% chance)
+    FISH_TYPES = [
+        "a glowing anglerfish", "a tiny clownfish", "a majestic koi fish",
+        "a derpy pufferfish", "a shimmering betta fish", "a neon tetra",
+        "a grumpy catfish", "a speedy sailfish", "a chonky goldfish",
+        "a mysterious oarfish", "a vibrant mandarinfish", "a chill axolotl",
+        "a bouncy jellyfish", "a royal blue tang", "a sneaky remora"
     ]
 
     def __init__(self, connection_url: Optional[str] = None, database_name: str = "Riko"):
@@ -78,6 +88,14 @@ class ChallengeModeManager:
         if wager < self.MIN_WAGER or wager > self.MAX_WAGER:
             return None
 
+        # Check for Fishy Jumpscare (5% chance)
+        fishy_active = False
+        fishy_required_item = None
+        if random.random() < 0.05:
+            fishy_required_item = random.choice(self.FISH_TYPES)
+            fishy_active = True
+            logger.info(f"🐟 Fishy Jumpscare triggered for duel! Required item: {fishy_required_item}")
+
         challenge_data = {
             "challenger_id": challenger_id, "challenger_name": challenger_name,
             "opponent_id": opponent_id, "opponent_name": opponent_name,
@@ -90,7 +108,8 @@ class ChallengeModeManager:
             "challenger_votes": 0, "opponent_votes": 0,
             "voters": [], "winner_id": None,
             "message_id": None, "voting_message_id": None,
-            "fishy_active": False, "fishy_required_item": None,
+            "fishy_active": fishy_active,
+            "fishy_required_item": fishy_required_item,
         }
         try:
             result = self.challenges_collection.insert_one(challenge_data)
