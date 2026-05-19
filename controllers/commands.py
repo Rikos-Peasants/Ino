@@ -6600,10 +6600,12 @@ class CommandsController:
         @app_commands.describe(
             challenge_type="Type of challenge (remake, tags, mixed, edit, scene_move, palette, time_shift). Random if not specified.",
             time="Duration of the challenge in hours (default: 4)",
-            disablefilters="Disable all filters and allow explicit content (default: False)"
+            disablefilters="Disable all filters and allow explicit content (default: False)",
+            custom_tags="Optional comma-separated tags to filter images (e.g., 'cat,blue hair,sunset')",
+            custom_image_id="Optional specific image ID from serika.art to use (overrides tags)"
         )
         @admin_command
-        async def force_challenge_command(ctx, challenge_type: Optional[str] = None, time: Optional[int] = None, disablefilters: Optional[bool] = None):
+        async def force_challenge_command(ctx, challenge_type: Optional[str] = None, time: Optional[int] = None, disablefilters: Optional[bool] = None, custom_tags: Optional[str] = None, custom_image_id: Optional[str] = None):
             """Force drop an art challenge (Admin only)
             
             Parameters
@@ -6614,6 +6616,10 @@ class CommandsController:
                 Duration of the challenge in hours. Default is 4 hours.
             disablefilters : bool, optional
                 If True, disables all filters and allows explicit content.
+            custom_tags : str, optional
+                Comma-separated tags to filter random images.
+            custom_image_id : str, optional
+                Specific image ID from serika.art to use (overrides tags).
             """
             try:
                 art_manager = getattr(self.bot, 'art_challenge_manager', None)
@@ -6670,7 +6676,9 @@ class CommandsController:
                     guild_id=ctx.guild.id,
                     challenge_type=normalized_challenge_type,
                     rating=rating,
-                    duration_hours=duration_hours
+                    duration_hours=duration_hours,
+                    custom_tags=custom_tags,
+                    custom_image_id=custom_image_id
                 )
                 
                 # Helper to send response (handles both slash and text commands)
@@ -6689,7 +6697,13 @@ class CommandsController:
                 
                 if message:
                     filter_status = " (Filters: DISABLED - Explicit allowed)" if disable_filters else f" (Rating: {rating})"
-                    await send_response(f"✅ Art challenge dropped!{filter_status} - Duration: {duration_hours}h", ephemeral=True)
+                    custom_info = []
+                    if custom_image_id:
+                        custom_info.append(f"Image ID: {custom_image_id}")
+                    elif custom_tags:
+                        custom_info.append(f"Tags: {custom_tags}")
+                    custom_str = f" - {' | '.join(custom_info)}" if custom_info else ""
+                    await send_response(f"✅ Art challenge dropped!{filter_status} - Duration: {duration_hours}h{custom_str}", ephemeral=True)
                 else:
                     await send_response("❌ Failed to post challenge.")
                 

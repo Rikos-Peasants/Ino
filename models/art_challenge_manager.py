@@ -137,8 +137,8 @@ class ArtChallengeManager:
             logger.error(f"Serika API error: {e}")
             return None
     
-    async def get_random_image(self, ratings: str = "safe", count: int = 1, 
-                                tags: Optional[str] = None, 
+    async def get_random_image(self, ratings: str = "safe", count: int = 1,
+                                tags: Optional[str] = None,
                                 exclude_tags: Optional[str] = None,
                                 no_ai: bool = False) -> Optional[List[Dict]]:
         """Get random image(s) from serika.art"""
@@ -152,8 +152,15 @@ class ArtChallengeManager:
             params["exclude_tags"] = exclude_tags
         if no_ai:
             params["no_ai"] = "true"
-        
+
         return await self._serika_request("/random", params)
+
+    async def get_image_by_id(self, image_id: str) -> Optional[Dict]:
+        """Get a specific image by ID from serika.art"""
+        result = await self._serika_request(f"/image/{image_id}")
+        if result:
+            return result
+        return None
     
     # Tags that are too specific, meta, or impossible to draw without context
     EXCLUDED_TAGS = {
@@ -1114,7 +1121,9 @@ Please verify if this submission includes all the required elements.
     async def create_challenge(self, channel_id: int, guild_id: int,
                                 challenge_type: Optional[str] = None,
                                 rating: str = "safe",
-                                duration_hours: int = 4) -> Optional[Dict]:
+                                duration_hours: int = 4,
+                                custom_tags: Optional[str] = None,
+                                custom_image_id: Optional[str] = None) -> Optional[Dict]:
         """Create a new art challenge
 
         Args:
@@ -1123,6 +1132,8 @@ Please verify if this submission includes all the required elements.
             challenge_type: 'remake', 'tags', 'mixed', 'edit', 'scene_move', 'palette', or 'time_shift', random if None
             rating: Image rating - 'safe' for SFW, 'questionable' for NSFW, 'explicit' for all content
             duration_hours: Duration of the challenge in hours (default: 4)
+            custom_tags: Optional comma-separated tags to filter random images
+            custom_image_id: Optional specific image ID to use instead of random
         """
         if not self._ensure_connected():
             logger.error("Database not connected")
@@ -1158,20 +1169,33 @@ Please verify if this submission includes all the required elements.
         
         try:
             if challenge_type == self.CHALLENGE_TYPE_REMAKE:
-                # Get a random image for remake challenge with appropriate rating
-                is_christmas = self._is_christmas_time()
-                christmas_tags = "christmas, santa, snow, winter, holiday, festive" if is_christmas else None
-                
-                images = await self.get_random_image(ratings=rating, count=1, no_ai=True, tags=christmas_tags)
-                if not images or len(images) == 0:
-                    # Try without Christmas tags if none found
-                    if is_christmas:
-                        images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
-                    if not images or len(images) == 0:
-                        logger.error(f"Failed to get random image for remake challenge (rating: {rating})")
+                image_data = None
+
+                # If custom image ID provided, use that
+                if custom_image_id:
+                    image_data = await self.get_image_by_id(custom_image_id)
+                    if not image_data:
+                        logger.error(f"Failed to get image by ID {custom_image_id} for remake challenge")
                         return None
-                
-                image_data = images[0] if isinstance(images, list) else images
+                else:
+                    # Get a random image for remake challenge with appropriate rating
+                    is_christmas = self._is_christmas_time()
+                    christmas_tags = "christmas, santa, snow, winter, holiday, festive" if is_christmas else None
+
+                    # Use custom tags if provided, otherwise use Christmas tags if applicable
+                    search_tags = custom_tags if custom_tags else christmas_tags
+
+                    images = await self.get_random_image(ratings=rating, count=1, no_ai=True, tags=search_tags)
+                    if not images or len(images) == 0:
+                        # Try without tags if none found
+                        if search_tags:
+                            images = await self.get_random_image(ratings=rating, count=1, no_ai=True)
+                        if not images or len(images) == 0:
+                            logger.error(f"Failed to get random image for remake challenge (rating: {rating})")
+                            return None
+
+                    image_data = images[0] if isinstance(images, list) else images
+
                 challenge_data["reference_image_url"] = image_data.get("url") or image_data.get("thumbnail_url")
                 challenge_data["reference_image_id"] = image_data.get("id")
                 challenge_data["reference_tags"] = [t.get("name") for t in image_data.get("tags", [])]
