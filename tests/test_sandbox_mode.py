@@ -11,10 +11,11 @@ os.environ["GUILD_ID"] = "123456789012345678"
 os.environ["MONGO_URI"] = "mongodb://example.invalid/ino"
 os.environ["INO_SANDBOX_MODE"] = "true"
 os.environ["INO_SANDBOX_CHANNEL_IDS"] = "111111111111111111,222222222222222222"
-os.environ.pop("BANNED_ROLE_ID", None)
-os.environ.pop("RESTRICTED_ROLE_ID", None)
+os.environ["BANNED_ROLE_ID"] = ""
+os.environ["RESTRICTED_ROLE_ID"] = ""
 
 from config import Config
+from config import get_int_env
 from controllers.security import CommandSecurity, SecurityLevel
 
 
@@ -34,6 +35,8 @@ def main():
     assert Config.SANDBOX_MODE is True
     assert Config.BANNED_ROLE_ID is None
     assert Config.RESTRICTED_ROLE_ID is None
+    os.environ["OPTIONAL_EMPTY_ROLE_ID"] = "   "
+    assert get_int_env("OPTIONAL_EMPTY_ROLE_ID", None) is None
     assert Config.is_sandbox_channel_allowed(111111111111111111) is True
     assert Config.is_sandbox_channel_allowed(333333333333333333) is False
 

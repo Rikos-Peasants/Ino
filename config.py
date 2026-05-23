@@ -17,7 +17,7 @@ def get_bool_env(key: str, default: bool = False) -> bool:
 def get_int_env(key: str, default=MISSING) -> Optional[int]:
     """Get an integer from environment variables with proper error handling"""
     value = os.getenv(key)
-    if value is None:
+    if value is None or value.strip() == "":
         if default is not MISSING:
             return default
         raise ValueError(f"Environment variable {key} is required but not set")
