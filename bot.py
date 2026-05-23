@@ -14,9 +14,6 @@ if TYPE_CHECKING:
     from models.youtube_monitor import YouTubeMonitor
     from models.twitch_monitor import TwitchMonitor
 
-# Always import RandomAnnouncer for runtime use
-from models.random_announcer import RandomAnnouncer
-
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +28,7 @@ class RikoBot(commands.Bot):
         # Define intents
         intents = discord.Intents.default()
         intents.message_content = True
-        intents.members = True
+        intents.members = not Config.SANDBOX_MODE
         intents.reactions = True
         intents.guilds = True
         
@@ -44,13 +41,18 @@ class RikoBot(commands.Bot):
             activity=discord.Activity(type=discord.ActivityType.watching, name="Discord members"),
             status=discord.Status.online
         )
+
+        if Config.SANDBOX_MODE:
+            self.tree.interaction_check = self._tree_interaction_check
         
         # Add a check to restrict the bot to the Rayen server only
         @self.check
         async def globally_block_dms_and_other_guilds(ctx):
             """Block all commands in DMs and guilds other than the configured one"""
-            # Allow in the configured guild
+            # Allow in the configured guild unless sandbox mode adds tighter checks.
             if ctx.guild and ctx.guild.id == Config.GUILD_ID:
+                if Config.SANDBOX_MODE:
+                    return await self._allow_sandbox_command_context(ctx)
                 return True
             
             # Block in DMs
@@ -97,43 +99,47 @@ class RikoBot(commands.Bot):
                 logger.error(f"❌ Failed to initialize fallback leaderboard manager: {e2}")
                 self.leaderboard_manager = None
         
-        # Initialize YouTube monitor
-        try:
-            from models.youtube_monitor import YouTubeMonitor
-            from models.mongo_leaderboard_manager import MongoLeaderboardManager
-            # Only pass MongoDB manager if it's the right type
-            if isinstance(self.leaderboard_manager, MongoLeaderboardManager):
-                self.youtube_monitor = YouTubeMonitor(self.leaderboard_manager)
-            else:
-                self.youtube_monitor = YouTubeMonitor(None)
-            # Set bot reference for Discord operations
-            self.youtube_monitor.bot = self
-            logger.info("✅ YouTube monitor initialized successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize YouTube monitor: {e}")
-            self.youtube_monitor = None
-        
-        # Initialize Twitch monitor
-        try:
-            from models.twitch_monitor import TwitchMonitor
-            from models.mongo_leaderboard_manager import MongoLeaderboardManager
-            if isinstance(self.leaderboard_manager, MongoLeaderboardManager):
-                self.twitch_monitor = TwitchMonitor(self.leaderboard_manager)
-            else:
-                self.twitch_monitor = TwitchMonitor(None)
-            self.twitch_monitor.bot = self
-            logger.info("✅ Twitch monitor initialized successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize Twitch monitor: {e}")
-            self.twitch_monitor = None
-        
-        # Initialize Random Announcer (TEMPORARY FOR RESEARCH)
-        try:
-            self.random_announcer = RandomAnnouncer(self, self.leaderboard_manager)
-            logger.info("✅ Random announcer initialized successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize random announcer: {e}")
-            self.random_announcer = None
+        if Config.SANDBOX_MODE:
+            logger.info("🛡️ Ino sandbox mode enabled: privileged automations and member lifecycle actions are disabled")
+        else:
+            # Initialize YouTube monitor
+            try:
+                from models.youtube_monitor import YouTubeMonitor
+                from models.mongo_leaderboard_manager import MongoLeaderboardManager
+                # Only pass MongoDB manager if it's the right type
+                if isinstance(self.leaderboard_manager, MongoLeaderboardManager):
+                    self.youtube_monitor = YouTubeMonitor(self.leaderboard_manager)
+                else:
+                    self.youtube_monitor = YouTubeMonitor(None)
+                # Set bot reference for Discord operations
+                self.youtube_monitor.bot = self
+                logger.info("✅ YouTube monitor initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize YouTube monitor: {e}")
+                self.youtube_monitor = None
+
+            # Initialize Twitch monitor
+            try:
+                from models.twitch_monitor import TwitchMonitor
+                from models.mongo_leaderboard_manager import MongoLeaderboardManager
+                if isinstance(self.leaderboard_manager, MongoLeaderboardManager):
+                    self.twitch_monitor = TwitchMonitor(self.leaderboard_manager)
+                else:
+                    self.twitch_monitor = TwitchMonitor(None)
+                self.twitch_monitor.bot = self
+                logger.info("✅ Twitch monitor initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize Twitch monitor: {e}")
+                self.twitch_monitor = None
+
+            # Initialize Random Announcer (TEMPORARY FOR RESEARCH)
+            try:
+                from models.random_announcer import RandomAnnouncer
+                self.random_announcer = RandomAnnouncer(self, self.leaderboard_manager)
+                logger.info("✅ Random announcer initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize random announcer: {e}")
+                self.random_announcer = None
         
         # Initialize controllers
         from controllers.events import EventsController
@@ -144,7 +150,7 @@ class RikoBot(commands.Bot):
         self.commands_controller = CommandsController(self)
         self.scheduler_controller = SchedulerController(self)
 
-        if self.scam_image_manager:
+        if self.scam_image_manager and not Config.SANDBOX_MODE:
             try:
                 from controllers.scam_image_controller import ScamImageController
                 self.scam_image_controller = ScamImageController(self, self.scam_image_manager)
@@ -154,15 +160,16 @@ class RikoBot(commands.Bot):
                 self.scam_image_controller = None
         
         # Initialize moderation view manager
-        try:
-            from views.moderation_view import ModerationViewManager
-            self.moderation_view_manager = ModerationViewManager(self)
-            # Setup persistent views
-            self.moderation_view_manager.setup_persistent_views()
-            logger.info("✅ Moderation view manager initialized successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize moderation view manager: {e}")
-            self.moderation_view_manager = None
+        if not Config.SANDBOX_MODE:
+            try:
+                from views.moderation_view import ModerationViewManager
+                self.moderation_view_manager = ModerationViewManager(self)
+                # Setup persistent views
+                self.moderation_view_manager.setup_persistent_views()
+                logger.info("✅ Moderation view manager initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize moderation view manager: {e}")
+                self.moderation_view_manager = None
         
         # Initialize art challenge manager and view manager
         self.art_challenge_manager = None
@@ -198,13 +205,14 @@ class RikoBot(commands.Bot):
             self.custom_roles_manager = None
 
         # Initialize art random events manager
-        try:
-            from models.art_random_events_manager import ArtRandomEventsManager
-            self.art_random_events_manager = ArtRandomEventsManager()
-            logger.info("✅ Art random events manager initialized successfully")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize art random events manager: {e}")
-            self.art_random_events_manager = None
+        if not Config.SANDBOX_MODE:
+            try:
+                from models.art_random_events_manager import ArtRandomEventsManager
+                self.art_random_events_manager = ArtRandomEventsManager()
+                logger.info("✅ Art random events manager initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize art random events manager: {e}")
+                self.art_random_events_manager = None
     
     async def setup_hook(self):
         """Initial setup when bot is starting"""
@@ -223,6 +231,48 @@ class RikoBot(commands.Bot):
             self.events_controller.initialize_quest_manager()
         
         logger.info("Bot setup completed")
+
+    async def _tree_interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await self._allow_sandbox_interaction(interaction, notify=True)
+
+    async def _allow_sandbox_interaction(self, interaction: discord.Interaction, notify: bool = False) -> bool:
+        if not Config.SANDBOX_MODE:
+            return True
+
+        if not interaction.guild or interaction.guild.id != Config.GUILD_ID:
+            if notify and not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "This bot is only available in the approved server.",
+                    ephemeral=True
+                )
+            return False
+
+        channel_id = getattr(getattr(interaction, "channel", None), "id", None)
+        if not Config.is_sandbox_channel_allowed(channel_id):
+            if notify and not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "This bot is only available in the approved sandbox channels.",
+                    ephemeral=True
+                )
+            return False
+
+        return True
+
+    async def _allow_sandbox_command_context(self, ctx) -> bool:
+        channel_id = getattr(getattr(ctx, "channel", None), "id", None)
+        if not Config.is_sandbox_channel_allowed(channel_id):
+            await ctx.send("This bot is only available in the approved sandbox channels.")
+            return False
+
+        from controllers.security import CommandSecurity, SecurityLevel
+
+        command_name = getattr(getattr(ctx, "command", None), "name", None)
+        required_level = CommandSecurity.get_command_security_level(command_name or "")
+        if required_level != SecurityLevel.PUBLIC:
+            await ctx.send("Sandbox mode only allows public persona/community commands.")
+            return False
+
+        return True
     
     async def on_ready(self):
         """Bot is ready and connected"""
@@ -254,9 +304,12 @@ class RikoBot(commands.Bot):
                 for cmd in synced_guild:
                     logger.info(f"   - /{cmd.name}: {cmd.description}")
             
-            # Also sync globally (takes up to 1 hour to propagate)
-            synced_global = await self.tree.sync()
-            logger.info(f"✅ Synced {len(synced_global)} commands globally")
+            if Config.SANDBOX_MODE:
+                logger.info("🛡️ Sandbox mode enabled; skipping global command sync")
+            else:
+                # Also sync globally (takes up to 1 hour to propagate)
+                synced_global = await self.tree.sync()
+                logger.info(f"✅ Synced {len(synced_global)} commands globally")
             
         except Exception as e:
             logger.error(f"❌ Failed to sync commands: {e}")
@@ -293,17 +346,20 @@ class RikoBot(commands.Bot):
             logger.error(f"❌ Failed to register challenge mode views: {e}")
         
         # Start scheduler tasks for best image posting
-        if self.scheduler_controller:
+        if self.scheduler_controller and not Config.SANDBOX_MODE:
             self.scheduler_controller.start_tasks()
             logger.info("Started scheduled tasks for best image posting")
             logger.info("Best images will be posted back to their original channels")
         
-        # Check and award achievements for all users on startup
-        await self.check_all_achievements_on_startup()
-        
-        # Automatically scan and store all historical images
-        await self.scan_historical_images()
-        
+        if Config.SANDBOX_MODE:
+            logger.info("🛡️ Sandbox mode enabled; skipping startup achievement sweep and historical image scan")
+        else:
+            # Check and award achievements for all users on startup
+            await self.check_all_achievements_on_startup()
+
+            # Automatically scan and store all historical images
+            await self.scan_historical_images()
+
         # Start status cycling (only if not already running)
         if not self.cycle_status.is_running():
             self.cycle_status.start()
@@ -314,6 +370,9 @@ class RikoBot(commands.Bot):
     async def on_interaction(self, interaction: discord.Interaction):
         """Handle interactions including moderation buttons"""
         try:
+            if not await self._allow_sandbox_interaction(interaction, notify=True):
+                return
+
             # Handle moderation button interactions first (for validation only)
             if (interaction.type == discord.InteractionType.component 
                 and self.moderation_view_manager):

@@ -5,11 +5,20 @@ from typing import Optional, List
 # Load environment variables
 load_dotenv()
 
-def get_int_env(key: str, default: Optional[int] = None) -> int:
+MISSING = object()
+
+def get_bool_env(key: str, default: bool = False) -> bool:
+    """Get a boolean from environment variables."""
+    value = os.getenv(key)
+    if value is None or value == "":
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+def get_int_env(key: str, default=MISSING) -> Optional[int]:
     """Get an integer from environment variables with proper error handling"""
     value = os.getenv(key)
     if value is None:
-        if default is not None:
+        if default is not MISSING:
             return default
         raise ValueError(f"Environment variable {key} is required but not set")
     try:
@@ -41,9 +50,11 @@ class Config:
     # Command prefix for text commands
     COMMAND_PREFIX = os.getenv('COMMAND_PREFIX', 'R!')
     TOKEN = os.getenv('DISCORD_TOKEN')
+    SANDBOX_MODE = get_bool_env('INO_SANDBOX_MODE', False)
+    SANDBOX_CHANNEL_IDS = get_int_list_env('INO_SANDBOX_CHANNEL_IDS', [])
     GUILD_ID = get_int_env('GUILD_ID')
-    BANNED_ROLE_ID = get_int_env('BANNED_ROLE_ID')
-    RESTRICTED_ROLE_ID = get_int_env('RESTRICTED_ROLE_ID')
+    BANNED_ROLE_ID = get_int_env('BANNED_ROLE_ID', None if SANDBOX_MODE else MISSING)
+    RESTRICTED_ROLE_ID = get_int_env('RESTRICTED_ROLE_ID', None if SANDBOX_MODE else MISSING)
     MONGO_URI = os.getenv('MONGO_URI')
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')  # For YouTube video announcements
     YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')  # For YouTube Data API
@@ -81,7 +92,7 @@ class Config:
     
     # NSFWBAN system role IDs
     NSFWBAN_MODERATOR_ROLE_ID = 1372477845997359244  # Role that can use nsfwban commands
-    NSFWBAN_BANNED_ROLE_ID = get_int_env('BANNED_ROLE_ID')  # Role given to NSFWBAN'd users (same as BANNED_ROLE_ID)
+    NSFWBAN_BANNED_ROLE_ID = get_int_env('BANNED_ROLE_ID', None if SANDBOX_MODE else MISSING)  # Role given to NSFWBAN'd users (same as BANNED_ROLE_ID)
     
     # Patreon system
     PATREON_ROLE_ID = get_int_env('PATREON_ROLE_ID', None)  # "Riko's Agent" role for Patreon supporters (1.5x quest points)
@@ -253,10 +264,14 @@ class Config:
         required_vars = [
             ('DISCORD_TOKEN', cls.TOKEN),
             ('GUILD_ID', cls.GUILD_ID),
-            ('BANNED_ROLE_ID', cls.BANNED_ROLE_ID),
-            ('RESTRICTED_ROLE_ID', cls.RESTRICTED_ROLE_ID),
             ('MONGO_URI', cls.MONGO_URI)
         ]
+
+        if not cls.SANDBOX_MODE:
+            required_vars.extend([
+                ('BANNED_ROLE_ID', cls.BANNED_ROLE_ID),
+                ('RESTRICTED_ROLE_ID', cls.RESTRICTED_ROLE_ID)
+            ])
         
         # Optional but recommended vars
         optional_vars = [
@@ -273,8 +288,18 @@ class Config:
         
         if missing_vars:
             raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
+        if cls.SANDBOX_MODE and not cls.SANDBOX_CHANNEL_IDS:
+            raise ValueError("INO_SANDBOX_CHANNEL_IDS is required when INO_SANDBOX_MODE is enabled")
         
         if missing_optional:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Missing optional environment variables (some features may not work): {', '.join(missing_optional)}")
+
+    @classmethod
+    def is_sandbox_channel_allowed(cls, channel_id: Optional[int]) -> bool:
+        """Return whether a channel is inside the sandbox allowlist."""
+        if not cls.SANDBOX_MODE:
+            return True
+        return channel_id in cls.SANDBOX_CHANNEL_IDS

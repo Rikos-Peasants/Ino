@@ -16,7 +16,7 @@ async def sync_commands():
     try:
         # Create bot instance
         intents = discord.Intents.default()
-        intents.members = True
+        intents.members = not Config.SANDBOX_MODE
         intents.message_content = True
         
         bot = commands.Bot(command_prefix='R!', intents=intents)
@@ -56,8 +56,8 @@ async def sync_commands():
             
             # Generate invite URL with proper permissions and applications.commands scope
             bot_id = bot.user.id
-            # Updated URL with applications.commands scope
-            invite_url = f"https://discord.com/api/oauth2/authorize?client_id={bot_id}&permissions=268437568&scope=bot%20applications.commands"
+            permissions = 352670538909696 if Config.SANDBOX_MODE else 268437568
+            invite_url = f"https://discord.com/api/oauth2/authorize?client_id={bot_id}&permissions={permissions}&scope=bot%20applications.commands"
             
             print(f"\n🔗 IMPORTANT: Use this invite URL to add applications.commands scope:")
             print(f"{invite_url}")
@@ -83,13 +83,17 @@ async def sync_commands():
                 for cmd in synced_guild:
                     print(f"   - /{cmd.name}")
                 
-                # Try global sync
-                synced_global = await bot.tree.sync()
-                print(f"✅ Global sync: {len(synced_global)} commands")
-                for cmd in synced_global:
-                    print(f"   - /{cmd.name}")
-                
-                if len(synced_global) == 0:
+                if Config.SANDBOX_MODE:
+                    synced_global = []
+                    print("🛡️ Sandbox mode enabled; skipped global command sync")
+                else:
+                    # Try global sync
+                    synced_global = await bot.tree.sync()
+                    print(f"✅ Global sync: {len(synced_global)} commands")
+                    for cmd in synced_global:
+                        print(f"   - /{cmd.name}")
+
+                if not Config.SANDBOX_MODE and len(synced_global) == 0:
                     print("\n❌ NO COMMANDS SYNCED!")
                     print("❌ This is because the bot lacks 'applications.commands' scope")
                     print("❌ Please use the invite URL above to re-add the bot")

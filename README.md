@@ -143,6 +143,16 @@ RESTRICTED_ROLE_ID=your_restricted_role_id
 MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/database
 ```
 
+For restricted community/persona installs through a bot-intake sandbox, enable:
+
+```env
+INO_SANDBOX_MODE=true
+INO_SANDBOX_CHANNEL_IDS=bot_chat_channel_id,other_approved_text_channel_id
+```
+
+Sandbox mode keeps Ino on the existing Discord permission rails: only public commands are allowed, command/event handling is limited to the approved sandbox channels, global slash-command sync is skipped, member lifecycle handlers are not registered, and privileged moderation/announcement automations are disabled.
+When sandbox mode is enabled, `BANNED_ROLE_ID` and `RESTRICTED_ROLE_ID` are no longer required.
+
 ### Optional Environment Variables
 
 ```env
@@ -198,11 +208,16 @@ Enable these permissions when inviting the bot:
 - ✅ Read Message History
 - ✅ Manage Messages
 
+For sandbox/persona installs, do not grant `Manage Roles`, `Manage Messages`, `Moderate Members`, or `Administrator`.
+Use the bot-intake `default_bot` or `voice_chatbot` preset and enable slash commands only when reviewers will scope the app in Discord Integrations.
+
 ### Required Bot Intents
 
 Enable these intents in the Discord Developer Portal:
 - ✅ Server Members Intent
 - ✅ Message Content Intent
+
+Sandbox/persona installs only require Message Content Intent.
 
 ---
 
@@ -409,7 +424,7 @@ Structured JSON logging with:
 3. **Verify intents** - Enable required intents in Developer Portal
 4. **Re-invite bot** with proper scopes:
    ```
-   https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&permissions=8&scope=bot%20applications.commands
+   https://discord.com/api/oauth2/authorize?client_id=YOUR_BOT_ID&permissions=352670538909696&scope=bot%20applications.commands
    ```
 
 ### MongoDB Connection Issues

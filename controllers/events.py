@@ -572,6 +572,22 @@ class EventsController:
     
     def register_events(self):
         """Register all Discord events"""
+        if Config.SANDBOX_MODE:
+            @self.bot.event
+            async def on_message(message: discord.Message):
+                await self._handle_message(message)
+
+            @self.bot.event
+            async def on_command_error(ctx: commands.Context, error: commands.CommandError):
+                await self._handle_command_error(ctx, error)
+
+            @self.bot.event
+            async def on_command(ctx: commands.Context):
+                channel_name = ctx.channel.name if hasattr(ctx.channel, 'name') else 'DM'
+                logger.info(f"Command '{ctx.command.name}' invoked by {ctx.author.display_name} in #{channel_name}")
+
+            logger.info("🛡️ Sandbox mode enabled; registered message and command events only")
+            return
         
         @self.bot.event
         async def on_member_join(member: discord.Member):
@@ -984,6 +1000,20 @@ class EventsController:
     
     async def _handle_message(self, message: discord.Message):
         """Handle new messages for image reactions and member join stickers"""
+        if (
+            Config.SANDBOX_MODE
+            and message.guild
+            and message.guild.id == Config.GUILD_ID
+            and not Config.is_sandbox_channel_allowed(message.channel.id)
+        ):
+            return
+
+        if Config.SANDBOX_MODE:
+            if message.author.bot:
+                return
+            await self.bot.process_commands(message)
+            return
+
         # Check for member join system messages FIRST (before ignoring bot messages)
         if message.guild and message.guild.id == Config.GUILD_ID:
             await self._handle_member_join_message(message)
@@ -1008,7 +1038,7 @@ class EventsController:
         
         # IMPORTANT: Process commands first for text commands to work
         await self.bot.process_commands(message)
-        
+
         # Only process messages from the configured guild
         if not message.guild or message.guild.id != Config.GUILD_ID:
             return

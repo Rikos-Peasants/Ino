@@ -67,7 +67,15 @@ class CommandSecurity:
         """
         user = ctx.author
         
-        # Bot owners can always use any command
+        if Config.SANDBOX_MODE:
+            channel_id = getattr(getattr(ctx, "channel", None), "id", None)
+            if not Config.is_sandbox_channel_allowed(channel_id):
+                return False, "This bot is only available in the approved sandbox channels."
+
+            if required_level != SecurityLevel.PUBLIC:
+                return False, "Sandbox mode only allows public persona/community commands."
+
+        # Bot owners can always use any command outside sandbox mode
         if await ctx.bot.is_owner(user):
             return True, ""
         
