@@ -10,7 +10,6 @@ Supported encodings (tried in priority order):
   6. Base64            aGVsbG8gd29ybGQ=
   7. Zalgo text        h̴̖̒ȅ̷̡l̵͍̐l̸̗̑o̷͈̅
   8. Upside-down text  oʃʃǝH
-  9. Leet speak        h3ll0 w0rld
 """
 from __future__ import annotations
 
@@ -312,33 +311,6 @@ def _decode_upside_down(text: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# 9. LEET SPEAK  (1337 / h4x0r)
-# ---------------------------------------------------------------------------
-_LEET_MAP: dict[str, str] = {
-    "4": "a", "@": "a", "8": "b", "3": "e", "6": "g",
-    "9": "g", "1": "l", "!": "i", "0": "o", "5": "s",
-    "$": "s", "7": "t", "+": "t", "2": "z",
-}
-_LEET_CHARS = set(_LEET_MAP.keys())
-
-def _decode_leet(text: str) -> Optional[str]:
-    # Only count leet chars that appear within tokens that ALSO contain alpha chars.
-    # Standalone numeric tokens (e.g. "10", "42", "01") are excluded so plain
-    # text like "day 10" or "stage 1 2 3" never triggers leet detection.
-    mixed_leet = 0
-    mixed_alpha = 0
-    for token in text.split():
-        tok_has_alpha = any(c.isalpha() for c in token)
-        tok_has_leet = any(c in _LEET_CHARS for c in token)
-        if tok_has_alpha and tok_has_leet:
-            mixed_leet += sum(1 for c in token if c in _LEET_CHARS)
-            mixed_alpha += sum(1 for c in token if c.isalpha())
-    if mixed_leet < 2 or mixed_alpha < 2 or mixed_leet / max(mixed_leet + mixed_alpha, 1) < 0.25:
-        return None
-    return "".join(_LEET_MAP.get(c, c) for c in text.lower()).strip() or None
-
-
-# ---------------------------------------------------------------------------
 # PUBLIC API
 # ---------------------------------------------------------------------------
 _DECODERS = [
@@ -350,7 +322,6 @@ _DECODERS = [
     (_decode_base64,      "BASE64"),
     (_decode_zalgo,       "ZALGO"),
     (_decode_upside_down, "FLIPPED"),
-    (_decode_leet,        "LEET"),
 ]
 
 

@@ -397,7 +397,7 @@ class TranslationManager:
         # Attempt cipher decode first — Morse/Binary have no letters and would be
         # rejected by the letter-count guard below.
         # Use detection_text (Discord tokens already stripped) so role/user IDs
-        # (which contain many leet-char digits) never trigger false leet matches.
+        # do not trigger false cipher matches.
         decoded, encoding = cipher_decoder.decode_any(detection_text)
         if decoded is None:
             norm_det = _normalize_unicode(detection_text)
