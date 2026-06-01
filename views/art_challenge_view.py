@@ -363,20 +363,39 @@ class ArtChallengeEmbed:
             )
             embed.color = discord.Color.orange()
 
+        # Check if they completed a character commission
+        commission_completed = result.get("commission_completed")
+        if commission_completed:
+            embed.description = f"🎉 {user.mention}! **You successfully completed {commission_completed}'s commission!**"
+            embed.add_field(
+                name="🎭 Commission Completed!",
+                value=f"You successfully included **{commission_completed}** in your resubmission! Well done!",
+                inline=False
+            )
+
         # Character commission (Wait who was that?) - NOW DISQUALIFIES
         character_commission = result.get("character_commission")
         requires_resubmission = result.get("requires_resubmission", False)
         if character_commission and requires_resubmission:
+            # Save original fields we want to keep
+            old_fields = list(embed.fields)
+            embed.clear_fields()
+            
+            # Add back only the metadata fields
+            for field in old_fields:
+                if field.name in ["🔢 Attempt", "🎯 Confidence", "📝 AI Analysis"]:
+                    embed.add_field(name=field.name, value=field.value, inline=field.inline)
+                    
             # This is a DISQUALIFICATION - they must resubmit with the character
             embed.title = "🎭 CHARACTER COMMISSION!"
-            embed.description = f"{user.mention}, **{character_commission.get('character_name')}** has commissioned you for artwork!"
+            embed.description = f"{user.mention}, **{character_commission.get('character_name')}** has commissioned you for artwork! Your core artwork is great, but it is **disqualified** until you include them!"
             embed.color = discord.Color.purple()
             embed.add_field(
-                name=f"� Required Character: {character_commission.get('character_name')}",
+                name=f"👤 Required Character: {character_commission.get('character_name')}",
                 value=f"**Personality:** {character_commission.get('character_personality', 'Mysterious')}\n\n"
-                      f"{character_commission.get('reaction', '')}\n\n"
+                      f"\"{character_commission.get('reaction', '')}\"\n\n"
                       f"⭐ **Initial Rating: {character_commission.get('rating', 'N/A')}/10**\n"
-                      f"{character_commission.get('comment', '')}",
+                      f"💬 *\"{character_commission.get('comment', '')}\"*",
                 inline=False
             )
             embed.add_field(
@@ -388,7 +407,7 @@ class ArtChallengeEmbed:
         elif character_commission:
             # Old behavior for backwards compatibility (if somehow triggered without resubmission flag)
             embed.add_field(
-                name=f"�� Wait who was that? - {character_commission.get('character_name')}!",
+                name=f"🧐 Wait who was that? - {character_commission.get('character_name')}!",
                 value=f"{character_commission.get('reaction', '')}\n⭐ **Rating: {character_commission.get('rating', 'N/A')}/10**\n{character_commission.get('comment', '')}",
                 inline=False
             )

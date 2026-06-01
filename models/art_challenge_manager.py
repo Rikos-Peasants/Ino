@@ -669,7 +669,7 @@ Rules:
 
         return fallback
 
-    async def verify_submission(self, challenge_data: Dict, submission_image_url: str) -> Dict:
+    async def verify_submission(self, challenge_data: Dict, submission_image_url: str, required_character: Optional[str] = None) -> Dict:
         """Verify a submission using Gemini AI"""
         if not self.gemini_api_key:
             logger.error("Gemini API key not configured")
@@ -684,6 +684,15 @@ Rules:
             # Prepare the verification prompt based on challenge type
             challenge_type = challenge_data.get("challenge_type")
             
+            # Additional instructions to append to verification_prompt
+            extra_instructions = ""
+            if required_character:
+                extra_instructions += f"\n\nCRITICAL REQUIREMENT: The user has a character commission! The artwork MUST feature the character **{required_character}**. Verify if **{required_character}** is clearly present and recognizable in the artwork. If the character is missing or unrecognizable, the submission MUST be marked as verified: false."
+            
+            if challenge_data.get("fishy_active") and challenge_data.get("fishy_required_item"):
+                fishy_item = challenge_data.get("fishy_required_item")
+                extra_instructions += f"\n\nCRITICAL REQUIREMENT: A Fishy Jumpscare event is active! The artwork MUST include **{fishy_item}**. Verify if **{fishy_item}** is clearly present in the submission. If it is missing or unrecognizable, the submission MUST be marked as verified: false."
+
             # For remake and edit challenges, check if user just re-uploaded the reference image
             if challenge_type in [self.CHALLENGE_TYPE_REMAKE, self.CHALLENGE_TYPE_EDIT, self.CHALLENGE_TYPE_TIME_SHIFT]:
                 reference_url = challenge_data.get("reference_image_url")
@@ -743,7 +752,7 @@ The reference image shows the original that participants were asked to remake in
 The submission is the artist's interpretation.
 
 Please verify if this submission meets the challenge requirements.
-"""
+""" + extra_instructions
                 parts = [
                     types.Part.from_text(text="REFERENCE IMAGE (to be remade):"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
@@ -771,7 +780,7 @@ Reference Image 1 and Reference Image 2 are the two images that participants wer
 The submission should contain elements from BOTH images creatively combined into one artwork.
 
 Please verify if this submission successfully mixes elements from both reference images.
-"""
+""" + extra_instructions
                 parts = [
                     types.Part.from_text(text="REFERENCE IMAGE 1 (first image to mix):"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_1),
@@ -805,7 +814,7 @@ Check if:
 3. The item is clearly visible and recognizable
 
 Please verify if this submission meets the challenge requirements.
-"""
+""" + extra_instructions
                 parts = [
                     types.Part.from_text(text="REFERENCE IMAGE (original to edit):"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
@@ -836,7 +845,7 @@ Requirements:
 - The composition should look intentional (not a low-effort copy/paste)
 
 Please verify if this submission meets the scene move challenge.
-"""
+""" + extra_instructions
                 parts = [
                     types.Part.from_text(text=f"REFERENCE IMAGE 1 (character: {character_to_move}):"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes_1),
@@ -862,7 +871,7 @@ Requirements:
 - Strong unrelated colors should be limited
 
 Please verify if this submission follows the palette lock challenge.
-"""
+""" + extra_instructions
                 parts = [
                     types.Part.from_text(text="SUBMISSION IMAGE:"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
@@ -889,7 +898,7 @@ Requirements:
 - Never allow minor/loli/shota or child-like depictions
 
 Please verify if this submission meets the time shift challenge.
-"""
+""" + extra_instructions
                 parts = [
                     types.Part.from_text(text="REFERENCE IMAGE (original character):"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=reference_bytes),
@@ -907,7 +916,7 @@ Required Tags: {', '.join(required_tags)}
 Task: Verify if the submitted image contains ALL of these required tags/elements.
 
 Please verify if this submission includes all the required elements.
-"""
+""" + extra_instructions
                 parts = [
                     types.Part.from_text(text="SUBMISSION IMAGE:"),
                     types.Part.from_bytes(mime_type="image/jpeg", data=submission_bytes),
@@ -1837,44 +1846,6 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
         already_verified = existing_verified is not None
         
         try:
-            # Verify the submission with AI
-            verification_result = await self.verify_submission(challenge, image_url)
-            
-            # Check if this is a duplicate/reupload (cheating attempt)
-            is_duplicate = verification_result.get("is_duplicate", False)
-            
-            # Determine if verified (confidence >= 0.6)
-            is_verified = verification_result.get("verified", False) and verification_result.get("confidence", 0) >= 0.6
-            
-            # Points logic:
-            # - If duplicate: -20 points penalty
-            # - If verified and not already verified: +reward_points
-            # - Otherwise: 0 points
-            if is_duplicate:
-                points_awarded = -20  # Penalty for re-uploading the original image
-                logger.warning(f"User {user_id} attempted to submit duplicate image. Applying -20 point penalty.")
-                # Check for debuff (track daily point loss)
-                self._track_daily_point_loss(user_id, -20)
-            elif is_verified and not already_verified:
-                points_awarded = challenge.get("reward_points", 50)
-            else:
-                points_awarded = 0
-            
-            submission_data = {
-                "challenge_id": challenge_id,
-                "user_id": user_id,
-                "image_url": image_url,
-                "message_id": message_id,
-                "submitted_at": datetime.utcnow(),
-                "verified": is_verified,
-                "verification_result": verification_result,
-                "points_awarded": points_awarded,
-                "submission_number": submission_count + 1,
-                "is_resubmission": is_resubmission,
-                "is_duplicate": is_duplicate
-            }
-            
-            # ==================== RANDOM EVENTS CHECK (before saving) ====================
             events_manager = None
             try:
                 from models.art_random_events_manager import ArtRandomEventsManager
@@ -1882,6 +1853,79 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
             except Exception:
                 pass
 
+            # Check if user has a pending character commission from their previous submission to this challenge
+            previous_submission = self.submissions_collection.find_one({
+                "challenge_id": challenge_id,
+                "user_id": user_id
+            })
+            
+            required_character = None
+            if previous_submission:
+                if previous_submission.get("requires_resubmission") and previous_submission.get("character_commission"):
+                    required_character = previous_submission.get("character_commission", {}).get("character_name")
+                    logger.info(f"User {user_id} has a pending character commission: {required_character}")
+
+            # Verify the submission with AI
+            verification_result = await self.verify_submission(challenge, image_url, required_character=required_character)
+            
+            # Check if this is a duplicate/reupload (cheating attempt)
+            is_duplicate = verification_result.get("is_duplicate", False)
+            
+            # Determine if verified (confidence >= 0.6)
+            is_verified = verification_result.get("verified", False) and verification_result.get("confidence", 0) >= 0.6
+            
+            # Check if this verified submission successfully completed a pending character commission
+            commission_completed = None
+            if is_verified and required_character:
+                commission_completed = required_character
+                logger.info(f"🎉 User {user_id} successfully completed character commission for {required_character}!")
+            
+            # Points logic:
+            # - If duplicate: -20 points penalty
+            # - If verified and not already verified: reward_points * multiplier
+            # - Otherwise: 0 points
+            if is_duplicate:
+                points_awarded = -20  # Penalty for re-uploading the original image
+                logger.warning(f"User {user_id} attempted to submit duplicate image. Applying -20 point penalty.")
+                # Check for debuff (track daily point loss)
+                self._track_daily_point_loss(user_id, -20)
+            elif is_verified and not already_verified:
+                base_reward = challenge.get("reward_points", 50)
+                
+                # Fetch earnings multiplier from active buffs/debuffs
+                multiplier = 1.0
+                if events_manager:
+                    try:
+                        multiplier = events_manager.get_earnings_multiplier(user_id)
+                        logger.info(f"Applying earnings multiplier {multiplier} to user {user_id} for verified submission.")
+                    except Exception as e:
+                        logger.error(f"Error getting earnings multiplier: {e}")
+                
+                points_awarded = int(base_reward * multiplier)
+                
+                # Consume any active one-shot buffs
+                if events_manager and points_awarded > 0:
+                    try:
+                        events_manager.consume_one_shot_buff(user_id)
+                    except Exception as e:
+                        logger.error(f"Error consuming one-shot buff: {e}")
+            else:
+                points_awarded = 0
+
+            # Check for Jinx debuff on failed submission
+            if not is_verified and not is_duplicate and events_manager:
+                try:
+                    active_debuffs = events_manager.get_active_debuffs(user_id)
+                    has_jinx = any(d.get("debuff_key") == "the_jinx" for d in active_debuffs)
+                    if has_jinx:
+                        points_awarded = -15
+                        logger.warning(f"😈 User {user_id} triggered 'The Jinx' debuff on failed submission! Applying -15 points.")
+                        events_manager.consume_one_shot_fail_debuff(user_id)
+                        self._track_daily_point_loss(user_id, -15)
+                except Exception as e:
+                    logger.error(f"Error checking/applying Jinx debuff: {e}")
+            
+            # ==================== RANDOM EVENTS CHECK (before saving) ====================
             # Random "Wait who was that?" character commission (15% chance on verified submissions)
             # This DISQUALIFIES the submission - user must resubmit with the character
             character_commission = None
@@ -1900,6 +1944,12 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                             verification_result["character_personality"] = character_commission.get("character_personality")
                 except Exception as e:
                     logger.error(f"Error generating character commission: {e}")
+
+            # Carry over pending character commission if not completed
+            if previous_submission and previous_submission.get("requires_resubmission"):
+                if not commission_completed:
+                    requires_resubmission = True
+                    character_commission = previous_submission.get("character_commission")
 
             # Event 1: Art Critique (10% chance) - Reduces points by 50%
             art_critique = None
@@ -1949,13 +1999,35 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
 
             # Event 5: The Curse (5% chance) - Applies random debuff
             curse_event = None
-            if events_manager:
+            if is_verified and not requires_resubmission and events_manager:
                 try:
                     curse_event = events_manager.roll_curse(user_id)
                     if curse_event:
                         logger.info(f"🔮 Curse applied to user {user_id}")
                 except Exception as e:
                     logger.error(f"Error in curse event: {e}")
+
+            # Construct submission data with all updated state and random events saved
+            submission_data = {
+                "challenge_id": challenge_id,
+                "user_id": user_id,
+                "image_url": image_url,
+                "message_id": message_id,
+                "submitted_at": datetime.utcnow(),
+                "verified": is_verified,
+                "verification_result": verification_result,
+                "points_awarded": points_awarded,
+                "submission_number": submission_count + 1,
+                "is_resubmission": is_resubmission,
+                "is_duplicate": is_duplicate,
+                "character_commission": character_commission,
+                "requires_resubmission": requires_resubmission,
+                "commission_completed": commission_completed,
+                "art_critique": art_critique,
+                "golden_hour": golden_hour,
+                "curse_event": curse_event,
+                "copycat_event": copycat_event
+            }
 
             # Use upsert to handle resubmissions - replaces existing submission
             self.submissions_collection.update_one(
@@ -1990,6 +2062,7 @@ The submissions are numbered 0 to {len(submission_data) - 1}."""
                 "is_duplicate": is_duplicate,
                 "character_commission": character_commission,
                 "requires_resubmission": requires_resubmission,
+                "commission_completed": commission_completed,
                 "art_critique": art_critique,
                 "golden_hour": golden_hour,
                 "curse_event": curse_event,

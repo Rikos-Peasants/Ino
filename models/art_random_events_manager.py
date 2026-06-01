@@ -592,6 +592,19 @@ Respond in JSON format:
         except Exception as e:
             logger.error(f"Error consuming one-shot buff: {e}")
 
+    def consume_one_shot_fail_debuff(self, user_id: int):
+        """Deactivate one-shot-on-fail debuffs after they've been triggered"""
+        if not self._ensure_connected():
+            return
+        try:
+            self.debuffs_collection.update_many(
+                {"user_id": user_id, "one_shot_on_fail": True, "active": True,
+                 "expires_at": {"$gt": datetime.utcnow()}},
+                {"$set": {"active": False}}
+            )
+        except Exception as e:
+            logger.error(f"Error consuming one-shot-on-fail debuff: {e}")
+
     def clear_expired_buffs(self):
         if not self._ensure_connected():
             return
