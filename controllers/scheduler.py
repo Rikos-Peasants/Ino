@@ -64,8 +64,8 @@ class SchedulerController:
         if not self.check_historical_reactions.is_running():
             self.check_historical_reactions.start()
         
-        if not self.check_art_challenges.is_running():
-            self.check_art_challenges.start()
+        # if not self.check_art_challenges.is_running():
+        #     self.check_art_challenges.start()
         
         if not self.check_duel_challenges.is_running():
             self.check_duel_challenges.start()
@@ -108,8 +108,8 @@ class SchedulerController:
         if self.check_historical_reactions.is_running():
             self.check_historical_reactions.cancel()
         
-        if self.check_art_challenges.is_running():
-            self.check_art_challenges.cancel()
+        # if self.check_art_challenges.is_running():
+        #     self.check_art_challenges.cancel()
         
         if self.check_duel_challenges.is_running():
             self.check_duel_challenges.cancel()
@@ -758,91 +758,91 @@ class SchedulerController:
             logger.error(f"❌ Error updating scores and quests: {e}")
     
     # ==================== ART CHALLENGE TASKS ====================
-    
-    @tasks.loop(minutes=1)  # Check every minute for precise timing
-    async def check_art_challenges(self):
-        """Check for art challenge drops at specific times and handle expired challenges"""
-        try:
-            # Get the art challenge manager
-            art_manager = getattr(self.bot, 'art_challenge_manager', None)
-            art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
-            
-            if not art_manager or not art_view_manager:
-                return
-            
-            # Get the guild
-            guild = self.bot.get_guild(Config.GUILD_ID)
-            if not guild:
-                return
-            
-            # 1. First, handle any expired challenges
-            expired_challenges = art_manager.get_expired_challenges()
-            for challenge in expired_challenges:
-                try:
-                    channel_id = challenge.get("channel_id")
-                    channel = guild.get_channel(channel_id)
-                    
-                    if channel:
-                        await art_view_manager.end_challenge(channel, challenge)
-                        logger.info(f"🏁 Ended art challenge in #{channel.name}")
-                    
-                    art_manager.end_challenge(challenge.get("challenge_id"))
-                    
-                except Exception as e:
-                    logger.error(f"Error ending challenge {challenge.get('challenge_id')}: {e}")
-            
-            # 2. Check if it's time to start a NEW challenge
-            if not art_manager.is_challenge_start_time():
-                return  # Not a start time, skip
-            
-            logger.info("🎨 Challenge start time detected! Checking for new challenge drops...")
-            
-            # Get the current window info
-            window_info = art_manager.get_current_challenge_window()
-            
-            if not window_info:
-                logger.warning("No challenge window active at start time (this shouldn't happen)")
-                return
-            
-            start_hour, end_hour, channel_type, rating, channel_id = window_info
-            
-            channel = guild.get_channel(channel_id)
-            if not channel:
-                logger.error(f"Challenge channel {channel_id} not found")
-                return
-            
-            # Check if there's already an active challenge in THIS channel
-            active = art_manager.get_active_challenge(channel_id)
-            if active:
-                logger.info(f"⏭️ Already active challenge in #{channel.name}, skipping")
-                return
-            
-            # Create and post new challenge
-            logger.info(f"🎨 Creating new {channel_type.upper()} challenge (rating: {rating})")
-            challenge_data = await art_manager.create_challenge(
-                channel_id=channel_id,
-                guild_id=guild.id,
-                rating=rating
-            )
-            
-            if challenge_data:
-                message = await art_view_manager.post_challenge(channel, challenge_data)
-                if message:
-                    logger.info(f"✅ Started {channel_type.upper()} challenge in #{channel.name} at {start_hour:02d}:00 UTC (ends at {end_hour:02d}:00 UTC)")
-                else:
-                    logger.error(f"Failed to post challenge message in #{channel.name}")
-            else:
-                logger.error(f"Failed to create challenge for #{channel.name}")
-        
-        except Exception as e:
-            logger.error(f"Error in art challenge task: {e}")
-    
-    @check_art_challenges.before_loop
-    async def before_check_art_challenges(self):
-        """Wait for bot to be ready before checking art challenges"""
-        await self.bot.wait_until_ready()
-        # Add a small delay to ensure all managers are initialized
-        await asyncio.sleep(10)
+    # DISABLED - Commented out to temporarily disable image challenges
+    # @tasks.loop(minutes=1)  # Check every minute for precise timing
+    # async def check_art_challenges(self):
+    #     """Check for art challenge drops at specific times and handle expired challenges"""
+    #     try:
+    #         # Get the art challenge manager
+    #         art_manager = getattr(self.bot, 'art_challenge_manager', None)
+    #         art_view_manager = getattr(self.bot, 'art_challenge_view_manager', None)
+    #         
+    #         if not art_manager or not art_view_manager:
+    #             return
+    #         
+    #         # Get the guild
+    #         guild = self.bot.get_guild(Config.GUILD_ID)
+    #         if not guild:
+    #             return
+    #         
+    #         # 1. First, handle any expired challenges
+    #         expired_challenges = art_manager.get_expired_challenges()
+    #         for challenge in expired_challenges:
+    #             try:
+    #                 channel_id = challenge.get("channel_id")
+    #                 channel = guild.get_channel(channel_id)
+    #                 
+    #                 if channel:
+    #                     await art_view_manager.end_challenge(channel, challenge)
+    #                     logger.info(f"🏁 Ended art challenge in #{channel.name}")
+    #                 
+    #                 art_manager.end_challenge(challenge.get("challenge_id"))
+    #                 
+    #             except Exception as e:
+    #                 logger.error(f"Error ending challenge {challenge.get('challenge_id')}: {e}")
+    #         
+    #         # 2. Check if it's time to start a NEW challenge
+    #         if not art_manager.is_challenge_start_time():
+    #             return  # Not a start time, skip
+    #         
+    #         logger.info("🎨 Challenge start time detected! Checking for new challenge drops...")
+    #         
+    #         # Get the current window info
+    #         window_info = art_manager.get_current_challenge_window()
+    #         
+    #         if not window_info:
+    #             logger.warning("No challenge window active at start time (this shouldn't happen)")
+    #             return
+    #         
+    #         start_hour, end_hour, channel_type, rating, channel_id = window_info
+    #         
+    #         channel = guild.get_channel(channel_id)
+    #         if not channel:
+    #             logger.error(f"Challenge channel {channel_id} not found")
+    #             return
+    #         
+    #         # Check if there's already an active challenge in THIS channel
+    #         active = art_manager.get_active_challenge(channel_id)
+    #         if active:
+    #             logger.info(f"⏭️ Already active challenge in #{channel.name}, skipping")
+    #             return
+    #         
+    #         # Create and post new challenge
+    #         logger.info(f"🎨 Creating new {channel_type.upper()} challenge (rating: {rating})")
+    #         challenge_data = await art_manager.create_challenge(
+    #             channel_id=channel_id,
+    #             guild_id=guild.id,
+    #             rating=rating
+    #         )
+    #         
+    #         if challenge_data:
+    #             message = await art_view_manager.post_challenge(channel, challenge_data)
+    #             if message:
+    #                 logger.info(f"✅ Started {channel_type.upper()} challenge in #{channel.name} at {start_hour:02d}:00 UTC (ends at {end_hour:02d}:00 UTC)")
+    #             else:
+    #                 logger.error(f"Failed to post challenge message in #{channel.name}")
+    #         else:
+    #             logger.error(f"Failed to create challenge for #{channel.name}")
+    #     
+    #     except Exception as e:
+    #         logger.error(f"Error in art challenge task: {e}")
+    # 
+    # @check_art_challenges.before_loop
+    # async def before_check_art_challenges(self):
+    #     """Wait for bot to be ready before checking art challenges"""
+    #     await self.bot.wait_until_ready()
+    #     # Add a small delay to ensure all managers are initialized
+    #     await asyncio.sleep(10)
     
     @check_historical_reactions.before_loop
     async def before_historical_reactions_task(self):
