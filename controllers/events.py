@@ -1152,6 +1152,9 @@ class EventsController:
         """Remove Discord invite links outside the self-promotion thread and DM the user."""
         if message.channel.id == Config.SELF_PROMO_WHITELIST_THREAD_ID:
             return False
+        
+        if isinstance(message.channel, discord.Thread) and message.channel.parent_id == Config.SELF_PROMO_WHITELIST_THREAD_ID:
+            return False
 
         if not DISCORD_INVITE_REGEX.search(message.content or ""):
             return False
