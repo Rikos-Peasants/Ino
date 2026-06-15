@@ -437,6 +437,13 @@ class CommandsController:
                     await ctx.send("❌ I could not save your translation preference right now.", ephemeral=True)
                     return
 
+                events_controller = self.get_events_controller()
+                if events_controller:
+                    await events_controller._send_language_prompt_dm(
+                        user_id=ctx.author.id,
+                        guild_id=ctx.guild.id,
+                    )
+
                 await ctx.send(
                     "✅ You opted into the translation program. Non-English messages can now be translated for others.",
                     ephemeral=True,
@@ -479,6 +486,199 @@ class CommandsController:
             except Exception as e:
                 logger.error(f"Error in translation opt-out command: {e}")
                 await ctx.send("❌ An error occurred while saving your translation preference.", ephemeral=True)
+
+        @self.bot.hybrid_group(
+            name="language",
+            description="Manage the languages you speak for translation",
+            invoke_without_command=True,
+        )
+        @public_command
+        async def language_group(ctx):
+            """Show language command help."""
+            await ctx.send(
+                "Use `/language add <language>` to add a language you speak, "
+                "`/language remove <language>` to remove one, "
+                "or `/language list` to see your saved languages.",
+                ephemeral=True,
+            )
+
+        @language_group.command(name="add", description="Add a language you speak")
+        @app_commands.describe(language="Language name or code, e.g. Japanese, EN, JP")
+        @public_command
+        async def language_add_command(ctx, *, language: str):
+            """Add a language you speak so I know when to translate."""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer(ephemeral=True)
+
+                if not ctx.guild:
+                    await ctx.send("❌ This command can only be used in the server.", ephemeral=True)
+                    return
+
+                translation_manager = self.get_translation_manager()
+                if not translation_manager:
+                    await ctx.send("❌ Translation settings are not available right now.", ephemeral=True)
+                    return
+
+                preference = await translation_manager.get_user_preference(
+                    user_id=ctx.author.id,
+                    guild_id=ctx.guild.id,
+                )
+                if preference is not True:
+                    await ctx.send(
+                        "❌ You need to opt into the translation program first with `/translation opt-in`.",
+                        ephemeral=True,
+                    )
+                    return
+
+                from controllers.events import _parse_languages
+                parsed = _parse_languages(language)
+                if not parsed:
+                    await ctx.send(
+                        "❌ I couldn't recognize that language. Try something like `Japanese`, `EN`, `JP`, or `English`.",
+                        ephemeral=True,
+                    )
+                    return
+
+                current = await translation_manager.get_user_languages(ctx.author.id, ctx.guild.id)
+                merged = sorted(set(current + parsed))
+                already_had = [c for c in parsed if c in current]
+                new_ones = [c for c in parsed if c not in current]
+
+                success = await translation_manager.set_user_languages(ctx.author.id, ctx.guild.id, merged)
+                if not success:
+                    await ctx.send("❌ Could not save your languages right now.", ephemeral=True)
+                    return
+
+                parts = []
+                if new_ones:
+                    parts.append(f"Added: **{', '.join(new_ones)}**")
+                if already_had:
+                    parts.append(f"Already saved: **{', '.join(already_had)}**")
+                parts.append(f"Your languages: **{', '.join(merged)}**")
+                await ctx.send("✅ " + "\n".join(parts), ephemeral=True)
+            except Exception as e:
+                logger.error(f"Error in language add command: {e}")
+                await ctx.send("❌ An error occurred while adding your language.", ephemeral=True)
+
+        @language_group.command(name="remove", description="Remove a language you speak")
+        @app_commands.describe(language="Language name or code to remove, e.g. Japanese, JP")
+        @public_command
+        async def language_remove_command(ctx, *, language: str):
+            """Remove a language from your spoken languages."""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer(ephemeral=True)
+
+                if not ctx.guild:
+                    await ctx.send("❌ This command can only be used in the server.", ephemeral=True)
+                    return
+
+                translation_manager = self.get_translation_manager()
+                if not translation_manager:
+                    await ctx.send("❌ Translation settings are not available right now.", ephemeral=True)
+                    return
+
+                preference = await translation_manager.get_user_preference(
+                    user_id=ctx.author.id,
+                    guild_id=ctx.guild.id,
+                )
+                if preference is not True:
+                    await ctx.send(
+                        "❌ You need to opt into the translation program first with `/translation opt-in`.",
+                        ephemeral=True,
+                    )
+                    return
+
+                from controllers.events import _parse_languages
+                parsed = _parse_languages(language)
+                if not parsed:
+                    await ctx.send(
+                        "❌ I couldn't recognize that language. Try something like `Japanese`, `EN`, `JP`.",
+                        ephemeral=True,
+                    )
+                    return
+
+                current = await translation_manager.get_user_languages(ctx.author.id, ctx.guild.id)
+                if not current:
+                    await ctx.send("❌ You don't have any languages saved yet.", ephemeral=True)
+                    return
+
+                removed = [c for c in parsed if c in current]
+                kept = [c for c in current if c not in parsed]
+                if not removed:
+                    await ctx.send(
+                        f"❌ **{', '.join(parsed)}** isn't in your saved languages: **{', '.join(current)}**",
+                        ephemeral=True,
+                    )
+                    return
+
+                success = await translation_manager.set_user_languages(ctx.author.id, ctx.guild.id, kept)
+                if not success:
+                    await ctx.send("❌ Could not save your languages right now.", ephemeral=True)
+                    return
+
+                if kept:
+                    await ctx.send(
+                        f"✅ Removed: **{', '.join(removed)}**\nYour languages: **{', '.join(kept)}**",
+                        ephemeral=True,
+                    )
+                else:
+                    await ctx.send(
+                        f"✅ Removed: **{', '.join(removed)}**\nYour language list is now empty. "
+                        "I won't translate any messages until you add languages with `/language add`.",
+                        ephemeral=True,
+                    )
+            except Exception as e:
+                logger.error(f"Error in language remove command: {e}")
+                await ctx.send("❌ An error occurred while removing your language.", ephemeral=True)
+
+        @language_group.command(name="list", description="Show your saved languages")
+        @public_command
+        async def language_list_command(ctx):
+            """Show which languages I'll translate for you."""
+            try:
+                if hasattr(ctx, 'defer'):
+                    await ctx.defer(ephemeral=True)
+
+                if not ctx.guild:
+                    await ctx.send("❌ This command can only be used in the server.", ephemeral=True)
+                    return
+
+                translation_manager = self.get_translation_manager()
+                if not translation_manager:
+                    await ctx.send("❌ Translation settings are not available right now.", ephemeral=True)
+                    return
+
+                preference = await translation_manager.get_user_preference(
+                    user_id=ctx.author.id,
+                    guild_id=ctx.guild.id,
+                )
+                if preference is not True:
+                    await ctx.send(
+                        "📭 You haven't opted into the translation program yet. "
+                        "Use `/translation opt-in` first, then use `/language add` to add languages.",
+                        ephemeral=True,
+                    )
+                    return
+
+                current = await translation_manager.get_user_languages(ctx.author.id, ctx.guild.id)
+                if not current:
+                    await ctx.send(
+                        "📭 You haven't set any languages yet. "
+                        "Use `/language add` to add the languages you speak.",
+                        ephemeral=True,
+                    )
+                    return
+
+                await ctx.send(
+                    f"🌐 I'll translate messages in: **{', '.join(current)}**\n"
+                    f"Use `/language add` or `/language remove` to update your list.",
+                    ephemeral=True,
+                )
+            except Exception as e:
+                logger.error(f"Error in language list command: {e}")
+                await ctx.send("❌ An error occurred while fetching your languages.", ephemeral=True)
 
         @self.bot.hybrid_command(
             name="fixytcount",

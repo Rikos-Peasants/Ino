@@ -336,6 +336,126 @@ class TranslationManager:
             logger.error(f"Error saving translation preference: {e}")
             return False
 
+    async def set_user_languages(
+        self,
+        user_id: int,
+        guild_id: int,
+        languages: list[str],
+    ) -> bool:
+        """Save the languages a user speaks."""
+        if self.preference_collection is None:
+            return True
+
+        try:
+            self.preference_collection.update_one(
+                {
+                    "guild_id": str(guild_id),
+                    "user_id": str(user_id),
+                },
+                {
+                    "$set": {
+                        "languages": languages,
+                        "languages_updated_at": datetime.utcnow(),
+                    }
+                },
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error saving user languages: {e}")
+            return False
+
+    async def get_user_languages(self, user_id: int, guild_id: int) -> list[str]:
+        """Return the saved language list for a user, or empty list."""
+        if self.preference_collection is None:
+            return []
+
+        try:
+            doc = self.preference_collection.find_one({
+                "guild_id": str(guild_id),
+                "user_id": str(user_id),
+            })
+            if not doc:
+                return []
+            return doc.get("languages") or []
+        except Exception as e:
+            logger.error(f"Error reading user languages: {e}")
+            return []
+
+    async def should_prompt_for_languages(self, user_id: int, guild_id: int) -> bool:
+        """Check if a user should be prompted for languages (not set and not already prompted)."""
+        if self.preference_collection is None:
+            return False
+
+        try:
+            doc = self.preference_collection.find_one({
+                "guild_id": str(guild_id),
+                "user_id": str(user_id),
+            })
+            if not doc:
+                return False
+            if not doc.get("opted_in"):
+                return False
+            languages = doc.get("languages") or []
+            if languages:
+                return False
+            if doc.get("languages_prompted_at"):
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"Error checking language prompt status: {e}")
+            return False
+
+    async def mark_language_prompted(self, user_id: int, guild_id: int) -> None:
+        """Mark that a user has been prompted for languages."""
+        if self.preference_collection is None:
+            return
+
+        try:
+            self.preference_collection.update_one(
+                {
+                    "guild_id": str(guild_id),
+                    "user_id": str(user_id),
+                },
+                {
+                    "$set": {
+                        "languages_prompted_at": datetime.utcnow(),
+                    }
+                },
+            )
+        except Exception as e:
+            logger.error(f"Error marking language prompt sent: {e}")
+
+    def get_opted_in_users_without_languages(self) -> list[dict]:
+        """Return all unique (user_id, guild_id) pairs where the user opted in
+        but hasn't set their languages yet and hasn't been prompted yet."""
+        if self.preference_collection is None:
+            return []
+
+        try:
+            pipeline = [
+                {"$match": {"opted_in": True}},
+                {"$match": {
+                    "languages_prompted_at": {"$exists": False},
+                }},
+                {"$match": {
+                    "$or": [
+                        {"languages": {"$exists": False}},
+                        {"languages": {"$eq": []}},
+                    ]
+                }},
+                {"$group": {
+                    "_id": {"user_id": "$user_id", "guild_id": "$guild_id"},
+                    "user_id": {"$first": "$user_id"},
+                    "guild_id": {"$first": "$guild_id"},
+                    "user_name": {"$first": "$user_name"},
+                }},
+                {"$project": {"_id": 0, "user_id": 1, "guild_id": 1, "user_name": 1}},
+            ]
+            return list(self.preference_collection.aggregate(pipeline))
+        except Exception as e:
+            logger.error(f"Error querying users without languages: {e}")
+            return []
+
     def _is_internet_expression(self, text: str) -> bool:
         """Return True if the text is entirely internet slang/laughter that should never be translated."""
         words = re.findall(r"[A-Za-z]+", text)

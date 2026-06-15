@@ -303,6 +303,13 @@ class RikoBot(commands.Bot):
         
         # Automatically scan and store all historical images
         await self.scan_historical_images()
+
+        # Send language prompt DMs to opted-in users who haven't set their languages yet
+        if self.events_controller:
+            try:
+                asyncio.create_task(self.events_controller._send_language_prompt_all_users())
+            except Exception as e:
+                logger.error(f"Error sending language prompt DMs: {e}")
         
         # Start status cycling (only if not already running)
         if not self.cycle_status.is_running():

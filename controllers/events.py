@@ -117,6 +117,10 @@ class TranslationConsentView(discord.ui.View):
             guild_id=interaction.guild.id,
         )
         await self.controller._process_auto_translate_message(self.source_message)
+        await self.controller._send_language_prompt_dm(
+            user_id=interaction.user.id,
+            guild_id=interaction.guild.id,
+        )
         await interaction.followup.send("You opted into the translation program.", ephemeral=True)
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.gray)
@@ -324,6 +328,12 @@ class TranslationResponseView(discord.ui.View):
 
         self.source_language = retry_result.source_language
         self.translated_text = retry_result.translated_text
+        if retry_result.translated_text == self.original_content:
+            await interaction.followup.send(
+                "Retry produced the same text. No change made.",
+                ephemeral=True,
+            )
+            return
         if interaction.message:
             await interaction.message.edit(
                 content=self.controller._format_auto_translation_reply(
@@ -517,6 +527,130 @@ class WrongLanguageModal(discord.ui.Modal):
             interaction,
             str(self.actual_language.value).strip(),
         )
+
+
+LANGUAGE_CODE_MAP = {
+    "en": "EN", "english": "EN",
+    "jp": "JP", "japan": "JP", "japanese": "JP",
+    "fr": "FR", "french": "FR",
+    "es": "ES", "spanish": "ES",
+    "pt": "PT", "portuguese": "PT",
+    "de": "DE", "german": "DE", "deutsch": "DE",
+    "it": "IT", "italian": "IT",
+    "nl": "NL", "dutch": "NL",
+    "ru": "RU", "russian": "RU",
+    "ar": "AR", "arabic": "AR",
+    "hi": "HI", "hindi": "HI",
+    "ko": "KO", "korean": "KO",
+    "zh": "ZH", "chinese": "ZH",
+    "tr": "TR", "turkish": "TR",
+    "ta": "TA", "tamil": "TA",
+    "si": "SI", "sinhala": "SI",
+    "th": "TH", "thai": "TH",
+    "vi": "VI", "vietnamese": "VI",
+    "pl": "PL", "polish": "PL",
+    "sv": "SV", "swedish": "SV",
+    "da": "DA", "danish": "DA",
+    "fi": "FI", "finnish": "FI",
+    "nb": "NB", "no": "NB", "norwegian": "NB",
+    "cs": "CS", "czech": "CS",
+    "hu": "HU", "hungarian": "HU",
+    "ro": "RO", "romanian": "RO",
+    "el": "EL", "greek": "EL",
+    "he": "IW", "iw": "IW", "hebrew": "IW",
+    "id": "ID", "indonesian": "ID",
+    "ms": "MS", "malay": "MS",
+    "fil": "FIL", "tagalog": "FIL",
+    "uk": "UK", "ukrainian": "UK",
+}
+
+
+def _parse_languages(raw: str) -> list[str]:
+    """Parse a user-provided language string into ISO codes."""
+    codes = set()
+    for part in raw.replace(",", " ").split():
+        part = part.strip().lower()
+        if part in LANGUAGE_CODE_MAP:
+            codes.add(LANGUAGE_CODE_MAP[part])
+    return sorted(codes)
+
+
+def _normalize_language_code(code: str) -> str:
+    """Normalize language codes to handle deprecated aliases (e.g. HE → IW)."""
+    ALIASES = {"HE": "IW"}
+    return ALIASES.get(code.upper(), code.upper())
+
+
+class LanguageModal(discord.ui.Modal):
+    """Collect the languages a user speaks."""
+
+    def __init__(self, controller: "EventsController", user_id: int, guild_id: int):
+        super().__init__(title="What languages do you speak?")
+        self.controller = controller
+        self.target_user_id = user_id
+        self.target_guild_id = guild_id
+        self.languages_input = discord.ui.TextInput(
+            label="Languages you speak",
+            style=discord.TextStyle.short,
+            min_length=1,
+            max_length=200,
+            required=True,
+            placeholder="e.g. EN, JP, ES  or  English, Japanese, Spanish",
+        )
+        self.add_item(self.languages_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.user.id != self.target_user_id:
+            await interaction.response.send_message("This isn't your language prompt.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        raw = str(self.languages_input.value).strip()
+        parsed = _parse_languages(raw)
+        if not parsed:
+            await interaction.followup.send(
+                "I couldn't recognize any languages. Try something like: `EN, JP, ES` or `English, Japanese, Spanish`",
+                ephemeral=True,
+            )
+            return
+
+        current = await self.controller.translation_manager.get_user_languages(
+            self.target_user_id, self.target_guild_id,
+        )
+        merged = sorted(set(current + parsed))
+
+        success = await self.controller.translation_manager.set_user_languages(
+            user_id=self.target_user_id,
+            guild_id=self.target_guild_id,
+            languages=merged,
+        )
+        if not success:
+            await interaction.followup.send("Could not save your languages right now.", ephemeral=True)
+            return
+
+        await interaction.followup.send(
+            f"✅ Saved! I'll translate messages in: **{', '.join(merged)}**\n"
+            f"Use `/language add` or `/language remove` anytime to update your list.",
+            ephemeral=True,
+        )
+
+
+class LanguagePromptView(discord.ui.View):
+    """DM prompt with a button to open the language modal."""
+
+    def __init__(self, controller: "EventsController", target_user_id: int, guild_id: int):
+        super().__init__(timeout=24 * 60 * 60)
+        self.controller = controller
+        self.target_user_id = target_user_id
+        self.guild_id = guild_id
+
+    @discord.ui.button(label="Set Your Languages ✏️", style=discord.ButtonStyle.primary)
+    async def set_languages_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.target_user_id:
+            await interaction.response.send_message("This isn't your language prompt.", ephemeral=True)
+            return
+
+        await interaction.response.send_modal(LanguageModal(self.controller, self.target_user_id, self.guild_id))
 
 
 class EventsController:
@@ -1296,6 +1430,9 @@ class EventsController:
             if not result or not result.translated_text:
                 return
 
+            if result.translated_text == content:
+                return
+
             reply_text = f"Translated EN to {lang_code.upper()}: {result.translated_text}"
             if len(reply_text) > 2000:
                 reply_text = reply_text[:1997] + "..."
@@ -1321,6 +1458,18 @@ class EventsController:
             result = await self.translation_manager.translate_to_english(content, opted_in=True)
             if not result:
                 return
+
+            if result.translated_text == content:
+                return
+
+            if result.source_language:
+                user_languages = await self.translation_manager.get_user_languages(
+                    message.author.id, message.guild.id,
+                )
+                if user_languages and _normalize_language_code(
+                    result.source_language
+                ) not in user_languages:
+                    return
 
             view = TranslationResponseView(
                 controller=self,
@@ -1378,6 +1527,66 @@ class EventsController:
         )
         embed.set_footer(text="You can change this any time with /translation opt-in or /translation opt-out")
         return embed
+
+    def _format_language_prompt_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title="🌐 Welcome to the Translation Program!",
+            description=(
+                "Hey there! I'm Ino — your friendly neighborhood translator bot.\n\n"
+                "To make sure I only translate what actually needs translating, "
+                "tell me **which languages you speak**.\n\n"
+                "For example, if you speak **Japanese** and **English**, I'll know to "
+                "translate your Japanese messages but leave your English ones alone. "
+                "I won't bother you with false alarms in languages you don't know.\n\n"
+                "Click the button below and type something like:\n"
+                "`EN, JP, ES` or `English, Japanese, Spanish`"
+            ),
+            color=discord.Color.brand_green(),
+        )
+        embed.add_field(
+            name="🔧 Need to update later?",
+            value="Use `/language add` or `/language remove` anytime to change your list.",
+            inline=False,
+        )
+        embed.set_footer(text="Only you can see this — your languages are kept private.")
+        return embed
+
+    async def _send_language_prompt_dm(self, user_id: int, guild_id: int) -> None:
+        """Send a DM asking the user what languages they speak."""
+        if not await self.translation_manager.should_prompt_for_languages(user_id, guild_id):
+            return
+
+        user = self.bot.get_user(user_id)
+        if not user:
+            try:
+                user = await self.bot.fetch_user(user_id)
+            except (discord.NotFound, discord.HTTPException):
+                return
+
+        try:
+            view = LanguagePromptView(controller=self, target_user_id=user_id, guild_id=guild_id)
+            await user.send(embed=self._format_language_prompt_embed(), view=view)
+            await self.translation_manager.mark_language_prompted(user_id, guild_id)
+        except discord.Forbidden:
+            logger.debug(f"Cannot DM user {user_id} for language prompt")
+            await self.translation_manager.mark_language_prompted(user_id, guild_id)
+        except Exception as e:
+            logger.error(f"Error sending language prompt DM to {user_id}: {e}")
+
+    async def _send_language_prompt_all_users(self) -> None:
+        """Send language prompt DMs to all opted-in users without languages set."""
+        users = self.translation_manager.get_opted_in_users_without_languages()
+        if not users:
+            logger.info("No users without language preferences found")
+            return
+
+        logger.info(f"Sending language prompt DMs to {len(users)} users")
+        for entry in users:
+            await self._send_language_prompt_dm(
+                user_id=int(entry["user_id"]),
+                guild_id=int(entry["guild_id"]),
+            )
+            await asyncio.sleep(1)
 
     async def _is_translation_moderator(self, interaction: discord.Interaction) -> bool:
         try:
