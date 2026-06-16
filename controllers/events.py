@@ -1462,7 +1462,7 @@ class EventsController:
             if result.translated_text == content:
                 return
 
-            if result.source_language:
+            if result.source_language and result.provider != "cipher":
                 user_languages = await self.translation_manager.get_user_languages(
                     message.author.id, message.guild.id,
                 )
