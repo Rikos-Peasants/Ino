@@ -531,7 +531,7 @@ class WrongLanguageModal(discord.ui.Modal):
 
 LANGUAGE_CODE_MAP = {
     "en": "EN", "english": "EN",
-    "jp": "JP", "japan": "JP", "japanese": "JP",
+    "ja": "JA", "jp": "JA", "japan": "JA", "japanese": "JA",
     "fr": "FR", "french": "FR",
     "es": "ES", "spanish": "ES",
     "pt": "PT", "portuguese": "PT",
