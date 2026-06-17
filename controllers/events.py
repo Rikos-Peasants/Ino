@@ -576,8 +576,8 @@ def _parse_languages(raw: str) -> list[str]:
 
 
 def _normalize_language_code(code: str) -> str:
-    """Normalize language codes to handle deprecated aliases (e.g. HE → IW)."""
-    ALIASES = {"HE": "IW"}
+    """Normalize language codes (handles deprecated aliases like HE/IW, JA/JP)."""
+    ALIASES = {"HE": "IW", "JA": "JP"}
     return ALIASES.get(code.upper(), code.upper())
 
 
@@ -1466,10 +1466,11 @@ class EventsController:
                 user_languages = await self.translation_manager.get_user_languages(
                     message.author.id, message.guild.id,
                 )
-                if user_languages and _normalize_language_code(
-                    result.source_language
-                ) not in user_languages:
-                    return
+                if user_languages:
+                    detected_norm = _normalize_language_code(result.source_language)
+                    user_norm = {_normalize_language_code(l) for l in user_languages}
+                    if detected_norm not in user_norm:
+                        return
 
             view = TranslationResponseView(
                 controller=self,
