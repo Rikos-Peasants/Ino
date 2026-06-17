@@ -1652,15 +1652,21 @@ class EventsController:
                     
         if has_unspoilered_media:
             try:
-                await message.author.send(
-                    "Hey there! 🚨 I noticed you just posted media in an NSFW channel without spoilering it.\n\n"
-                    "To **FOLLOW** the server rules and keep the community safe, **YOU MUST** spoiler any images or videos you post in these channels.\n\n"
-                    "**Don't know how to add a spoiler tag?**\n"
-                    "Check out this quick guide: https://support.discord.com/hc/en-us/articles/360022320632-Spoiler-Tags"
-                )
-                logger.info(f"Warned {message.author.display_name} about unspoilered image in NSFW channel")
+                await message.delete()
+                logger.info(f"Deleted unspoilered media from {message.author} in #{message.channel.name}")
             except discord.Forbidden:
-                logger.warning(f"Could not DM {message.author.display_name} about NSFW spoiler rule")
+                logger.warning(f"Missing permission to delete unspoilered media from {message.author} in #{message.channel.name}")
+            except discord.NotFound:
+                pass
+
+            try:
+                await message.author.send(
+                    "Hey there! 🚨 Your media was deleted because it wasn't spoilered in an NSFW channel.\n\n"
+                    "Please **repost it with a spoiler tag** next time.\n"
+                    "Quick guide: https://support.discord.com/hc/en-us/articles/360022320632-Spoiler-Tags"
+                )
+            except discord.Forbidden:
+                logger.debug(f"Could not DM {message.author} about NSFW spoiler deletion")
 
     def _normalize_repeated_message_content(self, content: str) -> str:
         """Normalize message text for repeated-spam detection."""
