@@ -8,6 +8,7 @@ Discord login, a small JSON API, and the Ko-fi webhook receiver.
 """
 
 import asyncio
+import hashlib
 import html
 import logging
 import os
@@ -65,6 +66,7 @@ class RikoWebServer:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._progress_cache: Optional[tuple] = None
+        self._asset_version = self._compute_asset_version()
         self._setup_routes()
 
     # ------------------------------------------------------------------
@@ -86,10 +88,31 @@ class RikoWebServer:
         if STATIC_DIR.is_dir():
             self.app.router.add_static("/static/", STATIC_DIR, name="static")
 
+    @staticmethod
+    def _compute_asset_version() -> str:
+        """Short fingerprint of the CSS and JS, recomputed each boot.
+
+        Cloudflare fronts riko.ado.wtf and caches static assets for four
+        hours, so without a changing URL a deploy's styles would not reach
+        anyone until that expired. Appending this to asset links makes each
+        build a distinct URL and sidesteps the cache entirely.
+        """
+        digest = hashlib.sha256()
+        for path in sorted(STATIC_DIR.rglob("*")):
+            if path.suffix.lower() not in (".css", ".js"):
+                continue
+            try:
+                digest.update(path.read_bytes())
+            except OSError:
+                continue
+        return digest.hexdigest()[:10]
+
     def _template(self, name: str) -> str:
         if name not in self._templates:
             path = TEMPLATE_DIR / name
-            self._templates[name] = path.read_text(encoding="utf-8")
+            self._templates[name] = path.read_text(encoding="utf-8").replace(
+                "{{V}}", self._asset_version
+            )
         return self._templates[name]
 
     NAV_LINKS = [

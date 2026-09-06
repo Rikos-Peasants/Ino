@@ -10,8 +10,8 @@
 <meta property="og:description" content="${{RAISED}} of ${{GOAL}} raised. Riko has opinions about it.">
 <meta property="og:type" content="website">
 <link rel="icon" href="/static/img/riko-greet.png">
-<link rel="stylesheet" href="/static/css/riko.css">
-<link rel="stylesheet" href="/static/css/donations.css">
+<link rel="stylesheet" href="/static/css/riko.css?v={{V}}">
+<link rel="stylesheet" href="/static/css/donations.css?v={{V}}">
 </head>
 <body class="dono">
 
@@ -125,7 +125,7 @@
 
 <script id="riko-data" type="application/json">{"raised": {{RAISED_RAW}}, "goal": {{GOAL_RAW}}, "percent": {{PERCENT_RAW}}, "count": {{COUNT}}}</script>
 <script>window.__RIKO__ = JSON.parse(document.getElementById("riko-data").textContent);</script>
-<script src="/static/js/donations.js" defer></script>
-<script src="/static/js/site.js" defer></script>
+<script src="/static/js/donations.js?v={{V}}" defer></script>
+<script src="/static/js/site.js?v={{V}}" defer></script>
 </body>
 </html>
