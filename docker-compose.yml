@@ -10,7 +10,13 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
-    
+      - WEB_PORT=3000
+      - WEB_HOST=0.0.0.0
+
+    # Web server: leaderboards, donations page, Ko-fi webhook receiver
+    expose:
+      - "3000"
+
     # Mount the .env file for configuration
     env_file:
       - .env
@@ -29,13 +35,14 @@ services:
           memory: 256M
           cpus: '0.25'
     
-    # Health check
+    # Health check. Asks the web server rather than listing processes, which
+    # the previous command did without checking the result.
     healthcheck:
-      test: ["CMD", "python", "-c", "import psutil; [p for p in psutil.process_iter() if 'python' in p.name().lower() and 'bot.py' in ' '.join(p.cmdline())]"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 25s
     
     # Logging configuration
     logging:

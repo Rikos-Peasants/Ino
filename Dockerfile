@@ -4,9 +4,14 @@ FROM python:3.13-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies.
+# fonts-dejavu-core is required by Pillow to draw the donation progress bar;
+# the slim image ships no fonts at all and the bar falls back to an unreadable
+# bitmap face without it. curl is used by the healthcheck below.
 RUN apt-get update && apt-get install -y \
     gcc \
+    curl \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better Docker layer caching
@@ -23,12 +28,13 @@ RUN useradd --create-home --shell /bin/bash riko && \
     chown -R riko:riko /app
 USER riko
 
-# Expose port (not needed for Discord bot but good practice)
-EXPOSE 8858
+# Web server (leaderboards, donations page, Ko-fi webhook)
+EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import psutil; [p for p in psutil.process_iter() if 'python' in p.name().lower() and 'bot.py' in ' '.join(p.cmdline())]" || exit 1
+# Health check. The old version listed processes and discarded the result, so
+# it passed even when the bot had crashed. This one asks the web server.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=25s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:${WEB_PORT:-3000}/healthz || exit 1
 
 # Run the bot
 CMD ["python", "bot.py"] 
