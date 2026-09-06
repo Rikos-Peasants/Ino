@@ -352,6 +352,15 @@ class RikoBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error sending language prompt DMs: {e}")
         
+        # Make sure a goal row exists so the website renders from the database
+        # rather than the in-memory fallback before anyone runs /setup-dono.
+        if self.donation_manager:
+            try:
+                goal = await self.donation_manager.ensure_default_goal()
+                logger.info(f"✅ Active donation goal: {goal.get('title')} (${goal.get('target_usd')})")
+            except Exception as e:
+                logger.error(f"Error ensuring default donation goal: {e}")
+
         # Keep the donation progress bar current even if a webhook was missed
         if self.donation_controller:
             try:
