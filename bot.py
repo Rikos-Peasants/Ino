@@ -339,11 +339,13 @@ class RikoBot(commands.Bot):
             logger.info("Started scheduled tasks for best image posting")
             logger.info("Best images will be posted back to their original channels")
         
-        # Check and award achievements for all users on startup
-        await self.check_all_achievements_on_startup()
-        
-        # Automatically scan and store all historical images
-        await self.scan_historical_images()
+        # Both of these walk hundreds of users and thousands of messages using
+        # synchronous pymongo calls. Awaiting them here held the event loop for
+        # around two minutes, during which the bot ignored commands and the web
+        # server took 19 seconds to answer a request that normally takes 0.2.
+        # They run in the background instead and report when they finish.
+        asyncio.create_task(self.check_all_achievements_on_startup())
+        asyncio.create_task(self.scan_historical_images())
 
         # Send language prompt DMs to opted-in users who haven't set their languages yet
         if self.events_controller:
@@ -478,8 +480,16 @@ class RikoBot(commands.Bot):
             # Get all users who have posted images (they're in the leaderboard)
             from models.mongo_leaderboard_manager import MongoLeaderboardManager
             if isinstance(self.leaderboard_manager, MongoLeaderboardManager):
-                # Get all user IDs first (lightweight query)
-                all_users = list(self.leaderboard_manager.collection.find({}, {"user_id": 1, "user_name": 1}))
+                # Get all user IDs first (lightweight query). Run it in a
+                # thread so the driver's blocking round trip does not stall
+                # the gateway heartbeat or the web server.
+                all_users = await asyncio.to_thread(
+                    lambda: list(
+                        self.leaderboard_manager.collection.find(
+                            {}, {"user_id": 1, "user_name": 1}
+                        )
+                    )
+                )
                 total_user_count = len(all_users)
                 
                 logger.info(f"   Found {total_user_count} users to check")
@@ -521,6 +531,12 @@ class RikoBot(commands.Bot):
                         except Exception as e:
                             logger.error(f"   ❌ Error checking achievements for user {user_id}: {e}")
                             continue
+
+                        # Hand the loop back between users, not just between
+                        # chunks. check_achievements issues several blocking
+                        # queries, so ten of them back to back is a visible
+                        # stall for everything else on the loop.
+                        await asyncio.sleep(0)
 
                     # Yield control back to the event loop after each chunk
                     await asyncio.sleep(0.1)
