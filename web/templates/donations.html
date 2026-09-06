@@ -14,21 +14,8 @@
 <link rel="stylesheet" href="/static/css/donations.css">
 </head>
 <body class="dono">
-<a class="skip-link" href="#terms">Skip to the details</a>
 
-<header class="nav">
-  <a class="brand" href="/">
-    <img src="/static/img/riko-greet.png" alt="" width="32" height="32">
-    <span>Riko</span>
-  </a>
-  <nav aria-label="Primary">
-    <a href="/">Home</a>
-    <a href="/leaderboard">Leaderboard</a>
-    <a href="/donations" aria-current="page">Donations</a>
-    <a href="/me">You</a>
-  </nav>
-  <a class="btn btn--sm" href="{{KOFI_URL}}" rel="noopener" target="_blank">Donate</a>
-</header>
+<!--NAV-->
 
 <main>
 
@@ -139,5 +126,6 @@
 <script id="riko-data" type="application/json">{"raised": {{RAISED_RAW}}, "goal": {{GOAL_RAW}}, "percent": {{PERCENT_RAW}}, "count": {{COUNT}}}</script>
 <script>window.__RIKO__ = JSON.parse(document.getElementById("riko-data").textContent);</script>
 <script src="/static/js/donations.js" defer></script>
+<script src="/static/js/site.js" defer></script>
 </body>
 </html>

@@ -78,42 +78,323 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.06; margin: 0; }
 .skip-link:focus { left: 0; }
 
 .wrap { max-width: 1140px; margin: 0 auto; padding: 0 var(--pad); }
-.section { padding: 4.5rem 0; }
+/* padding-block, not the shorthand: `.section.wrap` would
+   otherwise lose the horizontal padding .wrap sets. */
+.section { padding-block: 4.5rem; }
 
-/* ---------------------------------------------------------------- nav */
+/* ---------------------------------------------------------------- header
+   Desktop is a single glass bar. Below 880px the links collapse into a
+   full-screen drawer, because brand plus links plus a button overflowed a
+   360px viewport and put a horizontal scrollbar on every page. */
 .nav {
   position: sticky;
   top: 0;
-  z-index: 50;
-  height: var(--nav-h);
+  z-index: 60;
+  background: rgba(6, 4, 5, 0.72);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-bottom: 1px solid transparent;
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.25s ease, border-color 0.25s ease;
+}
+.nav.is-scrolled {
+  background: rgba(4, 2, 3, 0.88);
+  border-bottom-color: var(--line);
+}
+/* Gets out of the way going down, returns on any upward scroll. */
+.nav.is-hidden { transform: translateY(-100%); }
+
+.nav-inner {
+  min-height: var(--nav-h);
+  max-width: 1240px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 2rem;
+  gap: 1.25rem;
   padding: 0 var(--pad);
-  background: rgba(0, 0, 0, 0.78);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--line-soft);
 }
+
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.65rem;
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1.06rem;
   letter-spacing: -0.02em;
   color: var(--ink);
   text-decoration: none;
+  flex: none;
 }
-.brand img { border-radius: 6px; }
-.nav nav { margin-left: auto; display: flex; gap: 1.75rem; }
-.nav nav a {
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: linear-gradient(150deg, rgba(173, 20, 87, 0.35), rgba(173, 20, 87, 0.05));
+  border: 1px solid rgba(216, 42, 117, 0.3);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.brand-mark img { width: 30px; height: 30px; border-radius: 8px; display: block; }
+.brand:hover .brand-mark { border-color: var(--accent-bright); transform: rotate(-4deg); }
+
+.nav-links { margin-left: auto; display: flex; gap: 0.2rem; }
+.nav-links a {
+  position: relative;
   color: var(--ink-soft);
   text-decoration: none;
   font-size: 0.94rem;
-  transition: color 0.15s ease;
+  font-weight: 500;
+  /* Vertical padding is what gets these to a 44px touch target. */
+  padding: 0.7rem 0.9rem;
+  border-radius: 9px;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-.nav nav a:hover,
-.nav nav a[aria-current="page"] { color: var(--ink); }
+.nav-links a:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.nav-links a[aria-current="page"] { color: var(--ink); }
+/* Underline marks the current page without shifting layout. */
+.nav-links a[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 0.9rem;
+  right: 0.9rem;
+  bottom: 0.35rem;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-bright);
+}
+
+.nav-end { display: flex; align-items: center; gap: 0.6rem; flex: none; }
+.nav-login {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.7rem 0.85rem;
+  border-radius: 9px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.nav-login:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+
+/* Signed-in chip: Discord avatar, with the name alongside where there is room. */
+.nav-me {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.28rem 0.8rem 0.28rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--ink-soft);
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+  max-width: 200px;
+}
+.nav-me:hover, .nav-me.is-current {
+  border-color: rgba(216, 42, 117, 0.55);
+  background: rgba(173, 20, 87, 0.12);
+  color: var(--ink);
+}
+.nav-me img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--surface-2);
+  object-fit: cover;
+}
+.nav-me-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Live goal readout, doubling as the header's bottom hairline. */
+.nav-progress { height: 2px; background: rgba(255, 255, 255, 0.05); }
+.nav-progress i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  box-shadow: 0 0 12px rgba(216, 42, 117, 0.65);
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---------------------------------------------------------------- burger */
+.nav-burger {
+  display: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+}
+.nav-burger span {
+  position: absolute;
+  left: 12px;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+.nav-burger span:nth-child(1) { top: 15px; }
+.nav-burger span:nth-child(2) { top: 21px; }
+.nav-burger span:nth-child(3) { top: 27px; }
+.nav-burger[aria-expanded="true"] span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.nav-burger[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.nav-burger[aria-expanded="true"] span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+/* ---------------------------------------------------------------- drawer */
+.drawer { position: fixed; inset: 0; z-index: 70; }
+.drawer[hidden] { display: none; }
+.drawer-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+.drawer.is-open .drawer-scrim { opacity: 1; }
+
+.drawer-panel {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(400px, 88vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom));
+  background: linear-gradient(190deg, #14090f 0%, #060304 62%);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateX(100%);
+  transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.drawer.is-open .drawer-panel { transform: none; }
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0 1rem;
+}
+.drawer-title {
+  font-size: 0.76rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.drawer-x {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.drawer-x:hover { border-color: var(--accent); }
+
+.drawer-nav { display: flex; flex-direction: column; gap: 0.35rem; }
+.drawer-nav a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  text-decoration: none;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.025);
+  /* Links stagger in behind the panel. --i is set per item server side. */
+  opacity: 0;
+  transform: translateX(18px);
+  transition: opacity 0.3s ease, transform 0.3s ease,
+              border-color 0.18s ease, background 0.18s ease;
+  transition-delay: calc(var(--i, 0) * 45ms + 90ms);
+}
+.drawer.is-open .drawer-nav a { opacity: 1; transform: none; }
+.drawer-nav a:active { background: rgba(255, 255, 255, 0.06); }
+.drawer-nav a[aria-current="page"] {
+  border-color: rgba(216, 42, 117, 0.5);
+  background: rgba(173, 20, 87, 0.16);
+}
+.drawer-label { font-size: 1.12rem; font-weight: 650; letter-spacing: -0.02em; }
+.drawer-hint { font-size: 0.8rem; color: var(--ink-soft); }
+
+.drawer-account { margin-top: 0.75rem; }
+.drawer-me {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  text-decoration: none;
+  color: var(--ink);
+  opacity: 0;
+  transform: translateX(18px);
+  transition: opacity 0.3s ease, transform 0.3s ease, border-color 0.18s ease;
+  transition-delay: calc(var(--i, 0) * 45ms + 90ms);
+}
+.drawer.is-open .drawer-me { opacity: 1; transform: none; }
+.drawer-me:hover { border-color: var(--accent); color: var(--ink); }
+.drawer-me img { width: 48px; height: 48px; border-radius: 50%; flex: none; object-fit: cover; }
+.drawer-me span { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.drawer-me strong { font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer-discord {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 13px;
+  background: #5865f2;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.3rem;
+}
+.drawer-out {
+  display: block;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.drawer-out:hover { color: var(--accent-text); }
+
+.drawer-goal {
+  margin-top: auto;
+  padding-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.drawer-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.drawer-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+}
+.drawer-pct { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); }
+.drawer-donate { margin-top: 0.9rem; text-align: center; }
+
+body.drawer-open { overflow: hidden; }
 
 /* ---------------------------------------------------------------- buttons */
 .btn {
@@ -255,7 +536,7 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.06; margin: 0; }
   margin-bottom: 1.5rem;
 }
 .section-head h2 { font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 700; }
-.section-head a { font-size: 0.9rem; text-decoration: none; }
+.section-head a { font-size: 0.9rem; text-decoration: none; padding: 0.6rem 0; }
 
 /* ---------------------------------------------------------------- mini board */
 .mini-board { list-style: none; margin: 0; padding: 0; }
@@ -322,6 +603,79 @@ table.board td.rank { font-family: var(--font-mono); color: var(--ink-soft); wid
 table.board tbody tr:nth-child(-n+3) td.rank { color: var(--accent-text); font-weight: 700; }
 table.board td.name { font-weight: 500; }
 table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem 0; }
+
+/* ---------------------------------------------------------------- reveal */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+[data-reveal].is-in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal] { opacity: 1; transform: none; }
+}
+
+/* ---------------------------------------------------------------- steps */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  counter-reset: step;
+}
+.steps li {
+  position: relative;
+  padding: 1.75rem 1.5rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.step-n {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 1rem;
+  border-radius: 10px;
+  background: rgba(173, 20, 87, 0.18);
+  border: 1px solid rgba(216, 42, 117, 0.4);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.steps h3 { font-size: 1.08rem; font-weight: 700; margin: 0 0 0.45rem; }
+.steps p { margin: 0; color: var(--ink-soft); font-size: 0.94rem; }
+
+/* ---------------------------------------------------------------- cast grid */
+.cast-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1.25rem;
+}
+.cast-grid li {
+  padding: 1.75rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+.cast-grid li:hover { border-color: var(--accent); transform: translateY(-3px); }
+.cast-grid img {
+  width: 88px;
+  height: 88px;
+  border-radius: 14px;
+  object-fit: cover;
+  background: var(--surface-2);
+  margin-bottom: 1rem;
+}
+.cast-grid h3 { font-size: 1.15rem; font-weight: 700; margin: 0 0 0.45rem; }
+.cast-grid p { margin: 0; color: var(--ink-soft); font-size: 0.94rem; }
 
 /* ---------------------------------------------------------------- profile */
 .profile {
@@ -391,15 +745,120 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
   flex-wrap: wrap;
   gap: 1rem 2rem;
 }
-.foot a { color: var(--ink-soft); text-decoration: none; }
+.foot a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  /* Padded so footer links are a real touch target, not a 22px sliver. */
+  padding: 0.5rem 0;
+}
 .foot a:hover { color: var(--accent-text); }
 
+/* ---------------------------------------------------------------- tablet */
 @media (max-width: 880px) {
-  .hero { grid-template-columns: 1fr; padding-top: 2.5rem; }
-  .hero-art { order: -1; max-width: 240px; justify-self: start; }
+  .nav-links { display: none; }
+  .nav-burger { display: block; }
+  .nav-donate { display: none; }
+  .nav-me { max-width: 160px; }
+
+  .hero { grid-template-columns: 1fr; padding-top: 2.25rem; }
+  .hero-art { order: -1; max-width: 260px; justify-self: center; }
   .stats { gap: 1.75rem; }
   .stats dd { font-size: 1.5rem; }
-  .nav { gap: 1rem; }
-  .nav nav { gap: 1.1rem; }
-  .nav .btn--sm { display: none; }
+
+  .profile { padding-top: 2.5rem; gap: 1rem; }
+  .profile-avatar { width: 72px; height: 72px; }
+}
+
+/* ---------------------------------------------------------------- phone
+   The leaderboard becomes cards rather than a table. Hiding columns lost
+   real information; this keeps every number and just stacks it. */
+@media (max-width: 620px) {
+  table.board, table.board tbody, table.board tr, table.board td { display: block; width: 100%; }
+  table.board thead { display: none; }
+  table.board { border-collapse: separate; border-spacing: 0; margin-bottom: 3rem; }
+
+  table.board tbody tr {
+    display: grid;
+    /* Two cells cannot share one grid area without overlapping, which is
+       exactly what images and average did. They get a column each. */
+    grid-template-columns: 2.4rem auto 1fr auto;
+    grid-template-areas:
+      "rank name name score"
+      "rank imgs avg  avg";
+    align-items: center;
+    gap: 0.1rem 0.75rem;
+    padding: 0.9rem 0.85rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--line-soft);
+    border-radius: 13px;
+    background: var(--surface);
+  }
+  table.board tbody tr:hover { background: var(--surface); }
+  /* Top three keep the accent edge they have on desktop. */
+  table.board tbody tr:nth-child(-n+3) { border-color: rgba(216, 42, 117, 0.4); }
+
+  table.board td { border: 0; padding: 0; }
+  table.board td.rank {
+    grid-area: rank;
+    font-size: 1.1rem;
+    font-weight: 700;
+    width: auto;
+    text-align: center;
+  }
+  table.board td.name {
+    grid-area: name;
+    font-size: 1rem;
+    font-weight: 600;
+    word-break: break-word;
+    min-width: 0;
+  }
+  /* Score keeps its own cell; images and average become a caption line, so
+     no column is lost the way hiding them lost it. */
+  table.board td:nth-child(3) {
+    grid-area: score;
+    text-align: right;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--accent-text);
+    font-variant-numeric: tabular-nums;
+  }
+  table.board td:nth-child(4),
+  table.board td:nth-child(5) {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    text-align: left;
+    white-space: nowrap;
+  }
+  table.board td:nth-child(4) { grid-area: imgs; padding-right: 0.6rem; }
+  table.board td:nth-child(5) { grid-area: avg; }
+  table.board td:nth-child(4)::before { content: "images "; }
+  table.board td:nth-child(5)::before { content: "avg "; }
+  table.board .empty { display: block; padding: 3rem 0; text-align: center; }
+
+  .nav-me-name { display: none; }
+  .nav-me { max-width: none; padding: 0.28rem; border-radius: 50%; }
+
+  .stats { width: 100%; justify-content: space-between; gap: 1rem 0.75rem; }
+  .stats div { flex: 1 1 30%; }
+  .stats dt { font-size: 0.75rem; }
+  .stats dd { font-size: 1.35rem; }
+
+  .hero { padding-top: 1.5rem; }
+  .hero-art { max-width: 210px; }
+  .hero-actions { width: 100%; }
+  .hero-actions .btn { flex: 1 1 auto; text-align: center; }
+  .section { padding-block: 3rem; }
+  .card { padding: 1.4rem; border-radius: 16px; }
+  .foot { gap: 0.5rem 1.5rem; }
+  /* Heading and its link fight for width at this size; stack them. */
+  .section-head { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+  .section-head a { padding: 0.35rem 0; }
+  .table-tools { gap: 0.4rem; }
+  .table-tools a { padding: 0.55rem 0.9rem; }
+  .page-head { padding: 2.5rem 0 2rem; }
+}
+
+/* iOS home-indicator clearance. */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .foot { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom)); }
 }

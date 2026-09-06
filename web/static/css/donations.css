@@ -223,7 +223,7 @@
 }
 .cast-role {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 400;
   letter-spacing: 0.03em;
   color: var(--ink-soft);
@@ -306,7 +306,7 @@
 }
 .donor-when {
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   color: var(--ink-soft);
 }
 .tier {

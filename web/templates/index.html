@@ -13,21 +13,8 @@
 <link rel="stylesheet" href="/static/css/riko.css">
 </head>
 <body>
-<a class="skip-link" href="#main">Skip to content</a>
 
-<header class="nav">
-  <a class="brand" href="/">
-    <img src="/static/img/riko-greet.png" alt="" width="32" height="32">
-    <span>Riko</span>
-  </a>
-  <nav aria-label="Primary">
-    <a href="/" aria-current="page">Home</a>
-    <a href="/leaderboard">Leaderboard</a>
-    <a href="/donations">Donations</a>
-    <a href="/me">You</a>
-  </nav>
-  <a class="btn btn--sm" href="{{KOFI_URL}}" rel="noopener" target="_blank">Donate</a>
-</header>
+<!--NAV-->
 
 <main id="main">
 
@@ -83,6 +70,51 @@
     </ol>
   </section>
 
+  <section class="section wrap" data-reveal>
+    <div class="section-head"><h2>How the scoring works</h2></div>
+    <ol class="steps">
+      <li>
+        <span class="step-n">1</span>
+        <h3>Post art in the server</h3>
+        <p>Anything you drop in the art channels gets picked up automatically. No command, no submission form.</p>
+      </li>
+      <li>
+        <span class="step-n">2</span>
+        <h3>People react</h3>
+        <p>A thumbs up is a point. A thumbs down takes one away. Your score is the net across everything you have posted.</p>
+      </li>
+      <li>
+        <span class="step-n">3</span>
+        <h3>The board updates live</h3>
+        <p>Rankings recalculate the moment someone reacts. There is no weekly reset and no way to appeal a bad night.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="section wrap" data-reveal>
+    <div class="section-head">
+      <h2>Who you are dealing with</h2>
+      <a href="/donations">See them react</a>
+    </div>
+    <ul class="cast-grid">
+      <li>
+        <img src="/static/img/riko-face.png" alt="Riko" width="88" height="88" loading="lazy">
+        <h3>Riko</h3>
+        <p>Runs the place and will not admit she cares about any of it. Do not mention the blushing.</p>
+      </li>
+      <li>
+        <img src="/static/img/ino.png" alt="Ino" width="88" height="88" loading="lazy">
+        <h3>Ino</h3>
+        <p>Keeps the shrine records and remembers exactly how nice you have been to her. That is your InoRep.</p>
+      </li>
+      <li>
+        <img src="/static/img/yura.png" alt="Yura" width="88" height="88" loading="lazy">
+        <h3>Yura</h3>
+        <p>Very fond of Rayen. Very patient. Would love to pay you a visit if the goal stalls.</p>
+      </li>
+    </ul>
+  </section>
+
 </main>
 
 <footer class="foot wrap">
@@ -91,5 +123,6 @@
   <a href="/donations">Donations</a>
   <a href="{{KOFI_URL}}" rel="noopener" target="_blank">Ko-fi</a>
 </footer>
+<script src="/static/js/site.js" defer></script>
 </body>
 </html>

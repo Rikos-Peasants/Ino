@@ -1,8 +1,10 @@
 """aiohttp web server for riko.ado.wtf.
 
-Runs inside the bot process on the same event loop, sharing the bot's MongoDB
-connection. Serves the public leaderboards, the donations page, a small JSON
-API, and the Ko-fi webhook receiver.
+Runs inside the bot process but on its own event loop thread, so blocking work
+on the bot's loop cannot stall HTTP. Shares the bot's MongoDB connection pool,
+which is safe because every query goes through `asyncio.to_thread` around
+thread-safe pymongo. Serves the public leaderboards, the donations page,
+Discord login, a small JSON API, and the Ko-fi webhook receiver.
 """
 
 import asyncio
@@ -62,6 +64,7 @@ class RikoWebServer:
         self._templates: Dict[str, str] = {}
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
+        self._progress_cache: Optional[tuple] = None
         self._setup_routes()
 
     # ------------------------------------------------------------------
@@ -88,6 +91,112 @@ class RikoWebServer:
             path = TEMPLATE_DIR / name
             self._templates[name] = path.read_text(encoding="utf-8")
         return self._templates[name]
+
+    NAV_LINKS = [
+        ("/", "Home", "Rankings and the current goal"),
+        ("/leaderboard", "Leaderboard", "Every ranked member"),
+        ("/donations", "Donations", "The maid costume fund"),
+    ]
+
+    async def _nav(self, request: web.Request, current: str = "") -> str:
+        """Shared site header.
+
+        Rendered here rather than duplicated across templates so the logged-in
+        state and the goal percentage, which every page shows, only have to be
+        resolved once. Emits both the desktop bar and the mobile drawer; which
+        one is visible is entirely a CSS decision.
+        """
+        user = self._current_user(request)
+        progress = await self._cached_progress()
+        pct = float(progress.get("percent") or 0)
+        kofi = html.escape(Config.KOFI_URL, quote=True)
+
+        desktop_links = "".join(
+            f'<a href="{href}"{" aria-current=\"page\"" if href == current else ""}>{label}</a>'
+            for href, label, _ in self.NAV_LINKS
+        )
+        drawer_links = "".join(
+            f'<a href="{href}"{" aria-current=\"page\"" if href == current else ""} '
+            f'style="--i:{i}"><span class="drawer-label">{label}</span>'
+            f'<span class="drawer-hint">{hint}</span></a>'
+            for i, (href, label, hint) in enumerate(self.NAV_LINKS)
+        )
+
+        if user:
+            avatar = html.escape(auth.avatar_url(user["id"], user.get("avatar")), quote=True)
+            name = html.escape(user["name"])
+            account = (
+                f'<a class="nav-me{" is-current" if current == "/me" else ""}" href="/me" '
+                f'title="{name}"><img src="{avatar}" alt="" width="32" height="32">'
+                f'<span class="nav-me-name">{name}</span></a>'
+            )
+            drawer_account = (
+                f'<a class="drawer-me" href="/me" style="--i:{len(self.NAV_LINKS)}">'
+                f'<img src="{avatar}" alt="" width="48" height="48">'
+                f'<span><strong>{name}</strong>'
+                f'<span class="drawer-hint">Your rep and standings</span></span></a>'
+                f'<a class="drawer-out" href="/auth/logout">Log out</a>'
+            )
+        else:
+            account = '<a class="nav-login" href="/auth/login">Log in</a>'
+            drawer_account = (
+                f'<a class="drawer-me drawer-me--out" href="/auth/login" '
+                f'style="--i:{len(self.NAV_LINKS)}">'
+                '<span class="drawer-discord" aria-hidden="true">D</span>'
+                '<span><strong>Log in with Discord</strong>'
+                '<span class="drawer-hint">Check your InoRep and rank</span></span></a>'
+            )
+
+        return (
+            '<a class="skip-link" href="#main">Skip to content</a>'
+            '<header class="nav" data-nav>'
+            '<div class="nav-inner">'
+            '<a class="brand" href="/">'
+            '<span class="brand-mark"><img src="/static/img/riko-greet.png" alt="" '
+            'width="34" height="34"></span>'
+            '<span class="brand-name">Riko</span></a>'
+            f'<nav class="nav-links" aria-label="Primary">{desktop_links}</nav>'
+            f'<div class="nav-end">{account}'
+            f'<a class="btn btn--sm nav-donate" href="{kofi}" rel="noopener" '
+            'target="_blank">Donate</a>'
+            '<button class="nav-burger" type="button" aria-label="Open menu" '
+            'aria-expanded="false" aria-controls="site-drawer" data-burger>'
+            '<span></span><span></span><span></span></button>'
+            '</div></div>'
+            # Hairline under the header that doubles as the live goal readout.
+            f'<div class="nav-progress" role="presentation"><i style="width:{pct:.2f}%"></i></div>'
+            '</header>'
+            '<div class="drawer" id="site-drawer" data-drawer hidden>'
+            '<div class="drawer-scrim" data-drawer-close></div>'
+            '<div class="drawer-panel" role="dialog" aria-modal="true" aria-label="Menu">'
+            '<div class="drawer-head">'
+            '<span class="drawer-title">Menu</span>'
+            '<button class="drawer-x" type="button" aria-label="Close menu" '
+            'data-drawer-close>&times;</button></div>'
+            f'<nav class="drawer-nav">{drawer_links}</nav>'
+            f'<div class="drawer-account">{drawer_account}</div>'
+            '<div class="drawer-goal">'
+            '<span class="drawer-hint">Maid costume fund</span>'
+            f'<div class="drawer-bar"><i style="width:{pct:.2f}%"></i></div>'
+            f'<span class="drawer-pct">${_fmt_money(progress.get("raised_usd", 0))} '
+            f'of ${_fmt_money(progress.get("goal_usd", 0))} · {pct:.1f}%</span></div>'
+            f'<a class="btn drawer-donate" href="{kofi}" rel="noopener" target="_blank">'
+            'Donate on Ko-fi</a>'
+            '</div></div>'
+        )
+
+    async def _cached_progress(self) -> Dict[str, Any]:
+        """Progress with a short TTL.
+
+        Every page renders the goal in its header, so without this a request
+        for the leaderboard would run the donation aggregate too.
+        """
+        now = time.monotonic()
+        if self._progress_cache and now - self._progress_cache[0] < 15:
+            return self._progress_cache[1]
+        progress = await self._get_progress()
+        self._progress_cache = (now, progress)
+        return progress
 
     @property
     def donation_manager(self):
@@ -236,6 +345,7 @@ class RikoWebServer:
 
         page = (
             self._template("index.html")
+            .replace("<!--NAV-->", await self._nav(request, "/"))
             .replace("<!--TOP_ROWS-->", rows)
             .replace("{{GOAL_TITLE}}", html.escape(goal.get("title") or "Rayen in a maid costume"))
             .replace("{{RAISED}}", _fmt_money(progress["raised_usd"]))
@@ -264,6 +374,7 @@ class RikoWebServer:
 
         page = (
             self._template("leaderboard.html")
+            .replace("<!--NAV-->", await self._nav(request, "/leaderboard"))
             .replace("<!--ROWS-->", rows)
             .replace("{{SORT_TOTAL}}", "true" if sort_by == "total_score" else "false")
             .replace("{{SORT_COUNT}}", "true" if sort_by == "image_count" else "false")
@@ -334,6 +445,7 @@ class RikoWebServer:
 
         page = (
             self._template("donations.html")
+            .replace("<!--NAV-->", await self._nav(request, "/donations"))
             .replace("<!--DONOR_ROWS-->", donors_html)
             .replace("<!--TOP_DONORS-->", top_html)
             .replace("<!--CAST-->", cast_html)
@@ -520,6 +632,7 @@ class RikoWebServer:
 
         page = (
             self._template("me.html")
+            .replace("<!--NAV-->", await self._nav(request, "/me"))
             .replace("{{NAME}}", html.escape(user["name"]))
             .replace("{{AVATAR}}", html.escape(auth.avatar_url(user_id, user.get("avatar")), quote=True))
             .replace("{{REP}}", f"{rep:,}")
