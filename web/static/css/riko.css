@@ -166,15 +166,25 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.06; margin: 0; }
 
 .nav-end { display: flex; align-items: center; gap: 0.6rem; flex: none; }
 .nav-login {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   color: var(--ink-soft);
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 500;
-  padding: 0.7rem 0.85rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--line);
   border-radius: 9px;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
-.nav-login:hover { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
+.nav-login .discord-mark { width: 18px; color: #5865f2; transition: color 0.15s ease; }
+.nav-login:hover {
+  color: var(--ink);
+  background: rgba(88, 101, 242, 0.12);
+  border-color: rgba(88, 101, 242, 0.5);
+}
+.nav-login:hover .discord-mark { color: #7d8bff; }
 
 /* Signed-in chip: Discord avatar, with the name alongside where there is room. */
 .nav-me {
@@ -359,9 +369,9 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.06; margin: 0; }
   border-radius: 13px;
   background: #5865f2;
   color: #fff;
-  font-weight: 800;
-  font-size: 1.3rem;
 }
+/* The mark keeps Discord's own proportions; only the box is ours. */
+.discord-mark { width: 26px; height: auto; display: block; }
 .drawer-out {
   display: block;
   margin-top: 0.5rem;
