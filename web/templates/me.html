@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{NAME}} · Riko</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="/static/img/riko-greet.png">
+<link rel="stylesheet" href="/static/css/riko.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="nav">
+  <a class="brand" href="/">
+    <img src="/static/img/riko-greet.png" alt="" width="32" height="32">
+    <span>Riko</span>
+  </a>
+  <nav aria-label="Primary">
+    <a href="/">Home</a>
+    <a href="/leaderboard">Leaderboard</a>
+    <a href="/donations">Donations</a>
+    <a href="/me" aria-current="page">You</a>
+  </nav>
+  <a class="btn btn--sm btn--ghost" href="/auth/logout">Log out</a>
+</header>
+
+<main class="wrap" id="main">
+  <div class="profile">
+    <img class="profile-avatar" src="{{AVATAR}}" alt="" width="96" height="96">
+    <div>
+      <p class="eyebrow">Your standing</p>
+      <h1>{{NAME}}</h1>
+    </div>
+  </div>
+
+  <section class="rep-card" style="--tier: {{REP_COLOR}}">
+    <div class="rep-head">
+      <span class="rep-label">InoRep</span>
+      <span class="rep-value">{{REP}}</span>
+    </div>
+    <p class="rep-status">{{REP_STATUS}}</p>
+    <p class="rep-rel">{{REP_RELATIONSHIP}}</p>
+    <p class="rep-msg">{{REP_MESSAGE}}</p>
+  </section>
+
+  <section class="section">
+    <div class="section-head"><h2>Art standings</h2><a href="/leaderboard">Full leaderboard</a></div>
+    <div class="stat-list">
+      <!--STAT_ROWS-->
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="cards">
+      <a class="card card--accent" href="/donations">
+        <h2>Current goal</h2>
+        <p>Rayen has agreed to something he is starting to regret. Riko, Ino and Yura all have opinions.</p>
+        <span class="card-go">See the goal</span>
+      </a>
+      <a class="card" href="/leaderboard">
+        <h2>Climb the board</h2>
+        <p>Post art in the server. Every net upvote is a point. That is the entire system.</p>
+        <span class="card-go">See where you stand</span>
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer class="foot wrap">
+  <span>© Rikoverse</span>
+  <a href="/leaderboard">Leaderboard</a>
+  <a href="/donations">Donations</a>
+  <a href="/auth/logout">Log out</a>
+</footer>
+</body>
+</html>

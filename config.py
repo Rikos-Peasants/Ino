@@ -261,6 +261,12 @@ class Config:
     # Discord webhook that donation logs are posted to (never includes email).
     DONATION_LOG_WEBHOOK_URL = os.getenv('DONATION_LOG_WEBHOOK_URL')
     DONATION_GOAL_DEFAULT_USD = get_float_env('DONATION_GOAL_DEFAULT_USD', 600.0)
+
+    # Discord OAuth2 login for the website (identify scope only)
+    DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID')
+    DISCORD_CLIENT_SECRET = os.getenv('DISCORD_CLIENT_SECRET')
+    # Key used to sign session cookies. Without it logins reset on restart.
+    SESSION_SECRET = os.getenv('SESSION_SECRET')
     
     @classmethod
     def validate(cls):

@@ -25,6 +25,7 @@
     <a href="/">Home</a>
     <a href="/leaderboard">Leaderboard</a>
     <a href="/donations" aria-current="page">Donations</a>
+    <a href="/me">You</a>
   </nav>
   <a class="btn btn--sm" href="{{KOFI_URL}}" rel="noopener" target="_blank">Donate</a>
 </header>
@@ -79,7 +80,20 @@
     </div>
   </section>
 
-  <!-- 4. the wall -->
+  <!-- 4. the cast reacts. every line is chosen by the live percentage. -->
+  <section class="act act--cast" data-act="cast" aria-label="Reactions">
+    <div class="act-inner">
+      <div class="wall-head">
+        <h2>The peanut gallery</h2>
+        <span class="wall-count">reacting to {{PERCENT}}%</span>
+      </div>
+      <ul class="cast">
+        <!--CAST-->
+      </ul>
+    </div>
+  </section>
+
+  <!-- 5. the wall -->
   <section class="act act--wall" data-act="wall" aria-label="Supporters">
     <div class="act-inner">
       <div class="wall-head">
@@ -98,7 +112,7 @@
     </div>
   </section>
 
-  <!-- 5. the close -->
+  <!-- 6. the close -->
   <section class="act act--close" data-act="close" aria-label="Donate">
     <div class="act-inner">
       <div class="close-copy">

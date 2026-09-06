@@ -9,6 +9,8 @@ import asyncio
 import html
 import logging
 import os
+import secrets
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -16,6 +18,8 @@ from typing import Any, Dict, List, Optional
 from aiohttp import web
 
 from config import Config
+from web import auth
+from web.characters import all_reactions
 from web.discord_log import send_donation_log
 from web.kofi import KofiError, parse_payload
 
@@ -65,6 +69,10 @@ class RikoWebServer:
         self.app.router.add_get("/leaderboard", self.handle_leaderboard)
         self.app.router.add_get("/donations", self.handle_donations)
         self.app.router.add_get("/healthz", self.handle_health)
+        self.app.router.add_get("/me", self.handle_me)
+        self.app.router.add_get("/auth/login", self.handle_login)
+        self.app.router.add_get("/auth/discord", self.handle_oauth_callback)
+        self.app.router.add_get("/auth/logout", self.handle_logout)
         self.app.router.add_get("/api/leaderboard", self.api_leaderboard)
         self.app.router.add_get("/api/donations", self.api_donations)
         self.app.router.add_get("/api/progress", self.api_progress)
@@ -266,10 +274,24 @@ class RikoWebServer:
         )
         reward = goal.get("reward") or "Rayen wears the maid costume on stream"
 
+        # Rendered server side so the lines are real, selectable, translatable
+        # markup rather than strings assembled by JavaScript.
+        cast_html = "\n".join(
+            f'<li class="cast-card cast--{c["key"]}">'
+            f'<img class="cast-face" src="{c["img"]}" alt="" width="72" height="72" loading="lazy">'
+            f'<div class="cast-body">'
+            f'<p class="cast-name">{html.escape(c["name"])}'
+            f'<span class="cast-role">{html.escape(c["role"])}</span></p>'
+            f'<p class="cast-line">{html.escape(c["text"])}</p>'
+            f'</div></li>'
+            for c in all_reactions(progress["percent"])
+        )
+
         page = (
             self._template("donations.html")
             .replace("<!--DONOR_ROWS-->", donors_html)
             .replace("<!--TOP_DONORS-->", top_html)
+            .replace("<!--CAST-->", cast_html)
             .replace("{{GOAL_TITLE}}", html.escape(title))
             .replace("{{GOAL_DESC}}", html.escape(description))
             .replace("{{GOAL_REWARD}}", html.escape(reward))
@@ -347,6 +369,162 @@ class RikoWebServer:
                 for d in donations
             ]
         })
+
+    # ------------------------------------------------------------------
+    # discord oauth
+    # ------------------------------------------------------------------
+    def _redirect_uri(self, request: web.Request) -> str:
+        """Must match a redirect registered on the Discord application."""
+        host = request.headers.get("Host", "")
+        if host.startswith("localhost") or host.startswith("127.0.0.1"):
+            return f"http://{host}/auth/discord"
+        return f"{Config.WEB_BASE_URL.rstrip('/')}/auth/discord"
+
+    def _current_user(self, request: web.Request) -> Optional[Dict[str, Any]]:
+        return auth.unsign(request.cookies.get(auth.SESSION_COOKIE), auth.SESSION_MAX_AGE)
+
+    async def handle_login(self, request: web.Request) -> web.Response:
+        if not Config.DISCORD_CLIENT_ID or not Config.DISCORD_CLIENT_SECRET:
+            return web.Response(text="Discord login is not configured.", status=503)
+
+        # A signed, short-lived state cookie is what makes the callback
+        # resistant to CSRF; the value must come back unchanged.
+        state = secrets.token_urlsafe(24)
+        url = auth.build_authorize_url(
+            Config.DISCORD_CLIENT_ID, self._redirect_uri(request), state
+        )
+        response = web.HTTPFound(url)
+        response.set_cookie(
+            auth.STATE_COOKIE,
+            auth.sign({"state": state, "iat": int(time.time())}),
+            max_age=auth.STATE_MAX_AGE,
+            httponly=True,
+            samesite="Lax",
+            secure=request.url.scheme == "https",
+        )
+        return response
+
+    async def handle_oauth_callback(self, request: web.Request) -> web.Response:
+        error = request.query.get("error")
+        if error:
+            return web.HTTPFound("/?login=denied")
+
+        code = request.query.get("code")
+        returned_state = request.query.get("state")
+        expected = auth.unsign(request.cookies.get(auth.STATE_COOKIE), auth.STATE_MAX_AGE)
+
+        if not code or not expected or expected.get("state") != returned_state:
+            logger.warning("Rejected OAuth callback with bad or missing state")
+            return web.HTTPFound("/?login=failed")
+
+        token = await auth.exchange_code(
+            Config.DISCORD_CLIENT_ID,
+            Config.DISCORD_CLIENT_SECRET,
+            code,
+            self._redirect_uri(request),
+        )
+        if not token:
+            return web.HTTPFound("/?login=failed")
+
+        profile = await auth.fetch_user(token)
+        if not profile or not profile.get("id"):
+            return web.HTTPFound("/?login=failed")
+
+        response = web.HTTPFound("/me")
+        response.set_cookie(
+            auth.SESSION_COOKIE,
+            auth.sign({
+                "id": str(profile["id"]),
+                "name": profile.get("global_name") or profile.get("username") or "Unknown",
+                "avatar": profile.get("avatar"),
+                "iat": int(time.time()),
+            }),
+            max_age=auth.SESSION_MAX_AGE,
+            httponly=True,
+            samesite="Lax",
+            secure=request.url.scheme == "https",
+        )
+        response.del_cookie(auth.STATE_COOKIE)
+        return response
+
+    async def handle_logout(self, request: web.Request) -> web.Response:
+        response = web.HTTPFound("/")
+        response.del_cookie(auth.SESSION_COOKIE)
+        return response
+
+    async def handle_me(self, request: web.Request) -> web.Response:
+        user = self._current_user(request)
+        if not user:
+            return web.HTTPFound("/auth/login")
+
+        user_id = user["id"]
+        stats = await self._user_stats(user_id)
+        rep, tier = await self._user_rep(user_id)
+
+        rows = []
+        for label, value in (
+            ("Image score", stats.get("total_score")),
+            ("Images posted", stats.get("image_count")),
+            ("Average per image", stats.get("avg")),
+            ("Leaderboard rank", stats.get("rank")),
+        ):
+            shown = "not ranked yet" if value in (None, "") else str(value)
+            rows.append(
+                f'<div class="stat-row"><span>{label}</span><strong>{html.escape(shown)}</strong></div>'
+            )
+
+        page = (
+            self._template("me.html")
+            .replace("{{NAME}}", html.escape(user["name"]))
+            .replace("{{AVATAR}}", html.escape(auth.avatar_url(user_id, user.get("avatar")), quote=True))
+            .replace("{{REP}}", f"{rep:,}")
+            .replace("{{REP_STATUS}}", html.escape(str(tier.get("status", ""))))
+            .replace("{{REP_RELATIONSHIP}}", html.escape(str(tier.get("relationship", ""))))
+            .replace("{{REP_MESSAGE}}", html.escape(str(tier.get("message", ""))))
+            .replace("{{REP_COLOR}}", f"#{int(tier.get('color', 0xAD1457)):06x}")
+            .replace("<!--STAT_ROWS-->", "\n".join(rows))
+        )
+        return web.Response(text=page, content_type="text/html")
+
+    async def _user_rep(self, user_id: str):
+        """InoRep total plus the tier it falls in."""
+        from models.inorep_status import get_inorep_tier
+
+        manager = self.leaderboard_manager
+        inorep = getattr(manager, "inorep_manager", None) if manager else None
+        if not inorep:
+            return 0, get_inorep_tier(0)
+        try:
+            rep = await inorep.get_user_rep(str(user_id), str(Config.GUILD_ID))
+        except Exception as e:
+            logger.error(f"Error reading InoRep for {user_id}: {e}")
+            rep = 0
+        return rep, get_inorep_tier(rep, int(user_id) if str(user_id).isdigit() else None)
+
+    async def _user_stats(self, user_id: str) -> Dict[str, Any]:
+        manager = self.leaderboard_manager
+        if not manager or not hasattr(manager, "collection"):
+            return {}
+        try:
+            def _lookup():
+                doc = manager.collection.find_one({"user_id": str(user_id)})
+                if not doc:
+                    return {}
+                score = doc.get("total_score", 0)
+                count = doc.get("image_count", 0)
+                # Rank is how many people sit strictly above this score.
+                rank = manager.collection.count_documents({"total_score": {"$gt": score}}) + 1
+                return {
+                    "total_score": score,
+                    "image_count": count,
+                    "avg": round(score / count, 2) if count else 0,
+                    "rank": f"#{rank}",
+                }
+
+            return await asyncio.to_thread(_lookup)
+        except Exception as e:
+            logger.error(f"Error reading user stats for {user_id}: {e}")
+            return {}
 
     # ------------------------------------------------------------------
     # ko-fi webhook

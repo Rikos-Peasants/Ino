@@ -323,6 +323,64 @@ table.board tbody tr:nth-child(-n+3) td.rank { color: var(--accent-text); font-w
 table.board td.name { font-weight: 500; }
 table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem 0; }
 
+/* ---------------------------------------------------------------- profile */
+.profile {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 4rem 0 2rem;
+}
+.profile-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+}
+.profile h1 { font-size: clamp(1.9rem, 5vw, 3rem); font-weight: 700; margin: 0; }
+
+.rep-card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--tier, var(--accent));
+  border-radius: 14px;
+  padding: 1.75rem;
+  background: var(--surface);
+}
+.rep-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+.rep-label {
+  font-size: 0.76rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.rep-value {
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--tier, var(--accent-text));
+}
+.rep-status { margin: 0 0 0.2rem; font-size: 1.2rem; font-weight: 600; }
+.rep-rel { margin: 0 0 0.9rem; color: var(--ink-soft); font-size: 0.92rem; }
+.rep-msg { margin: 0; color: var(--ink-soft); max-width: var(--measure); }
+
+.stat-list { display: grid; gap: 0; }
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.95rem 0.25rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+.stat-row span { color: var(--ink-soft); }
+.stat-row strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+
 /* ---------------------------------------------------------------- footer */
 .foot {
   border-top: 1px solid var(--line-soft);

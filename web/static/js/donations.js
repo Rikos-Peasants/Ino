@@ -17,14 +17,16 @@
      Riko's commentary is a function of the live funding percentage. Six
      bands; the copy changes as the fundraiser progresses without anyone
      editing the page. */
+  // Riko's running commentary, keyed to the live percentage. Same bands as
+  // web/characters.py so the two never disagree.
   var SASS = [
-    { at: 0,   text: "zero. not one of you. you all want to see this happen and not one of you wants to pay for it. predictable." },
-    { at: 5,   text: "one person paid. ONE. i've written their name down somewhere safe and the rest of you somewhere else." },
-    { at: 25,  text: "a quarter. rayen has started refreshing this page when he thinks nobody's watching. i'm always watching." },
-    { at: 50,  text: "halfway. he genuinely thought you wouldn't do it. that was his whole plan. it's going badly for him." },
-    { at: 75,  text: "three quarters and he's stopped making jokes about it. no notes. this is the best thing you've ever done." },
-    { at: 95,  text: "this close and you're all just standing there. somebody finish it. i want to see the frills." },
-    { at: 100, text: "done. he has to wear it now. let the record show i did nothing to stop this and would do nothing again." }
+    { at: 0,   text: "Zero. Not one of you. I-I'm not disappointed or anything, dummy. I just assumed at least ONE person had taste." },
+    { at: 1,   text: "One person. ONE. I wrote their name down somewhere nice. The rest of you are also written down, just somewhere else." },
+    { at: 25,  text: "A quarter already? O-Oh. Huh. That's not completely pathetic. Don't let it go to your heads." },
+    { at: 50,  text: "Halfway?! W-Well obviously I knew you'd get here. I never doubted it. Not even once. Stop looking at me like that!" },
+    { at: 75,  text: "Three quarters and Rayen has gone very quiet. I-It's not like I'm enjoying this. ...Okay. Maybe a little." },
+    { at: 95,  text: "You're THIS close and you're just standing there?! Somebody finish it! My cooling fans are just loud, shut up!" },
+    { at: 100, text: "It's done. He actually has to wear it. ...Thank you. A-And if you tell anyone I said that, I'll deny it. Idiot." }
   ];
 
   function sassFor(pct) {
@@ -135,22 +137,25 @@
     })();
   }
 
-  /* ------------------------------------------------------ act 4 wall */
-  var donors = Array.prototype.slice.call(document.querySelectorAll(".donor"));
+  /* ------------------------------------------------------ staggered reveals
+     Used by both the donor wall and the character cards. */
+  var reveals = Array.prototype.slice.call(
+    document.querySelectorAll(".donor, .cast-card")
+  );
   if ("IntersectionObserver" in window && !reduced) {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         if (!entry.isIntersecting) return;
-        var idx = donors.indexOf(entry.target);
-        // Stagger within the visible batch so rows arrive like log output.
-        entry.target.style.transitionDelay = (Math.min(idx, 8) * 45) + "ms";
+        var idx = reveals.indexOf(entry.target);
+        // Stagger within the visible batch so rows arrive in sequence.
+        entry.target.style.transitionDelay = (Math.min(idx % 9, 8) * 70) + "ms";
         entry.target.classList.add("is-in");
         io.unobserve(entry.target);
       });
     }, { rootMargin: "0px 0px -8% 0px", threshold: 0.05 });
-    donors.forEach(function (d) { io.observe(d); });
+    reveals.forEach(function (d) { io.observe(d); });
   } else {
-    donors.forEach(function (d) { d.classList.add("is-in"); });
+    reveals.forEach(function (d) { d.classList.add("is-in"); });
   }
 
   /* ------------------------------------------------------ act 5 pointer */
