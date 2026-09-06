@@ -438,32 +438,32 @@ class RikoBot(commands.Bot):
                     for user_doc in chunk:
                         user_id = int(user_doc["user_id"])
                         total_users += 1
-                        
-                    try:
-                        # Check achievements for this user
-                        new_achievements = await quest_manager.check_achievements(
-                            user_id=user_id,
-                            leaderboard_manager=self.leaderboard_manager
-                        )
-                        
-                        # Only log if achievements were actually awarded
-                        if new_achievements and len(new_achievements) > 0:
-                            total_achievements += len(new_achievements)
-                            user_name = user_doc.get("user_name", f"User {user_id}")
-                            logger.info(f"   ✅ Awarded {len(new_achievements)} achievement(s) to {user_name}")
-                            
-                            # Log each achievement (limit to 3 to reduce spam)
-                            for idx, achievement in enumerate(new_achievements):
-                                if idx < 3:
-                                    logger.info(f"      {achievement.get('icon', '🏆')} {achievement['name']} (+{achievement['reward_points']} pts)")
-                                elif idx == 3:
-                                    logger.info(f"      ... and {len(new_achievements) - 3} more")
-                                    break
-                        
-                    except Exception as e:
-                        logger.error(f"   ❌ Error checking achievements for user {user_id}: {e}")
-                        continue
-                    
+
+                        try:
+                            # Check achievements for this user
+                            new_achievements = await quest_manager.check_achievements(
+                                user_id=user_id,
+                                leaderboard_manager=self.leaderboard_manager
+                            )
+
+                            # Only log if achievements were actually awarded
+                            if new_achievements and len(new_achievements) > 0:
+                                total_achievements += len(new_achievements)
+                                user_name = user_doc.get("user_name", f"User {user_id}")
+                                logger.info(f"   ✅ Awarded {len(new_achievements)} achievement(s) to {user_name}")
+
+                                # Log each achievement (limit to 3 to reduce spam)
+                                for idx, achievement in enumerate(new_achievements):
+                                    if idx < 3:
+                                        logger.info(f"      {achievement.get('icon', '🏆')} {achievement['name']} (+{achievement['reward_points']} pts)")
+                                    elif idx == 3:
+                                        logger.info(f"      ... and {len(new_achievements) - 3} more")
+                                        break
+
+                        except Exception as e:
+                            logger.error(f"   ❌ Error checking achievements for user {user_id}: {e}")
+                            continue
+
                     # Yield control back to the event loop after each chunk
                     await asyncio.sleep(0.1)
                     
@@ -482,10 +482,27 @@ class RikoBot(commands.Bot):
         """Scan and store all historical images from image channels on startup"""
         try:
             logger.info("🔍 Scanning historical images from image channels...")
-            
+
             from config import Config
             from datetime import datetime, timedelta
-            
+
+            # The image-message API only exists on the MongoDB manager. When Mongo is
+            # unreachable the bot falls back to the JSON manager, which has no such
+            # methods, so calling them here would raise AttributeError mid-scan.
+            required_methods = (
+                "image_message_exists",
+                "store_image_message",
+                "update_image_message_score",
+            )
+            if not self.leaderboard_manager or not all(
+                hasattr(self.leaderboard_manager, name) for name in required_methods
+            ):
+                logger.warning(
+                    "Leaderboard manager does not support image message storage, "
+                    "skipping historical image scan"
+                )
+                return
+
             guild = self.get_guild(Config.GUILD_ID)
             if not guild:
                 logger.error(f"Could not find guild {Config.GUILD_ID}")

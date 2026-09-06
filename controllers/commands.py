@@ -6409,7 +6409,7 @@ class CommandsController:
                     return
                 
                 # Get user's bookmarks
-                bookmarks = leaderboard_manager.get_user_bookmarks(interaction.user.id, limit=25)
+                bookmarks = await leaderboard_manager.get_user_bookmarks(interaction.user.id, limit=25)
                 
                 if not bookmarks:
                     await interaction.followup.send("📚 You don't have any bookmarks yet!\n\nUse the bookmark button (🔖) on images to save them.", ephemeral=True)
