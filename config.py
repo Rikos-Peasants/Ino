@@ -243,9 +243,24 @@ class Config:
     # Art Challenge Schedule (UTC times when challenges START)
     ART_CHALLENGE_START_TIMES = [2, 8, 14, 20]  # 02:00, 08:00, 14:00, 20:00 UTC
     
-    # Serika.art API Configuration  
+    # Serika.art API Configuration
     SERIKA_ART_KEY = os.getenv('SERIKA_ART_KEY')
     SERIKA_ART_URL_BASE = os.getenv('SERIKA_ART_URL_BASE', 'https://serika.art/api/v1')
+
+    # Web server (riko.ado.wtf) - leaderboards, donations page, Ko-fi webhook
+    WEB_ENABLED = os.getenv('WEB_ENABLED', 'true').lower() == 'true'
+    WEB_HOST = os.getenv('WEB_HOST', '0.0.0.0')
+    WEB_PORT = get_int_env('WEB_PORT', 3000)
+    WEB_BASE_URL = os.getenv('WEB_BASE_URL', 'https://riko.ado.wtf')
+
+    # Ko-fi donations
+    KOFI_URL = os.getenv('KOFI_URL', 'https://ko-fi.com/rayenai')
+    # Plain-text token Ko-fi includes in every webhook body. Without it the
+    # webhook endpoint rejects everything, which is the safe default.
+    KOFI_VERIFICATION_TOKEN = os.getenv('KOFI_VERIFICATION_TOKEN')
+    # Discord webhook that donation logs are posted to (never includes email).
+    DONATION_LOG_WEBHOOK_URL = os.getenv('DONATION_LOG_WEBHOOK_URL')
+    DONATION_GOAL_DEFAULT_USD = get_float_env('DONATION_GOAL_DEFAULT_USD', 600.0)
     
     @classmethod
     def validate(cls):

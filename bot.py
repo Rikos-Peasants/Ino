@@ -73,6 +73,9 @@ class RikoBot(commands.Bot):
         self.moderation_view_manager: Optional[object] = None
         self.scam_image_manager: Optional[object] = None
         self.scam_image_controller: Optional[object] = None
+        self.donation_manager: Optional[object] = None
+        self.donation_controller: Optional[object] = None
+        self.web_server: Optional[object] = None
         
         # Initialize leaderboard manager first (required by other components)
         try:
@@ -86,6 +89,13 @@ class RikoBot(commands.Bot):
             except Exception as e:
                 logger.error(f"❌ Failed to initialize scam image manager: {e}")
                 self.scam_image_manager = None
+            try:
+                from models.donation_manager import DonationManager
+                self.donation_manager = DonationManager(self.leaderboard_manager.db)
+                logger.info("✅ Donation manager initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize donation manager: {e}")
+                self.donation_manager = None
         except Exception as e:
             logger.error(f"❌ Failed to initialize MongoDB leaderboard manager: {e}")
             # Fallback to JSON-based leaderboard manager
@@ -205,6 +215,26 @@ class RikoBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Failed to initialize art random events manager: {e}")
             self.art_random_events_manager = None
+
+        # Initialize donation controller (goal channel + progress bar commands)
+        if self.donation_manager:
+            try:
+                from controllers.donation_controller import DonationController
+                self.donation_controller = DonationController(self)
+                logger.info("✅ Donation controller initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize donation controller: {e}")
+                self.donation_controller = None
+
+        # Initialize the public web server (leaderboards, donations, Ko-fi hook)
+        if Config.WEB_ENABLED:
+            try:
+                from web.server import RikoWebServer
+                self.web_server = RikoWebServer(self)
+                logger.info("✅ Web server initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize web server: {e}")
+                self.web_server = None
     
     async def setup_hook(self):
         """Initial setup when bot is starting"""
@@ -217,11 +247,22 @@ class RikoBot(commands.Bot):
             self.commands_controller.register_commands()
         if self.scam_image_controller:
             self.scam_image_controller.register_commands()
-        
+        if self.donation_controller:
+            self.donation_controller.register_commands()
+
         # Initialize quest manager after bot is ready
         if self.events_controller:
             self.events_controller.initialize_quest_manager()
-        
+
+        # Start the web server here rather than in on_ready so /healthz answers
+        # as soon as the process is up, even if the gateway is still connecting.
+        if self.web_server:
+            try:
+                await self.web_server.start()
+            except Exception as e:
+                logger.error(f"❌ Failed to start web server: {e}")
+                self.web_server = None
+
         logger.info("Bot setup completed")
     
     async def on_ready(self):
@@ -311,6 +352,14 @@ class RikoBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error sending language prompt DMs: {e}")
         
+        # Keep the donation progress bar current even if a webhook was missed
+        if self.donation_controller:
+            try:
+                self.donation_controller.start_tasks()
+                logger.info("Donation progress refresh task started")
+            except Exception as e:
+                logger.error(f"Error starting donation tasks: {e}")
+
         # Start status cycling (only if not already running)
         if not self.cycle_status.is_running():
             self.cycle_status.start()
@@ -626,7 +675,18 @@ class RikoBot(commands.Bot):
         # Stop scheduler tasks
         if self.scheduler_controller:
             self.scheduler_controller.stop_tasks()
-        
+
+        # Stop donation refresh task
+        if self.donation_controller:
+            self.donation_controller.stop_tasks()
+
+        # Shut the web server down before closing the DB it reads from
+        if self.web_server:
+            try:
+                await self.web_server.stop()
+            except Exception as e:
+                logger.error(f"Error stopping web server: {e}")
+
 
         
         # Close MongoDB connection

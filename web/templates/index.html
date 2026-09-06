@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Riko</title>
+<meta name="description" content="Leaderboards, art rankings and the donation goal for the Just Rayen Discord server.">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="Riko">
+<meta property="og:description" content="Leaderboards, art rankings and the donation goal.">
+<meta property="og:type" content="website">
+<link rel="icon" href="/static/img/riko-greet.png">
+<link rel="stylesheet" href="/static/css/riko.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="nav">
+  <a class="brand" href="/">
+    <img src="/static/img/riko-greet.png" alt="" width="32" height="32">
+    <span>Riko</span>
+  </a>
+  <nav aria-label="Primary">
+    <a href="/" aria-current="page">Home</a>
+    <a href="/leaderboard">Leaderboard</a>
+    <a href="/donations">Donations</a>
+  </nav>
+  <a class="btn btn--sm" href="{{KOFI_URL}}" rel="noopener" target="_blank">Donate</a>
+</header>
+
+<main id="main">
+
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Just Rayen · community</p>
+      <h1>Every picture posted here gets a verdict.</h1>
+      <p class="lede">Riko tracks every image in the server, counts the votes, and keeps the running order. No favourites, no appeals.</p>
+      <div class="hero-actions">
+        <a class="btn" href="/leaderboard">See the rankings</a>
+        <a class="btn btn--ghost" href="/donations">The current goal</a>
+      </div>
+
+      <dl class="stats">
+        <div><dt>Ranked members</dt><dd>{{STAT_MEMBERS}}</dd></div>
+        <div><dt>Images scored</dt><dd>{{STAT_IMAGES}}</dd></div>
+        <div><dt>Goal progress</dt><dd>{{PERCENT}}%</dd></div>
+      </dl>
+    </div>
+
+    <div class="hero-art">
+      <img src="/static/img/riko-think.png" alt="Riko with both hands raised" width="1032" height="1118" fetchpriority="high">
+    </div>
+  </section>
+
+  <section class="section wrap">
+    <div class="cards">
+      <a class="card" href="/leaderboard">
+        <h2>Leaderboard</h2>
+        <p>The full standings, sortable by total score, images posted, or average rating.</p>
+        <span class="card-go">Open the table</span>
+      </a>
+      <a class="card card--accent" href="/donations">
+        <h2>{{GOAL_TITLE}}</h2>
+        <p>${{RAISED}} of ${{GOAL}} raised so far. Riko has been asked to comment and is refusing to be nice about it.</p>
+        <span class="card-go">See the goal</span>
+      </a>
+      <a class="card" href="{{KOFI_URL}}" rel="noopener" target="_blank">
+        <h2>Ko-fi</h2>
+        <p>One-off tips and memberships. No cut taken on tips, and your name appears on the donations page.</p>
+        <span class="card-go">ko-fi.com/rayenai</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <h2>Top five right now</h2>
+      <a href="/leaderboard">Full leaderboard</a>
+    </div>
+    <ol class="mini-board">
+      <!--TOP_ROWS-->
+    </ol>
+  </section>
+
+</main>
+
+<footer class="foot wrap">
+  <span>© Rikoverse</span>
+  <a href="/leaderboard">Leaderboard</a>
+  <a href="/donations">Donations</a>
+  <a href="{{KOFI_URL}}" rel="noopener" target="_blank">Ko-fi</a>
+</footer>
+</body>
+</html>

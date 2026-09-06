@@ -1,0 +1,344 @@
+/* /donations — console-session grammar.
+   Every act sets --p (0..1) from JS as it passes through the viewport. All
+   motion is transform/opacity only. */
+
+.dono {
+  --p: 0;
+}
+
+.act {
+  position: relative;
+  padding: 0 var(--pad);
+}
+
+.act-inner {
+  position: sticky;
+  /* Offset by the nav so pinned content is never hidden behind it. */
+  top: var(--nav-h);
+  min-height: calc(100vh - var(--nav-h));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+/* Span per act. Act 3 is the peak and holds the most scroll room by a wide
+   margin; act 2 is deliberately the shortest and stillest. */
+.act--boot  { min-height: 120vh; }
+.act--ask   { min-height: 90vh; }
+.act--bar   { min-height: 320vh; }
+/* The wall's height comes from its content, not a fixed span. */
+.act--wall  { min-height: auto; }
+.act--close { min-height: 110vh; }
+
+/* ------------------------------------------------------------- 1. boot */
+.boot-term {
+  max-width: 720px;
+  width: 100%;
+}
+.boot-term { max-width: 780px; }
+.boot-title {
+  font-size: clamp(2.75rem, 8vw, 5.5rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+  margin: 0 0 1.25rem;
+  text-wrap: balance;
+}
+.boot-sub {
+  font-size: clamp(1.05rem, 1.8vw, 1.3rem);
+  color: var(--ink-soft);
+  max-width: 52ch;
+  margin: 0 0 2rem;
+}
+/* The one typed line on the page. Sits under the pitch as a stinger. */
+.boot-line {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--accent-text);
+  white-space: pre-wrap;
+  margin: 0;
+  min-height: 1.6em;
+}
+
+/* ------------------------------------------------------------- 2. ask */
+/* Authored silence. Nothing here animates. */
+.act--ask .act-inner { max-width: 780px; }
+.ask-body {
+  font-size: clamp(1.35rem, 3.2vw, 2.1rem);
+  line-height: 1.45;
+  letter-spacing: -0.015em;
+  margin: 0 0 1.5rem;
+  text-wrap: balance;
+}
+.ask-note {
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  max-width: 54ch;
+  margin: 0;
+}
+
+/* ------------------------------------------------------------- 3. bar (peak) */
+.act--bar .act-inner { align-items: stretch; }
+
+.bar-label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  margin: 0 0 1.25rem;
+}
+
+.bar-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 2rem;
+}
+.bar-raised {
+  font-size: clamp(3.5rem, 13vw, 9rem);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+.bar-goal {
+  font-size: clamp(1.1rem, 3vw, 2rem);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-track {
+  position: relative;
+  height: 56px;
+  border-radius: 28px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  border-radius: 28px;
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent));
+  transform: scaleX(var(--fill, 0));
+  transform-origin: left center;
+  will-change: transform;
+}
+/* Ticks read as a measuring instrument rather than decoration. */
+.bar-ticks {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+}
+.bar-ticks span {
+  flex: 1;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+}
+.bar-ticks span:last-child { border-right: 0; }
+
+.bar-readout {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.bar-pct {
+  font-size: clamp(1.4rem, 4vw, 2.4rem);
+  color: var(--accent-bright);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+/* The signature move: a line of Riko's commentary keyed to the live total. */
+.sass {
+  margin-top: 2.5rem;
+  padding: 1.1rem 1.3rem;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: clamp(0.9rem, 2vw, 1.05rem);
+  color: var(--ink);
+  min-height: 3.4em;
+}
+.sass .who { color: var(--accent-text); }
+
+/* ------------------------------------------------------------- 4. wall */
+/* The wall is the one act that does not pin. A pinned container holding a
+   list taller than the viewport needs its own scrollbar, which steals the
+   wheel from the page and hides most of the donors behind a scroll region
+   nobody finds. Letting it flow means you simply scroll past every name. */
+.act--wall .act-inner {
+  position: static;
+  min-height: 0;
+  justify-content: flex-start;
+  padding-top: 6rem;
+  padding-bottom: 6rem;
+}
+.wall-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.75rem;
+}
+.wall-head h2 {
+  font-size: clamp(1.75rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.wall-count {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.donors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.donor {
+  padding: 1rem 0.25rem;
+  border-bottom: 1px solid var(--surface-2);
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.donor.is-in { opacity: 1; transform: none; }
+.donor-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.donor-name { font-weight: 600; }
+.donor-amount {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+}
+.donor-when {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+.tier {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent-text);
+}
+.donor-msg {
+  margin: 0.5rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  max-width: var(--measure);
+}
+.donor.empty { color: var(--ink-soft); opacity: 1; transform: none; }
+
+.top-donors {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+}
+.top-donors li {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--surface-2);
+}
+.top-donors .rank { color: var(--accent-text); width: 2rem; }
+.top-donors .name { flex: 1; }
+.top-donors .score { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.top-donors .empty { color: var(--ink-soft); }
+
+/* ------------------------------------------------------------- 5. close */
+.act--close .act-inner {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 3rem;
+  align-items: center;
+}
+.close-copy h2 {
+  font-size: clamp(2rem, 6vw, 3.75rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  margin: 0 0 1rem;
+}
+.close-copy p {
+  color: var(--ink-soft);
+  max-width: 44ch;
+  margin: 0 0 2rem;
+}
+.close-art {
+  position: relative;
+  justify-self: center;
+  max-width: 340px;
+}
+.close-art img {
+  width: 100%;
+  height: auto;
+  display: block;
+  /* Pointer parallax, set by JS. Capped small so it reads as depth, not drift. */
+  transform: translate3d(var(--mx, 0px), var(--my, 0px), 0);
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.close-art::after {
+  content: "";
+  position: absolute;
+  inset: 18% 8% 4%;
+  z-index: -1;
+  background: radial-gradient(ellipse at center, rgba(173, 20, 87, 0.5), transparent 68%);
+  filter: blur(46px);
+}
+.close-sign {
+  margin-top: 2.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.close-sign .k { color: var(--accent-text); }
+
+@media (max-width: 860px) {
+  .act--close .act-inner { grid-template-columns: 1fr; text-align: left; }
+  /* Bound by height, not width: the render is tall and portrait, so a width
+     cap alone let it grow past the viewport and cropped her head. */
+  .close-art { order: -1; justify-self: start; max-width: 190px; }
+  .close-art img { max-height: 34vh; width: auto; }
+  .act--bar { min-height: 260vh; }
+  /* The wall sizes to its content on every breakpoint. Capping its height
+     here without an overflow rule made the donor list spill over the top
+     donors and the closing copy. */
+  .act--wall { min-height: auto; }
+  .bar-track { height: 44px; }
+}
+
+/* With reduced motion the page still tells the whole story, it just arrives
+   already assembled instead of building. */
+@media (prefers-reduced-motion: reduce) {
+  .donor { opacity: 1; transform: none; }
+  .bar-fill { transform: scaleX(var(--fill-final, 0)); }
+  .close-art img { transform: none; }
+}

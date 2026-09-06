@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{GOAL_TITLE}} · Riko</title>
+<meta name="description" content="{{GOAL_DESC}}">
+<meta name="theme-color" content="#000000">
+<meta property="og:title" content="{{GOAL_TITLE}}">
+<meta property="og:description" content="${{RAISED}} of ${{GOAL}} raised. Riko has opinions about it.">
+<meta property="og:type" content="website">
+<link rel="icon" href="/static/img/riko-greet.png">
+<link rel="stylesheet" href="/static/css/riko.css">
+<link rel="stylesheet" href="/static/css/donations.css">
+</head>
+<body class="dono">
+<a class="skip-link" href="#terms">Skip to the details</a>
+
+<header class="nav">
+  <a class="brand" href="/">
+    <img src="/static/img/riko-greet.png" alt="" width="32" height="32">
+    <span>Riko</span>
+  </a>
+  <nav aria-label="Primary">
+    <a href="/">Home</a>
+    <a href="/leaderboard">Leaderboard</a>
+    <a href="/donations" aria-current="page">Donations</a>
+  </nav>
+  <a class="btn btn--sm" href="{{KOFI_URL}}" rel="noopener" target="_blank">Donate</a>
+</header>
+
+<main>
+
+  <!-- 1. the pitch -->
+  <section class="act act--boot" data-act="boot" aria-label="The goal">
+    <div class="act-inner">
+      <div class="boot-term">
+        <p class="eyebrow">Current goal</p>
+        <h1 class="boot-title">{{GOAL_TITLE}}</h1>
+        <p class="boot-sub">{{GOAL_DESC}}</p>
+        <p class="boot-line" data-type="one costume. one camera. no takebacks."></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. the terms. authored silence: nothing here moves. -->
+  <section class="act act--ask" data-act="ask" id="terms" aria-label="The terms">
+    <div class="act-inner">
+      <p class="ask-body">The deal is simple. The bar hits a hundred percent, Rayen puts on the maid outfit, and the whole server gets to watch him regret it.</p>
+      <p class="ask-note">Every donation counts toward the total the moment Ko-fi confirms it. Tick the private box on Ko-fi and only the number moves, your name stays off this page.</p>
+    </div>
+  </section>
+
+  <!-- 3. the bar. the peak. -->
+  <section class="act act--bar" data-act="bar" aria-label="Goal progress">
+    <div class="act-inner">
+      <p class="bar-label">Progress toward the costume</p>
+
+      <p class="bar-figure">
+        <span class="bar-raised">${{RAISED}}</span>
+        <span class="bar-goal">of ${{GOAL}}</span>
+      </p>
+
+      <div class="bar-track" role="progressbar" aria-valuenow="{{PERCENT}}" aria-valuemin="0" aria-valuemax="100" aria-label="Funding progress">
+        <div class="bar-fill"></div>
+        <div class="bar-ticks" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span>
+        </div>
+      </div>
+
+      <p class="bar-readout">
+        <span>{{COUNT}} supporters · <span class="bar-state">reading</span></span>
+        <span class="bar-pct">{{PERCENT}}%</span>
+      </p>
+
+      <p class="sass"><span class="who">riko:</span> <span class="sass-text"></span></p>
+    </div>
+  </section>
+
+  <!-- 4. the wall -->
+  <section class="act act--wall" data-act="wall" aria-label="Supporters">
+    <div class="act-inner">
+      <div class="wall-head">
+        <h2>The people responsible</h2>
+        <span class="wall-count">{{COUNT}} donations recorded</span>
+      </div>
+
+      <ul class="donors">
+        <!--DONOR_ROWS-->
+      </ul>
+
+      <h3 class="bar-label" style="margin-top:3rem">Biggest offenders</h3>
+      <ul class="top-donors">
+        <!--TOP_DONORS-->
+      </ul>
+    </div>
+  </section>
+
+  <!-- 5. the close -->
+  <section class="act act--close" data-act="close" aria-label="Donate">
+    <div class="act-inner">
+      <div class="close-copy">
+        <h2>Put your name on the list.</h2>
+        <p>Ko-fi takes no cut on one-off tips. Your name and message land on this page within seconds of the payment clearing.</p>
+        <a class="btn" href="{{KOFI_URL}}" rel="noopener" target="_blank">Fund the costume</a>
+        <p class="close-sign">At 100%: {{GOAL_REWARD}}</p>
+      </div>
+      <div class="close-art">
+        <img src="/static/img/riko-look.png" alt="Riko, arms down, looking unimpressed" width="567" height="1118" loading="lazy">
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot wrap">
+  <span>© Rikoverse</span>
+  <a href="/">riko.ado.wtf</a>
+  <a href="{{KOFI_URL}}" rel="noopener" target="_blank">ko-fi.com/rayenai</a>
+  <a href="/leaderboard">Leaderboard</a>
+</footer>
+
+<script id="riko-data" type="application/json">{"raised": {{RAISED_RAW}}, "goal": {{GOAL_RAW}}, "percent": {{PERCENT_RAW}}, "count": {{COUNT}}}</script>
+<script>window.__RIKO__ = JSON.parse(document.getElementById("riko-data").textContent);</script>
+<script src="/static/js/donations.js" defer></script>
+</body>
+</html>

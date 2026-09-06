@@ -217,3 +217,5 @@ leaderboard_data.json.backup
 leaderboard_data.json.reset_backup_*
 leaderboard_data.json.migrated_backup
 migrate_to_mongo.py
+# scroll-craft build workspace
+scrollcraft/

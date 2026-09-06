@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leaderboard · Riko</title>
+<meta name="description" content="Image scores for the Just Rayen server, ranked.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="/static/img/riko-greet.png">
+<link rel="stylesheet" href="/static/css/riko.css">
+</head>
+<body>
+<a class="skip-link" href="#board">Skip to the table</a>
+
+<header class="nav">
+  <a class="brand" href="/">
+    <img src="/static/img/riko-greet.png" alt="" width="32" height="32">
+    <span>Riko</span>
+  </a>
+  <nav aria-label="Primary">
+    <a href="/">Home</a>
+    <a href="/leaderboard" aria-current="page">Leaderboard</a>
+    <a href="/donations">Donations</a>
+  </nav>
+</header>
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>Leaderboard</h1>
+    <p>Scores come from reactions on images posted in the art channels. One point per net upvote, counted the moment someone reacts.</p>
+  </div>
+
+  <div class="table-tools">
+    <a href="/leaderboard?sort=total_score" aria-current="{{SORT_TOTAL}}">Total score</a>
+    <a href="/leaderboard?sort=image_count" aria-current="{{SORT_COUNT}}">Images posted</a>
+    <a href="/leaderboard?sort=avg_score" aria-current="{{SORT_AVG}}">Average score</a>
+  </div>
+
+  <table class="board" id="board">
+    <thead>
+      <tr>
+        <th scope="col">#</th>
+        <th scope="col">Name</th>
+        <th scope="col" class="num">Score</th>
+        <th scope="col" class="num">Images</th>
+        <th scope="col" class="num">Average</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!--ROWS-->
+    </tbody>
+  </table>
+</main>
+
+<footer class="foot wrap">
+  <span>© Rikoverse</span>
+  <a href="/">riko.ado.wtf</a>
+  <a href="/donations">Donations</a>
+</footer>
+</body>
+</html>
