@@ -10,6 +10,7 @@ import html
 import logging
 import os
 import secrets
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,6 +60,8 @@ class RikoWebServer:
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
         self._templates: Dict[str, str] = {}
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: Optional[threading.Thread] = None
         self._setup_routes()
 
     # ------------------------------------------------------------------
@@ -95,6 +98,40 @@ class RikoWebServer:
         return getattr(self.bot, "leaderboard_manager", None)
 
     async def start(self):
+        """Run the site on a dedicated event loop in its own thread.
+
+        Sharing the bot's loop meant any blocking work on it, chiefly the
+        startup achievement and image scans doing synchronous pymongo calls,
+        showed up as multi-second page loads. The site gets its own loop so
+        it stays responsive no matter what the bot is doing. All database
+        access from here is `asyncio.to_thread` around thread-safe pymongo,
+        so nothing is shared across loops except the connection pool.
+        """
+        ready = threading.Event()
+        startup_error: List[BaseException] = []
+
+        def run_loop():
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+            try:
+                self._loop.run_until_complete(self._start_site())
+            except BaseException as e:  # noqa: BLE001 - surfaced to the caller
+                startup_error.append(e)
+                ready.set()
+                return
+            ready.set()
+            self._loop.run_forever()
+
+        self._thread = threading.Thread(target=run_loop, name="riko-web", daemon=True)
+        self._thread.start()
+
+        # Wait for bind so a port conflict is reported at startup, not later.
+        if not ready.wait(timeout=30):
+            raise RuntimeError("Web server did not start within 30 seconds")
+        if startup_error:
+            raise startup_error[0]
+
+    async def _start_site(self):
         self.runner = web.AppRunner(self.app, access_log=None)
         await self.runner.setup()
         self.site = web.TCPSite(self.runner, Config.WEB_HOST, Config.WEB_PORT)
@@ -102,9 +139,17 @@ class RikoWebServer:
         logger.info(f"🌐 Web server listening on {Config.WEB_HOST}:{Config.WEB_PORT}")
 
     async def stop(self):
-        if self.runner:
-            await self.runner.cleanup()
-            logger.info("Web server stopped")
+        if not self._loop:
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(self.runner.cleanup(), self._loop)
+            await asyncio.wrap_future(future)
+        except Exception as e:
+            logger.error(f"Error cleaning up web server: {e}")
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._thread:
+            self._thread.join(timeout=10)
+        logger.info("Web server stopped")
 
     # ------------------------------------------------------------------
     # data helpers
@@ -575,15 +620,29 @@ class RikoWebServer:
         return web.json_response({"status": "ok"})
 
     async def _announce_donation(self, donation: Dict[str, Any], progress: Dict[str, Any]):
-        """Log to Discord and refresh the in-server progress bar."""
+        """Log to Discord and refresh the in-server progress bar.
+
+        This runs on the web server's loop. The webhook post is plain aiohttp
+        and is fine here, but refreshing the progress bar touches discord.py
+        objects bound to the bot's loop, so it has to be handed back across.
+        """
         try:
             await send_donation_log(Config.DONATION_LOG_WEBHOOK_URL, donation, progress)
         except Exception as e:
             logger.error(f"Error sending donation log: {e}")
 
         controller = getattr(self.bot, "donation_controller", None)
-        if controller:
-            try:
-                await controller.refresh_progress_message(donation=donation)
-            except Exception as e:
-                logger.error(f"Error refreshing donation progress message: {e}")
+        if not controller:
+            return
+
+        bot_loop = getattr(self.bot, "loop", None)
+        try:
+            coro = controller.refresh_progress_message(donation=donation)
+            if bot_loop and bot_loop.is_running() and bot_loop is not asyncio.get_running_loop():
+                future = asyncio.run_coroutine_threadsafe(coro, bot_loop)
+                # Do not block a request on Discord; just surface failures.
+                await asyncio.wrap_future(future)
+            else:
+                await coro
+        except Exception as e:
+            logger.error(f"Error refreshing donation progress message: {e}")
