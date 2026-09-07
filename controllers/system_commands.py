@@ -192,6 +192,10 @@ class SystemCommandsController:
         @self.bot.hybrid_command(name="about", description="About Ino, and how she is running")
         @public_command
         async def about_command(ctx):
+            # Acknowledge first: this walks the guild list, and a late reply
+            # loses the interaction entirely.
+            await ctx.defer()
+
             embed = discord.Embed(
                 title="⛩️ Ino",
                 description=(
@@ -236,6 +240,8 @@ class SystemCommandsController:
         @self.bot.hybrid_command(name="help", description="Browse everything Ino can do")
         @public_command
         async def help_command(ctx, command: Optional[str] = None):
+            await ctx.defer()
+
             if command:
                 await self._send_command_help(ctx, command)
                 return

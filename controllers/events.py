@@ -2554,25 +2554,57 @@ class EventsController:
             logger.error(f"Error in scam image detection: {e}")
             return False
     
+    async def _safe_reply(self, ctx: commands.Context, message: str) -> None:
+        """Reply to a command, tolerating an interaction that is already gone.
+
+        Error 10062 (Unknown interaction) means the three second window closed
+        before we answered. The reply then fails too, and because this runs
+        inside the on_command_error handler that second failure surfaced as an
+        unhandled "Ignoring exception in on_command_error" traceback — one real
+        problem producing two confusing log entries.
+        """
+        try:
+            await ctx.send(message, ephemeral=True)
+        except discord.NotFound:
+            logger.info(
+                "Could not reply to %s: the interaction had already expired",
+                getattr(ctx.command, "name", "unknown"),
+            )
+        except discord.HTTPException as exc:
+            logger.warning("Could not deliver an error reply: %s", exc)
+
     async def _handle_command_error(self, ctx: commands.Context, error: commands.CommandError):
         """Handle command errors"""
+        command_name = getattr(ctx.command, "name", ctx.invoked_with or "unknown")
+
         if isinstance(error, commands.CommandNotFound):
             logger.debug(f"Unknown command: {ctx.invoked_with}")
             return
         elif isinstance(error, commands.CheckFailure):
             # This is triggered by our global check that blocks DMs and other guilds
             # The check already sends a message, so just log it
-            logger.info(f"Check failed for command {ctx.command.name} by {ctx.author.display_name}")
+            logger.info(f"Check failed for command {command_name} by {ctx.author.display_name}")
             return
         elif isinstance(error, commands.MissingPermissions):
-            logger.warning(f"Missing permissions for command {ctx.command.name}: {error}")
-            await ctx.send("❌ You don't have permission to use this command.", ephemeral=True)
+            logger.warning(f"Missing permissions for command {command_name}: {error}")
+            await self._safe_reply(ctx, "❌ You don't have permission to use this command.")
         elif isinstance(error, commands.NotOwner):
-            logger.warning(f"Non-owner tried to use owner command {ctx.command.name}: {ctx.author}")
-            await ctx.send("❌ This command is only available to bot owners.", ephemeral=True)
+            logger.warning(f"Non-owner tried to use owner command {command_name}: {ctx.author}")
+            await self._safe_reply(ctx, "❌ This command is only available to bot owners.")
         else:
-            logger.error(f"Command error in {ctx.command.name}: {error}")
-            await ctx.send(f"❌ An error occurred: {str(error)}", ephemeral=True)
+            # An expired interaction is not a bug in the command; report it as
+            # what it is instead of as an unexplained failure.
+            original = getattr(error, "original", None)
+            if isinstance(original, discord.NotFound) and original.code == 10062:
+                logger.warning(
+                    "/%s could not be answered in time (interaction expired). "
+                    "Something is holding the event loop.",
+                    command_name,
+                )
+                return
+
+            logger.error(f"Command error in {command_name}: {error}")
+            await self._safe_reply(ctx, f"❌ An error occurred: {str(error)}")
     
     async def _handle_reaction_change(self, reaction: discord.Reaction, user: discord.User, added: bool):
         """Handle reaction additions and removals for leaderboard tracking and moderation"""

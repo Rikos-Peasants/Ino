@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
@@ -20,6 +21,9 @@ class QuestManager:
         
         self.connection_url = connection_url or Config.MONGO_URI
         self.database_name = database_name
+        # Achievement definitions are static config; read once per process
+        # rather than once per user during the startup sweep.
+        self._achievement_definitions: Optional[List[Dict]] = None
         self.client: Optional[MongoClient] = None
         self.db: Optional[Database] = None
         self.quests_collection: Optional[Collection] = None
@@ -2330,24 +2334,70 @@ class QuestManager:
             return []
     
     async def check_achievements(self, user_id: int, leaderboard_manager) -> List[Dict]:
-        """Check and award achievements for a user"""
+        """Check and award achievements for a user.
+
+        Everything this needs is loaded up front in a single worker thread.
+
+        It used to issue around eighteen separate blocking round trips per user
+        -- one per achievement type, most of them re-reading the *same* stats
+        document -- which measured at ~730ms of blocked event loop per user. On
+        startup, across a few hundred users, that stalled the loop hard enough
+        that incoming slash commands could not be answered inside Discord's
+        three second window and failed with "Unknown interaction".
+        """
         try:
-            # Get user stats
-            user_stats = leaderboard_manager.get_user_stats(user_id)
+            def _load():
+                # One hop for everything. The achievement list is static config,
+                # so it is fetched once for the whole process rather than once
+                # per user.
+                if self._achievement_definitions is None:
+                    self._achievement_definitions = list(self.achievements_collection.find())
+
+                return {
+                    "user_stats": leaderboard_manager.get_user_stats(user_id),
+                    "achievements": self._achievement_definitions,
+                    "owned": {
+                        doc["achievement_id"]
+                        for doc in self.user_achievements_collection.find(
+                            {"user_id": str(user_id)}, {"achievement_id": 1}
+                        )
+                    },
+                    "stats": self.user_stats_collection.find_one({"user_id": str(user_id)}) or {},
+                    "streaks": self.user_streaks_collection.find_one({"user_id": str(user_id)}) or {},
+                    "quests_completed": self.user_quests_collection.count_documents(
+                        {"user_id": str(user_id), "completed": True}
+                    ),
+                    "total_quest_points": (
+                        sum(
+                            q.get("reward_points", 0)
+                            for q in self.user_quests_collection.find(
+                                {"user_id": str(user_id), "completed": True},
+                                {"reward_points": 1},
+                            )
+                        )
+                        + sum(
+                            a.get("reward_points", 0)
+                            for a in self.user_achievements_collection.find(
+                                {"user_id": str(user_id)}, {"reward_points": 1}
+                            )
+                        )
+                    ),
+                }
+
+            loaded = await asyncio.to_thread(_load)
+
+            user_stats = loaded["user_stats"]
             if not user_stats:
                 return []
-            
-            # Get all achievements
-            all_achievements = list(self.achievements_collection.find())
-            
-            # Get user's current achievements
-            user_achievements = set(
-                doc["achievement_id"] for doc in 
-                self.user_achievements_collection.find({"user_id": str(user_id)})
-            )
-            
+
+            all_achievements = loaded["achievements"]
+            user_achievements = loaded["owned"]
+            # Served from the prefetched documents instead of a query each.
+            stat = lambda name: loaded["stats"].get(name, 0)
+            streak = lambda name: loaded["streaks"].get(name, 0)
+
             new_achievements = []
-            
+
             for achievement in all_achievements:
                 # Skip if user already has this achievement
                 if achievement["achievement_id"] in user_achievements:
@@ -2365,63 +2415,60 @@ class QuestManager:
                 
                 # Rating achievements
                 elif achievement_type == "rate_images":
-                    rating_count = await self.get_user_stat(user_id, "ratings_given")
+                    rating_count = stat("ratings_given")
                     earned = rating_count >= target
                 
                 # Streak achievements
                 elif achievement_type == "quest_streak":
-                    current_streak = await self.get_user_streak(user_id, "quest_streak")
+                    current_streak = streak("quest_streak")
                     earned = current_streak >= target
                 elif achievement_type == "post_streak":
-                    current_streak = await self.get_user_streak(user_id, "post_streak")
+                    current_streak = streak("post_streak")
                     earned = current_streak >= target
                 
                 # Quest completion achievements
                 elif achievement_type == "quests_completed":
-                    completed_count = self.user_quests_collection.count_documents({
-                        "user_id": str(user_id),
-                        "completed": True
-                    })
+                    completed_count = loaded["quests_completed"]
                     earned = completed_count >= target
                 
                 # Viral/Likes achievements
                 elif achievement_type == "viral_image":
                     # Check if user has any image with at least target likes
-                    max_likes = await self.get_user_stat(user_id, "max_likes_on_image")
+                    max_likes = stat("max_likes_on_image")
                     earned = max_likes >= target
                 elif achievement_type == "total_likes":
-                    total_likes = await self.get_user_stat(user_id, "total_likes_received")
+                    total_likes = stat("total_likes_received")
                     earned = total_likes >= target
                 
                 # Community achievements
                 elif achievement_type == "likes_given":
-                    likes_given = await self.get_user_stat(user_id, "likes_given")
+                    likes_given = stat("likes_given")
                     earned = likes_given >= target
                 elif achievement_type == "diverse_users":
-                    unique_users = await self.get_user_stat(user_id, "unique_users_reacted_to")
+                    unique_users = stat("unique_users_reacted_to")
                     earned = unique_users >= target
                 
                 # Special achievements
                 elif achievement_type == "early_posts":
-                    early_posts = await self.get_user_stat(user_id, "early_morning_posts")
+                    early_posts = stat("early_morning_posts")
                     earned = early_posts >= target
                 elif achievement_type == "late_posts":
-                    late_posts = await self.get_user_stat(user_id, "late_night_posts")
+                    late_posts = stat("late_night_posts")
                     earned = late_posts >= target
                 elif achievement_type == "rapid_posts":
-                    rapid_posts = await self.get_user_stat(user_id, "rapid_post_sessions")
+                    rapid_posts = stat("rapid_post_sessions")
                     earned = rapid_posts >= target
                 elif achievement_type == "comebacks":
-                    comebacks = await self.get_user_stat(user_id, "comeback_count")
+                    comebacks = stat("comeback_count")
                     earned = comebacks >= target
                 elif achievement_type == "perfect_day":
-                    perfect_days = await self.get_user_stat(user_id, "perfect_days")
+                    perfect_days = stat("perfect_days")
                     earned = perfect_days >= target
                 elif achievement_type == "quest_points":
-                    total_points = await self.get_user_total_quest_points(user_id)
+                    total_points = loaded["total_quest_points"]
                     earned = total_points >= target
                 elif achievement_type == "bookmarks":
-                    bookmark_count = await self.get_user_stat(user_id, "bookmarks_created")
+                    bookmark_count = stat("bookmarks_created")
                     earned = bookmark_count >= target
                 elif achievement_type == "competition_win":
                     # Weekly/Monthly/Yearly winner achievements
@@ -2440,7 +2487,9 @@ class QuestManager:
                         "icon": achievement.get("icon", "🏆")
                     }
                     
-                    self.user_achievements_collection.insert_one(achievement_record)
+                    await asyncio.to_thread(
+                        self.user_achievements_collection.insert_one, achievement_record
+                    )
                     new_achievements.append(achievement_record)
             
             # Only log if achievements were actually awarded

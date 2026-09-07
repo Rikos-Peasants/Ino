@@ -185,7 +185,9 @@ class MongoLeaderboardManager:
     async def image_message_exists(self, message_id: str) -> bool:
         """Check if an image message already exists in the database"""
         try:
-            result = self.images_collection.find_one({"message_id": str(message_id)})
+            result = await asyncio.to_thread(
+                self.images_collection.find_one, {"message_id": str(message_id)}
+            )
             return result is not None
         except Exception as e:
             logger.error(f"Error checking if image message exists: {e}")
@@ -210,10 +212,11 @@ class MongoLeaderboardManager:
             }
             
             # Use upsert to handle potential duplicates
-            result = self.images_collection.update_one(
+            result = await asyncio.to_thread(
+                self.images_collection.update_one,
                 {"message_id": doc["message_id"]},
                 {"$set": doc},
-                upsert=True
+                True,  # upsert
             )
             
             logger.info(f"Stored image message from {message.author.display_name} in #{message.channel.name}")
@@ -227,7 +230,8 @@ class MongoLeaderboardManager:
         """Update the score for an image message"""
         try:
             net_score = thumbs_up - thumbs_down
-            result = self.images_collection.update_one(
+            result = await asyncio.to_thread(
+                self.images_collection.update_one,
                 {"message_id": str(message_id)},
                 {
                     "$set": {
@@ -236,7 +240,7 @@ class MongoLeaderboardManager:
                         "thumbs_down": thumbs_down,
                         "last_updated": datetime.now()
                     }
-                }
+                },
             )
             
             if result.modified_count > 0:
