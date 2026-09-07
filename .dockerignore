@@ -45,4 +45,12 @@ temp/
 # Docker files (exclude from copying into container)
 Dockerfile
 docker-compose.yml
-.dockerignore 
+.dockerignore
+
+# Local design-preview tooling (see .claude/launch.json)
+run_web_preview.py
+.claude/
+
+# Command sync fingerprint: must not be baked into the image, or a rebuild
+# would inherit a stale hash and skip the sync it actually needs.
+.command-sync-state

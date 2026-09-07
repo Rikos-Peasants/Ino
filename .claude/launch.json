@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "run_web_preview.py"
+      ],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}

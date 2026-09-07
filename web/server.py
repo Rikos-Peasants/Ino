@@ -12,6 +12,7 @@ import hashlib
 import html
 import json
 import logging
+import mimetypes
 import os
 import secrets
 import threading
@@ -38,6 +39,25 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
+
+# Python's mimetypes table has no entry for woff2, so the fonts would be served
+# as application/octet-stream. That contradicts the `type="font/woff2"` on the
+# preload link, and browsers discard a preload whose type does not match —
+# costing a second fetch for the very file we preloaded.
+#
+# aiohttp resolves static types through its own MimeTypes instance built at
+# import time, so registering on the stdlib module alone does not reach it.
+# Both are set: the stdlib one for anything else that asks, and aiohttp's for
+# the static route that actually serves these files.
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/woff", ".woff")
+try:
+    from aiohttp.web_fileresponse import CONTENT_TYPES as _AIOHTTP_CONTENT_TYPES
+
+    _AIOHTTP_CONTENT_TYPES.add_type("font/woff2", ".woff2")
+    _AIOHTTP_CONTENT_TYPES.add_type("font/woff", ".woff")
+except ImportError:  # Older or newer aiohttp without that symbol.
+    logger.debug("Could not register woff2 with aiohttp; fonts fall back to octet-stream")
 
 
 # Discord's Clyde mark. Inlined rather than fetched so it costs no request

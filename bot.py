@@ -254,27 +254,25 @@ class RikoBot(commands.Bot):
         """Initial setup when bot is starting"""
         logger.info("Setting up bot...")
         
-        # Register events and commands
-        if self.events_controller:
-            self.events_controller.register_events()
-        if self.commands_controller:
-            self.commands_controller.register_commands()
-        if self.scam_image_controller:
-            self.scam_image_controller.register_commands()
-        if self.donation_controller:
-            self.donation_controller.register_commands()
+        from controllers.registry import Registration, register_all
+        from controllers.rep_commands import RepCommandsController
+        from controllers.fun_commands import FunCommandsController
+        from controllers.system_commands import SystemCommandsController
 
-        try:
-            from controllers.rep_commands import RepCommandsController
-            RepCommandsController(self).register_commands()
-        except Exception as e:
-            logger.error(f"❌ Failed to register rep commands: {e}")
-
-        try:
-            from controllers.fun_commands import FunCommandsController
-            FunCommandsController(self).register_commands()
-        except Exception as e:
-            logger.error(f"❌ Failed to register fun commands: {e}")
+        registrations = [
+            Registration("events", self.events_controller.register_events, required=True)
+            if self.events_controller else None,
+            Registration("core commands", self.commands_controller.register_commands, required=True)
+            if self.commands_controller else None,
+            Registration("scam image commands", self.scam_image_controller.register_commands)
+            if self.scam_image_controller else None,
+            Registration("donation commands", self.donation_controller.register_commands)
+            if self.donation_controller else None,
+            Registration("rep commands", RepCommandsController(self).register_commands),
+            Registration("fun commands", FunCommandsController(self).register_commands),
+            Registration("system commands", SystemCommandsController(self).register_commands),
+        ]
+        register_all([entry for entry in registrations if entry])
 
         # Initialize quest manager after bot is ready
         if self.events_controller:
@@ -310,25 +308,18 @@ class RikoBot(commands.Bot):
             description = getattr(cmd, 'description', 'No description') if hasattr(cmd, 'description') else 'No description'
             logger.info(f"  - App command: /{cmd.name} - {description}")
         
-        # Sync commands to enable slash command functionality
-        logger.info("Syncing hybrid commands...")
+        # Sync only when the command set actually changed. Both sync endpoints
+        # are rate limited and the global one is slow, so an unchanged restart
+        # should not pay for them.
         try:
-            # Sync to the configured guild first (instant updates for development)
-            if Config.GUILD_ID:
-                guild = discord.Object(id=Config.GUILD_ID)
-                synced_guild = await self.tree.sync(guild=guild)
-                logger.info(f"✅ Synced {len(synced_guild)} commands to guild {Config.GUILD_ID}")
-                for cmd in synced_guild:
-                    logger.info(f"   - /{cmd.name}: {cmd.description}")
-            
-            # Also sync globally (takes up to 1 hour to propagate)
-            synced_global = await self.tree.sync()
-            logger.info(f"✅ Synced {len(synced_global)} commands globally")
-            
+            from controllers.registry import CommandSyncer
+            self.command_syncer = CommandSyncer(self, Config.GUILD_ID)
+            self.last_sync_report = await self.command_syncer.sync()
         except Exception as e:
             logger.error(f"❌ Failed to sync commands: {e}")
-            logger.error(f"   Make sure bot has 'applications.commands' scope!")
-        
+            logger.error("   Make sure bot has 'applications.commands' scope!")
+            self.last_sync_report = {"synced": False, "reason": f"error: {e}"}
+
         # Register persistent views
         try:
             # Register ForumThreadView for persistent view handling

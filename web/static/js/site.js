@@ -129,4 +129,53 @@
       Array.prototype.forEach.call(reveals, function (el) { io.observe(el); });
     }
   }
+
+  /* ---------------------------------------------------- stat count-up
+     Counts the headline figures up once, when they first scroll into view.
+     The numbers are already in the markup, so this is purely decorative:
+     with JS off, or under reduced-motion, the final value is simply what
+     was rendered server-side. */
+  var stats = document.querySelectorAll(".stats dd");
+  if (stats.length && !reduced && "IntersectionObserver" in window) {
+    var countObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        countObserver.unobserve(entry.target);
+        countUp(entry.target);
+      });
+    }, { threshold: 0.5 });
+
+    Array.prototype.forEach.call(stats, function (el) {
+      // Only animate plain integers; anything with a currency symbol or
+      // suffix is left exactly as the server wrote it.
+      if (!/^[\d,]+$/.test(el.textContent.trim())) return;
+      countObserver.observe(el);
+    });
+  }
+
+  function countUp(el) {
+    var raw = el.textContent.trim();
+    var target = parseInt(raw.replace(/,/g, ""), 10);
+    if (!isFinite(target) || target <= 0) return;
+
+    var duration = 900;
+    var start = null;
+    el.classList.add("is-counting");
+
+    function frame(now) {
+      if (start === null) start = now;
+      var progress = Math.min((now - start) / duration, 1);
+      // Ease-out cubic: fast start, gentle settle.
+      var eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.round(target * eased).toLocaleString();
+      if (progress < 1) {
+        window.requestAnimationFrame(frame);
+      } else {
+        // Restore the server's exact string, so formatting never drifts.
+        el.textContent = raw;
+        el.classList.remove("is-counting");
+      }
+    }
+    window.requestAnimationFrame(frame);
+  }
 })();

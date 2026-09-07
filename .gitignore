@@ -219,3 +219,6 @@ leaderboard_data.json.migrated_backup
 migrate_to_mongo.py
 # scroll-craft build workspace
 scrollcraft/
+
+# Command sync fingerprint (see controllers/registry.py)
+.command-sync-state

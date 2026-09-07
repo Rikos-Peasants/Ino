@@ -1,3 +1,52 @@
+/* ---------------------------------------------------------------- fonts
+   Geist, self-hosted as variable woff2 so one file covers every weight.
+   The stack below asked for Geist from the start but nothing ever loaded it,
+   so every page silently rendered in system-ui and the tight display
+   letter-spacing was being applied to the wrong typeface.
+
+   Self-hosted rather than linked to Google: no third-party connection on
+   first paint, and no layout shift from a cross-origin round trip. */
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/static/fonts/geist-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/static/fonts/geist-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/static/fonts/geist-mono-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/static/fonts/geist-mono-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 /* Riko design floor.
    Accent is #ad1457 as specified. Measured against pure black it lands at
    3.0:1, which is fine for large display text, fills and button backgrounds
@@ -1110,4 +1159,138 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
 @media (max-width: 880px) {
   .split { grid-template-columns: 1fr; gap: 2.5rem; padding-block: 3rem; }
   .goal-panel { padding: 1.4rem; }
+}
+
+/* ================================================================ polish
+   Refinements that only became possible once Geist was actually loading.
+   Deliberately restrained: precision over glow. No floating orbs, in keeping
+   with the note on .hero-art above. */
+
+/* Geist ships proportional figures by default, which makes columns of numbers
+   ragged. Data surfaces get tabular figures so digits sit on a grid. */
+.stats dd,
+.mini-board .score,
+.goal-panel-figure,
+.goal-panel-pct,
+table.board td.num,
+table.board th.num,
+table.board td.rank {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "ss03" 1;
+}
+
+/* Slashed zero in monospace contexts, so 0 and O are never confused in an ID
+   or a score. */
+.mini-board .score,
+.goal-panel-pct,
+table.board td.rank {
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* The default dark-mode scrollbar is a light grey slab against pure black. */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+  border: 2px solid var(--canvas);
+}
+*::-webkit-scrollbar-thumb:hover { background: #3a2a30; }
+
+/* ---------------------------------------------------------------- buttons
+   A press state, so a tap reads as a tap. Previously hover lifted the button
+   and clicking did nothing visible. */
+.btn:active { transform: translateY(0); transition-duration: 0.05s; }
+.btn {
+  will-change: transform;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.09) inset;
+}
+.btn--ghost { box-shadow: none; }
+.btn--ghost:hover { background: rgba(255, 255, 255, 0.03); }
+
+/* ------------------------------------------------------------ mini board
+   Rows are links in spirit; give them a hover and pull the top three out. */
+.mini-board li {
+  border-radius: 8px;
+  padding-inline: 0.75rem;
+  margin-inline: -0.75rem;
+  transition: background 0.15s ease;
+}
+.mini-board li:hover { background: var(--surface); }
+.mini-board li:nth-child(-n+3) .name { font-weight: 650; }
+.mini-board li:nth-child(-n+3) .score { color: var(--ink); }
+
+/* ---------------------------------------------------------------- tables
+   Medals for the podium and a header that survives a long scroll. */
+table.board thead th {
+  position: sticky;
+  top: var(--nav-h);
+  background: var(--canvas);
+  z-index: 5;
+}
+table.board td.rank { position: relative; }
+table.board tbody tr:nth-child(-n+3) td.name { font-weight: 650; }
+table.board tbody tr:nth-child(1) td.rank::after { content: "🥇"; }
+table.board tbody tr:nth-child(2) td.rank::after { content: "🥈"; }
+table.board tbody tr:nth-child(3) td.rank::after { content: "🥉"; }
+table.board tbody tr:nth-child(-n+3) td.rank::after {
+  margin-left: 0.45rem;
+  font-size: 0.95em;
+}
+/* A hairline accent down the podium rows rather than a filled highlight,
+   which would fight the accent used for links in the same row. */
+table.board tbody tr:nth-child(-n+3) td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* -------------------------------------------------------------- cast grid */
+.cast-grid li {
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+.cast-grid li:hover { background: var(--surface-2); }
+
+/* ------------------------------------------------------------ goal panel
+   The fill was a flat block; a slow shimmer signals it is a live figure.
+   Suppressed entirely under reduced-motion by the global rule at the top. */
+.goal-panel-track i,
+.drawer-bar i,
+.nav-progress i {
+  background-image: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    var(--accent-bright) 50%,
+    var(--accent) 100%
+  );
+  background-size: 200% 100%;
+  animation: goal-shimmer 6s linear infinite;
+}
+@keyframes goal-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: 0 0; }
+}
+
+/* --------------------------------------------------------------- count-up
+   site.js sets this while animating so the width does not jitter as digits
+   change. */
+.is-counting { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 620px) {
+  /* The card layout already marks the podium with an accent border, so the
+     desktop rail would be a second signal on the same rows. */
+  table.board tbody tr:nth-child(-n+3) td:first-child { box-shadow: none; }
+
+  /* The rank cell is a 2.4rem column, so the medal cannot sit beside the
+     number. Stack it deliberately instead of letting it wrap. */
+  table.board tbody tr:nth-child(-n+3) td.rank::after {
+    display: block;
+    margin: 0.1rem 0 0;
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+
+  /* Sticky headers are hidden in this layout; drop the offset with them. */
+  table.board thead th { position: static; }
 }
