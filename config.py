@@ -261,6 +261,9 @@ class Config:
     # Discord webhook that donation logs are posted to (never includes email).
     DONATION_LOG_WEBHOOK_URL = os.getenv('DONATION_LOG_WEBHOOK_URL')
     DONATION_GOAL_DEFAULT_USD = get_float_env('DONATION_GOAL_DEFAULT_USD', 600.0)
+    # Role granted to anyone who donates with their Discord account linked on
+    # Ko-fi. Overridable per goal from /setup-dono.
+    DONOR_ROLE_ID = get_int_env('DONOR_ROLE_ID', 1546411910025584741)
 
     # Discord OAuth2 login for the website (identify scope only)
     DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID')

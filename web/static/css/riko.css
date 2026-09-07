@@ -676,7 +676,7 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
   transition: border-color 0.18s ease, transform 0.18s ease;
 }
 .cast-grid li:hover { border-color: var(--accent); transform: translateY(-3px); }
-.cast-grid img {
+.cast-grid img, .cast-grid .cast-face--mono {
   width: 88px;
   height: 88px;
   border-radius: 14px;
@@ -684,6 +684,8 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
   background: var(--surface-2);
   margin-bottom: 1rem;
 }
+.cast-grid .cast-face--mono { font-size: 2.25rem; }
+.cast-grid-face { display: block; }
 .cast-grid h3 { font-size: 1.15rem; font-weight: 700; margin: 0 0 0.45rem; }
 .cast-grid p { margin: 0; color: var(--ink-soft); font-size: 0.94rem; }
 
@@ -918,7 +920,7 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
   text-align: right;
   max-width: 60ch;
 }
-.foot-quip::before { content: "riko: "; color: var(--accent-text); }
+.foot-quip b { color: var(--c, var(--accent-text)); font-weight: 600; }
 
 /* ---------------------------------------------------------------- tablet */
 @media (max-width: 880px) {

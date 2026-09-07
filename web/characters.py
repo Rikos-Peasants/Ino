@@ -112,22 +112,50 @@ _REP_LINES = [
 ]
 
 
-# Riko, at the very bottom of the page. Picked per request, so scrolling to
-# the footer twice is not the same experience.
+# The very bottom of the page. Picked per request and spread across all three,
+# because Ino runs this place and it should not sound like only Riko does.
 FOOTER_QUIPS = [
-    "You scrolled all the way down here? There's nothing at the bottom. There's never anything at the bottom.",
-    "Still reading? I-It's not like I put effort into this or anything.",
-    "This is the footer. The boring bit. You did this to yourself.",
-    "Congratulations, you found the small text. That's the whole prize.",
-    "Go outside. ...Come back after, though.",
-    "If you're looking for the fine print, it says be nicer to Ino.",
+    ("ino", "You made it all the way down. I keep the small print tidy for exactly this sort of person."),
+    ("ino", "Nothing important down here. Go and be kind to someone, it does show up in your record."),
+    ("ino", "If you were looking for the fine print: be nice, post art, that's the whole of it."),
+    ("riko", "You scrolled all the way down here? There's nothing at the bottom. There's never anything at the bottom."),
+    ("riko", "Still reading? I-It's not like I put effort into this or anything."),
+    ("riko", "Congratulations, you found the small text. That's the whole prize."),
+    ("yura", "You read all of it. Every word. I like that about you. I like a lot of things about you."),
+    ("yura", "There's nothing else down here. I checked. I check every night, around three."),
+    ("yura", "Leaving already? That's alright. I know the way to yours."),
+]
+
+# Rotated when someone donates, so the thank-you is not always the same voice.
+THANK_YOU = [
+    ("ino", "I've written **{name}** into the book for **{amount}**. Properly, in ink."),
+    ("ino", "**{name}** gave **{amount}**. That's a lantern lit and a name recorded."),
+    ("riko", "**{name}** donated **{amount}**. I'm not impressed. ...Fine. A little impressed."),
+    ("riko", "**{name}** just put in **{amount}**. Th-thanks. Don't make it weird."),
+    ("yura", "**{name}** gave **{amount}**. I'll remember that. I remember everything about the kind ones."),
+    ("yura", "**{amount}** from **{name}**. You've been added to the list. The nice list."),
 ]
 
 
-def footer_quip(seed: Optional[int] = None) -> str:
+def footer_quip(seed: Optional[int] = None) -> Dict[str, str]:
+    """A random footer line, with whose voice it is."""
     import random
 
-    return random.Random(seed).choice(FOOTER_QUIPS) if seed is not None else random.choice(FOOTER_QUIPS)
+    rng = random.Random(seed) if seed is not None else random
+    key, text = rng.choice(FOOTER_QUIPS)
+    return {"key": key, "name": CHARACTERS[key]["name"], "text": text}
+
+
+def thank_you(name: str, amount: str) -> Dict[str, str]:
+    """A donation thank-you, in a rotating voice."""
+    import random
+
+    key, template = random.choice(THANK_YOU)
+    return {
+        "key": key,
+        "name": CHARACTERS[key]["name"],
+        "text": template.format(name=name, amount=amount),
+    }
 
 
 def _band(bands: List[Dict[str, Any]], value: float) -> str:

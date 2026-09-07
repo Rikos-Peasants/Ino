@@ -18,7 +18,7 @@ from config import Config
 from models.donation_progress_bar import render_progress_bar
 from views.donation_setup_view import DonationSetupView, build_status_embed
 from views.donation_widget_view import DonationWidgetView
-from web.characters import CHARACTERS, reaction_for
+from web.characters import CHARACTERS, reaction_for, thank_you
 
 logger = logging.getLogger(__name__)
 
@@ -254,9 +254,71 @@ class DonationController:
                 return False
 
     async def _after_render(self, channel, goal: Dict[str, Any], donation: Optional[Dict[str, Any]]):
-        """Thank-you post, then any milestone the bar just crossed."""
-        await self._maybe_announce(channel, goal, donation)
+        """Grant the donor role, post the thank-you, then any milestone."""
+        granted = await self._grant_donor_role(channel, goal, donation)
+        await self._maybe_announce(channel, goal, donation, granted)
         await self._maybe_milestone(channel, goal)
+
+    async def _grant_donor_role(
+        self, channel, goal: Dict[str, Any], donation: Optional[Dict[str, Any]]
+    ) -> bool:
+        """Give the supporter their role, if Ko-fi told us who they are.
+
+        Ko-fi only sends `discord_userid` when the supporter has linked their
+        Discord account, so this quietly does nothing for anonymous tips.
+        """
+        if not donation or not goal.get("grant_donor_role", True):
+            return False
+
+        user_id = donation.get("discord_userid")
+        if not user_id or not str(user_id).isdigit():
+            return False
+
+        role_id = goal.get("donor_role_id") or Config.DONOR_ROLE_ID
+        if not role_id:
+            return False
+
+        guild = getattr(channel, "guild", None) or self.bot.get_guild(Config.GUILD_ID)
+        if guild is None:
+            return False
+
+        role = guild.get_role(int(role_id))
+        if role is None:
+            logger.warning("Donor role %s not found in %s", role_id, guild.id)
+            return False
+
+        # Discord refuses to assign a role at or above the bot's own top role,
+        # and the error is opaque, so check first and say something useful.
+        if role >= guild.me.top_role:
+            logger.error(
+                "Cannot grant donor role %s: it sits at or above my top role. "
+                "Move my role above it in Server Settings.", role.name
+            )
+            return False
+
+        member = guild.get_member(int(user_id))
+        if member is None:
+            try:
+                member = await guild.fetch_member(int(user_id))
+            except discord.NotFound:
+                logger.info("Donor %s is not in the server, skipping role", user_id)
+                return False
+            except discord.HTTPException as e:
+                logger.error(f"Could not fetch donor {user_id}: {e}")
+                return False
+
+        if role in member.roles:
+            return True
+
+        try:
+            await member.add_roles(role, reason="Ko-fi donation")
+            logger.info("Granted %s to %s for donating", role.name, member)
+            return True
+        except discord.Forbidden:
+            logger.error("Missing Manage Roles, cannot grant the donor role")
+        except discord.HTTPException as e:
+            logger.error(f"Failed granting donor role: {e}")
+        return False
 
     async def _maybe_milestone(self, channel, goal: Dict[str, Any]):
         """Post a celebration the first time the bar passes 25/50/75/100%.
@@ -309,14 +371,25 @@ class DonationController:
         except Exception as e:
             logger.error(f"Error posting donation milestone: {e}")
 
-    async def _maybe_announce(self, channel, goal: Dict[str, Any], donation: Optional[Dict[str, Any]]):
+    async def _maybe_announce(
+        self,
+        channel,
+        goal: Dict[str, Any],
+        donation: Optional[Dict[str, Any]],
+        granted_role: bool = False,
+    ):
         """Post a short thank-you under the bar for a new donation."""
         if not donation or not goal.get("announce", True):
             return
 
-        name = donation.get("from_name") or "Anonymous"
+        name = discord.utils.escape_markdown(donation.get("from_name") or "Anonymous")
         amount = donation.get("amount_usd") or 0.0
-        line = f"**{name}** just donated **${amount:,.2f}**. Riko is pretending not to care."
+        spoken = thank_you(name, f"${amount:,.2f}")
+        line = f"**{spoken['name']}:** {spoken['text']}"
+
+        if granted_role:
+            role_id = goal.get("donor_role_id") or Config.DONOR_ROLE_ID
+            line += f"\n-# Supporter role granted <@&{role_id}>"
 
         role_id = goal.get("ping_role_id")
         content = f"<@&{role_id}> {line}" if role_id else line

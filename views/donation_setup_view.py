@@ -68,6 +68,16 @@ async def build_status_embed(controller, goal: dict) -> discord.Embed:
         inline=True,
     )
 
+    donor = goal.get("donor_role_id") or Config.DONOR_ROLE_ID
+    embed.add_field(
+        name="Supporter role",
+        value=(
+            (f"<@&{donor}>" if donor else "*none set*")
+            if goal.get("grant_donor_role", True) else "off"
+        ),
+        inline=True,
+    )
+
     ping = goal.get("ping_role_id")
     embed.add_field(
         name="Announcements",
@@ -513,18 +523,62 @@ class PingRoleSelect(discord.ui.RoleSelect):
         await self.hub.reload_and_refresh(interaction, note=f"Pinging {role.mention}")
 
 
+class DonorRoleSelect(discord.ui.RoleSelect):
+    """The role handed to anyone who donates with Discord linked on Ko-fi."""
+
+    def __init__(self, hub: "DonationSetupView"):
+        super().__init__(
+            placeholder="Role to award supporters",
+            min_values=1, max_values=1, row=1,
+        )
+        self.hub = hub
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        role = self.values[0]
+        await self.hub.controller.manager.update_goal(
+            self.hub.goal["goal_id"], donor_role_id=str(role.id)
+        )
+        # Assigning a role above the bot's own always fails, and Discord's
+        # error is unhelpful, so flag it here rather than at donation time.
+        me = interaction.guild.me
+        warning = ""
+        if role >= me.top_role:
+            warning = (
+                f" ⚠️ {role.mention} sits at or above my highest role, so I cannot "
+                "assign it. Move my role above it in Server Settings."
+            )
+        elif not me.guild_permissions.manage_roles:
+            warning = " ⚠️ I do not have **Manage Roles**, so I cannot assign it."
+        await self.hub.reload_and_refresh(
+            interaction, note=f"Supporters get {role.mention}{warning}"
+        )
+
+
 class NotificationsView(discord.ui.View):
-    """Announcement toggle plus the role pinged on each donation."""
+    """Announcements, the ping role, and the supporter reward role."""
 
     def __init__(self, hub: "DonationSetupView"):
         super().__init__(timeout=TIMEOUT)
         self.hub = hub
         self.add_item(PingRoleSelect(hub))
+        self.add_item(DonorRoleSelect(hub))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return await self.hub.interaction_check(interaction)
 
-    @discord.ui.button(label="Toggle announcements", style=discord.ButtonStyle.primary, row=1)
+    @discord.ui.button(label="Toggle supporter role", style=discord.ButtonStyle.primary, row=3)
+    async def toggle_donor(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        new_value = not self.hub.goal.get("grant_donor_role", True)
+        await self.hub.controller.manager.update_goal(
+            self.hub.goal["goal_id"], grant_donor_role=new_value
+        )
+        await self.hub.reload_and_refresh(
+            interaction, note=f"Supporter role {'on' if new_value else 'off'}"
+        )
+
+    @discord.ui.button(label="Toggle announcements", style=discord.ButtonStyle.primary, row=2)
     async def toggle(self, interaction: discord.Interaction, _: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         new_value = not self.hub.goal.get("announce", True)
@@ -535,7 +589,7 @@ class NotificationsView(discord.ui.View):
             interaction, note=f"Announcements {'on' if new_value else 'off'}"
         )
 
-    @discord.ui.button(label="Clear ping role", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Clear ping role", style=discord.ButtonStyle.secondary, row=2)
     async def clear_ping(self, interaction: discord.Interaction, _: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         await self.hub.controller.manager.clear_goal_field(
@@ -543,7 +597,7 @@ class NotificationsView(discord.ui.View):
         )
         await self.hub.reload_and_refresh(interaction, note="Ping role cleared")
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="Back", style=discord.ButtonStyle.secondary, row=3)
     async def back(self, interaction: discord.Interaction, _: discord.ui.Button):
         await self.hub.reload_and_refresh(interaction)
 

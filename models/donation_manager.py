@@ -146,6 +146,9 @@ class DonationManager:
             # restart or a re-render cannot repost the same one.
             "milestones": True,
             "last_milestone": 0,
+            # Role handed to supporters. None falls back to Config.DONOR_ROLE_ID.
+            "donor_role_id": None,
+            "grant_donor_role": True,
             "bar_title": "MAIDMASTER",
             "bar_subtitle": None,
             "created_at": datetime.now(timezone.utc),

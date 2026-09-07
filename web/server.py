@@ -288,9 +288,9 @@ class RikoWebServer:
             '<header class="nav" data-nav>'
             '<div class="nav-inner">'
             '<a class="brand" href="/">'
-            '<span class="brand-mark"><img src="/static/img/riko-greet.png" alt="" '
+            '<span class="brand-mark"><img src="/static/img/ino-mark.png" alt="" '
             'width="34" height="34"></span>'
-            '<span class="brand-name">Riko</span></a>'
+            '<span class="brand-name">Ino</span></a>'
             f'<nav class="nav-links" aria-label="Primary">{desktop_links}</nav>'
             f'<div class="nav-end">{account}'
             f'<a class="btn btn--sm nav-donate" href="{kofi}" rel="noopener" '
@@ -328,6 +328,7 @@ class RikoWebServer:
         was a cramped strip of 22px targets wrapping into itself.
         """
         kofi = html.escape(Config.KOFI_URL, quote=True)
+        quip = footer_quip()
         signed_in = self._current_user(request) is not None
         account = (
             '<a href="/me">Your standing</a>' if signed_in
@@ -338,8 +339,8 @@ class RikoWebServer:
             '<div class="foot-inner">'
             '<div class="foot-brand">'
             '<a class="brand" href="/">'
-            '<span class="brand-mark"><img src="/static/img/riko-greet.png" alt="" '
-            'width="34" height="34"></span><span class="brand-name">Riko</span></a>'
+            '<span class="brand-mark"><img src="/static/img/ino-mark.png" alt="" '
+            'width="34" height="34"></span><span class="brand-name">Ino</span></a>'
             '<p>Every image posted in the Just Rayen server gets scored, ranked '
             'and remembered. This is where the tally lives.</p>'
             f'<a class="btn btn--sm" href="{kofi}" rel="noopener" target="_blank">'
@@ -356,7 +357,8 @@ class RikoWebServer:
             '</nav></div>'
             '<div class="foot-bar">'
             '<span>© Rikoverse</span>'
-            f'<span class="foot-quip">{html.escape(footer_quip())}</span>'
+            f'<span class="foot-quip" style="--c:{CHARACTERS[quip["key"]]["accent"]}">'
+            f'<b>{html.escape(quip["name"])}:</b> {html.escape(quip["text"])}</span>'
             '</div></footer>'
         )
 
@@ -518,11 +520,27 @@ class RikoWebServer:
 
         stats = await self._get_site_stats()
 
+        blurbs = {
+            "ino": "Runs this place and keeps every record in it. Your InoRep is hers, "
+                   "and she remembers exactly how kind you have been.",
+            "riko": "Scores the art and will not admit she cares about any of it. "
+                    "Do not mention the blushing.",
+            "yura": "Very fond of Rayen. Very patient. Would love to pay you a visit "
+                    "if the goal stalls.",
+        }
+        cast_grid = "\n".join(
+            f'<li><span class="cast-grid-face">{_face(card(key, ""), 88)}</span>'
+            f'<h3>{html.escape(CHARACTERS[key]["name"])}</h3>'
+            f'<p>{html.escape(blurbs[key])}</p></li>'
+            for key in CHARACTERS
+        )
+
         page = (
             self._template("index.html")
             .replace("<!--NAV-->", await self._nav(request, "/"))
             .replace("<!--FOOT-->", self._footer(request))
             .replace("<!--TOP_ROWS-->", rows)
+            .replace("<!--CAST_GRID-->", cast_grid)
             .replace("{{GOAL_TITLE}}", html.escape(goal.get("title") or "Rayen in a maid costume"))
             .replace("{{RAISED}}", _fmt_money(progress["raised_usd"]))
             .replace("{{GOAL}}", _fmt_money(progress["goal_usd"]))
@@ -549,13 +567,19 @@ class RikoWebServer:
         ) or '<tr><td colspan="5" class="empty">No entries yet.</td></tr>'
 
         stats = await self._get_site_stats()
-        riko = _speech(card("riko", board_line(stats.get("members", 0))))
+        members, images = stats.get("members", 0), stats.get("images", 0)
+        voices = "\n".join([
+            _speech(card("ino",
+                f"I have {members:,} names in the book and {images:,} pictures logged against them. "
+                "Every one counted by hand, more or less.")),
+            _speech(card("riko", board_line(members))),
+        ])
 
         page = (
             self._template("leaderboard.html")
             .replace("<!--NAV-->", await self._nav(request, "/leaderboard"))
             .replace("<!--FOOT-->", self._footer(request))
-            .replace("<!--RIKO-->", riko)
+            .replace("<!--RIKO-->", voices)
             .replace("{{STAT_MEMBERS}}", f"{stats.get('members', 0):,}")
             .replace("{{STAT_IMAGES}}", f"{stats.get('images', 0):,}")
             .replace("<!--ROWS-->", rows)
@@ -816,13 +840,16 @@ class RikoWebServer:
         else:
             riko_text = f"{rank}. Not the worst I've had to look at today. Don't let it go to your head."
         riko = _speech(card("riko", riko_text))
+        yura = _speech(card("yura",
+            f"I know exactly how many pictures you've posted. "
+            f"{stats.get('image_count') or 'None'} of them. I look at all of them. Twice."))
 
         page = (
             self._template("me.html")
             .replace("<!--NAV-->", await self._nav(request, "/me"))
             .replace("<!--FOOT-->", self._footer(request))
             .replace("<!--INO-->", ino)
-            .replace("<!--RIKO-->", riko)
+            .replace("<!--RIKO-->", riko + yura)
             .replace("{{NAME}}", html.escape(user["name"]))
             .replace("{{AVATAR}}", html.escape(auth.avatar_url(user_id, user.get("avatar")), quote=True))
             .replace("{{REP}}", f"{rep:,}")
