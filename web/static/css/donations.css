@@ -175,75 +175,17 @@
 .sass .who { color: var(--accent-text); }
 
 /* ------------------------------------------------------------- 4. cast
-   Three characters reacting to the same number. Each card is tinted by whose
-   line it is, so you can tell them apart before reading a word. */
+   Shared cast styles live in riko.css so every page can use them. Only the
+   scroll-reveal is donations-specific. */
 .act--cast { min-height: 130vh; }
-.cast {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 1rem;
-}
-.cast-card {
-  display: flex;
-  gap: 1.1rem;
-  align-items: flex-start;
-  padding: 1.25rem 1.4rem;
-  border: 1px solid var(--line);
-  border-left-width: 3px;
-  border-radius: 12px;
-  background: var(--surface);
+.dono .cast-card {
   opacity: 0;
   transform: translateY(16px);
   transition: opacity 0.55s ease, transform 0.55s ease;
 }
-.cast-card.is-in { opacity: 1; transform: none; }
-.cast--riko { border-left-color: var(--accent); }
-.cast--ino  { border-left-color: #4aa3ff; }
-.cast--yura { border-left-color: #7b3ff2; }
-
-.cast-face {
-  width: 72px;
-  height: 72px;
-  border-radius: 10px;
-  object-fit: cover;
-  background: var(--surface-2);
-  flex: none;
-}
-.cast-body { min-width: 0; }
-.cast-name {
-  margin: 0 0 0.35rem;
-  font-weight: 700;
-  font-size: 1.02rem;
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-.cast-role {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  font-weight: 400;
-  letter-spacing: 0.03em;
-  color: var(--ink-soft);
-  text-transform: lowercase;
-}
-.cast-line {
-  margin: 0;
-  color: var(--ink);
-  font-size: 1rem;
-  line-height: 1.55;
-  max-width: 68ch;
-}
-.cast--riko .cast-line { color: #ffd7e6; }
-.cast--ino  .cast-line { color: #d6e8ff; }
-.cast--yura .cast-line { color: #e0d4ff; }
-
-@media (max-width: 640px) {
-  .cast-card { gap: 0.85rem; padding: 1rem; }
-  .cast-face { width: 52px; height: 52px; }
-  .cast-line { font-size: 0.95rem; }
+.dono .cast-card.is-in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .dono .cast-card { opacity: 1; transform: none; }
 }
 
 /* ------------------------------------------------------------- 5. wall */

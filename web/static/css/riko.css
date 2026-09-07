@@ -687,6 +687,110 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
 .cast-grid h3 { font-size: 1.15rem; font-weight: 700; margin: 0 0 0.45rem; }
 .cast-grid p { margin: 0; color: var(--ink-soft); font-size: 0.94rem; }
 
+/* ---------------------------------------------------------------- cast
+   Character speech cards. Used on the donations page, the leaderboard, the
+   profile page and the error pages, so they live here rather than in the
+   donations-only sheet. Each card is tinted by whose line it is. */
+.cast {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.cast-card {
+  display: flex;
+  gap: 1.1rem;
+  align-items: flex-start;
+  padding: 1.25rem 1.4rem;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+.cast--riko { border-left-color: var(--accent); }
+.cast--ino  { border-left-color: #4aa3ff; }
+.cast--yura { border-left-color: #7b3ff2; }
+
+.cast-face {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--surface-2);
+  flex: none;
+}
+.cast-body { min-width: 0; }
+.cast-name {
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+  font-size: 1.02rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.cast-role {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  text-transform: lowercase;
+}
+.cast-line {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.55;
+  max-width: 68ch;
+}
+.cast--riko .cast-line { color: #ffd7e6; }
+.cast--ino  .cast-line { color: #d6e8ff; }
+.cast--yura .cast-line { color: #e0d4ff; }
+
+@media (max-width: 640px) {
+  .cast-card { gap: 0.85rem; padding: 1rem; }
+  .cast-face { width: 52px; height: 52px; }
+  .cast-line { font-size: 0.95rem; }
+}
+
+
+.cast--single { margin: 0; }
+/* Stand-in when a character's art is not in the repo yet. Better than a
+   broken image, and swapping in a real file needs no code change. */
+.cast-face--mono {
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.75rem;
+  color: #fff;
+  background: linear-gradient(150deg, var(--c, var(--accent)), rgba(0, 0, 0, 0.55));
+  border: 1px solid color-mix(in srgb, var(--c, var(--accent)) 60%, transparent);
+}
+
+/* ---------------------------------------------------------------- error */
+.errpage { padding: clamp(3rem, 9vw, 7rem) 0 4rem; }
+.errcode {
+  font-family: var(--font-mono);
+  font-size: clamp(3.5rem, 14vw, 8rem);
+  font-weight: 700;
+  line-height: 1;
+  margin: 0 0 0.5rem;
+  color: transparent;
+  -webkit-text-stroke: 2px var(--accent);
+  letter-spacing: -0.02em;
+}
+.errpage h1 {
+  font-size: clamp(1.9rem, 5.5vw, 3.25rem);
+  font-weight: 700;
+  margin: 0 0 0.85rem;
+}
+.errpage .lede { margin-bottom: 2.5rem; }
+
+.stats--tight { margin-top: 2rem; padding-top: 1.5rem; gap: 2rem; }
+
 /* ---------------------------------------------------------------- profile */
 .profile {
   display: flex;

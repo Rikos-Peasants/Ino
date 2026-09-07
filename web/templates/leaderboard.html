@@ -13,11 +13,19 @@
 
 <!--NAV-->
 
-<main class="wrap">
+<main class="wrap" id="main">
   <div class="page-head">
     <h1>Leaderboard</h1>
     <p>Scores come from reactions on images posted in the art channels. One point per net upvote, counted the moment someone reacts.</p>
+    <dl class="stats stats--tight">
+      <div><dt>Ranked members</dt><dd>{{STAT_MEMBERS}}</dd></div>
+      <div><dt>Images scored</dt><dd>{{STAT_IMAGES}}</dd></div>
+    </dl>
   </div>
+
+  <ul class="cast cast--single">
+    <!--RIKO-->
+  </ul>
 
   <div class="table-tools">
     <a href="/leaderboard?sort=total_score" aria-current="{{SORT_TOTAL}}">Total score</a>

@@ -23,7 +23,7 @@ from aiohttp import web
 
 from config import Config
 from web import auth
-from web.characters import all_reactions
+from web.characters import CHARACTERS, all_reactions, board_line, card, portrait, rep_line
 from web.discord_log import send_donation_log
 from web.kofi import KofiError, parse_payload
 
@@ -52,6 +52,36 @@ DISCORD_SVG = (
 
 def _fmt_money(value: float) -> str:
     return f"{value:,.2f}"
+
+
+def _face(entry: Dict[str, Any], size: int = 72) -> str:
+    """Character portrait, or a monogram when the art is not in the repo yet.
+
+    Keeps a missing file from rendering as a broken image, and means adding
+    web/static/img/<name>.png is the only step needed to light one up.
+    """
+    if entry.get("img"):
+        return (
+            f'<img class="cast-face" src="{entry["img"]}" alt="{html.escape(entry["name"])}" '
+            f'width="{size}" height="{size}" loading="lazy">'
+        )
+    return (
+        f'<span class="cast-face cast-face--mono" aria-hidden="true" '
+        f'style="--c:{entry["accent"]}">{entry["monogram"]}</span>'
+    )
+
+
+def _speech(entry: Dict[str, Any]) -> str:
+    """One character speech card."""
+    return (
+        f'<li class="cast-card cast--{entry["key"]}">'
+        f'{_face(entry)}'
+        f'<div class="cast-body">'
+        f'<p class="cast-name">{html.escape(entry["name"])}'
+        f'<span class="cast-role">{html.escape(entry["role"])}</span></p>'
+        f'<p class="cast-line">{html.escape(entry["text"])}</p>'
+        f'</div></li>'
+    )
 
 
 def _relative_time(dt: Optional[datetime]) -> str:
@@ -103,6 +133,67 @@ class RikoWebServer:
         self.app.router.add_post("/webhooks/kofi", self.handle_kofi_webhook)
         if STATIC_DIR.is_dir():
             self.app.router.add_static("/static/", STATIC_DIR, name="static")
+        # Turns aiohttp's plain-text "404: Not Found" into a real page.
+        self.app.middlewares.append(self._error_middleware)
+
+    @web.middleware
+    async def _error_middleware(self, request: web.Request, handler):
+        try:
+            response = await handler(request)
+            if response.status < 400 or response.status == 401:
+                return response
+            status, reason = response.status, response.reason
+        except web.HTTPException as exc:
+            if exc.status < 400 or exc.status == 401:
+                raise
+            status, reason = exc.status, exc.reason
+        except Exception:
+            logger.exception("Unhandled error serving %s", request.path)
+            status, reason = 500, "Internal Server Error"
+
+        # The API and webhook should keep answering in JSON.
+        if request.path.startswith(("/api/", "/webhooks/", "/healthz")):
+            return web.json_response({"error": reason}, status=status)
+        return await self._render_error(request, status)
+
+    ERROR_COPY = {
+        404: (
+            "There's nothing here.",
+            "Whatever you were looking for either moved, never existed, or you typed it wrong.",
+            "Nope. Nothing here. Did you type it yourself? With your own hands? Wow.",
+            "This page isn't in the records, and I would know. I keep them.",
+            "I checked everywhere for you. Twice. I do that anyway, but this time it was for you.",
+        ),
+        500: (
+            "Something broke.",
+            "That one is on us, not you. It has been logged and someone will be blamed shortly.",
+            "It broke. Not my fault. Probably Rayen's. Definitely Rayen's, actually.",
+            "Something has gone wrong behind the scenes. I'm tidying it up now.",
+            "Don't worry about it. I'll find out which server did this and have a word.",
+        ),
+    }
+
+    async def _render_error(self, request: web.Request, status: int) -> web.Response:
+        title, blurb, riko_line, ino_line, yura_line = self.ERROR_COPY.get(
+            status, self.ERROR_COPY[500]
+        )
+        cast = "\n".join(
+            _speech(card(key, line))
+            for key, line in (("riko", riko_line), ("ino", ino_line), ("yura", yura_line))
+        )
+        try:
+            page = (
+                self._template("error.html")
+                .replace("<!--NAV-->", await self._nav(request))
+                .replace("<!--CAST-->", cast)
+                .replace("{{CODE}}", str(status))
+                .replace("{{TITLE}}", html.escape(title))
+                .replace("{{BLURB}}", html.escape(blurb))
+            )
+            return web.Response(text=page, content_type="text/html", status=status)
+        except Exception:
+            logger.exception("Could not render the %s page", status)
+            return web.Response(text=f"{status} {title}", status=status)
 
     @staticmethod
     def _compute_asset_version() -> str:
@@ -414,9 +505,15 @@ class RikoWebServer:
             for r in entries
         ) or '<tr><td colspan="5" class="empty">No entries yet.</td></tr>'
 
+        stats = await self._get_site_stats()
+        riko = _speech(card("riko", board_line(stats.get("members", 0))))
+
         page = (
             self._template("leaderboard.html")
             .replace("<!--NAV-->", await self._nav(request, "/leaderboard"))
+            .replace("<!--RIKO-->", riko)
+            .replace("{{STAT_MEMBERS}}", f"{stats.get('members', 0):,}")
+            .replace("{{STAT_IMAGES}}", f"{stats.get('images', 0):,}")
             .replace("<!--ROWS-->", rows)
             .replace("{{SORT_TOTAL}}", "true" if sort_by == "total_score" else "false")
             .replace("{{SORT_COUNT}}", "true" if sort_by == "image_count" else "false")
@@ -474,16 +571,7 @@ class RikoWebServer:
 
         # Rendered server side so the lines are real, selectable, translatable
         # markup rather than strings assembled by JavaScript.
-        cast_html = "\n".join(
-            f'<li class="cast-card cast--{c["key"]}">'
-            f'<img class="cast-face" src="{c["img"]}" alt="" width="72" height="72" loading="lazy">'
-            f'<div class="cast-body">'
-            f'<p class="cast-name">{html.escape(c["name"])}'
-            f'<span class="cast-role">{html.escape(c["role"])}</span></p>'
-            f'<p class="cast-line">{html.escape(c["text"])}</p>'
-            f'</div></li>'
-            for c in all_reactions(progress["percent"])
-        )
+        cast_html = "\n".join(_speech(c) for c in all_reactions(progress["percent"]))
 
         page = (
             self._template("donations.html")
@@ -672,9 +760,23 @@ class RikoWebServer:
                 f'<div class="stat-row"><span>{label}</span><strong>{html.escape(shown)}</strong></div>'
             )
 
+        # Ino owns the rep system, so she is the one who comments on it.
+        # Riko sticks her oar in about the art ranking.
+        ino = _speech(card("ino", rep_line(rep)))
+        rank = stats.get("rank")
+        if rank is None:
+            riko_text = "You aren't on my board at all. Post something. I-I'm not asking, I just like having numbers to count."
+        elif rank == "#1":
+            riko_text = "First. Obviously you had help. From me. By existing. ...Fine, it's a good score, dummy."
+        else:
+            riko_text = f"{rank}. Not the worst I've had to look at today. Don't let it go to your head."
+        riko = _speech(card("riko", riko_text))
+
         page = (
             self._template("me.html")
             .replace("<!--NAV-->", await self._nav(request, "/me"))
+            .replace("<!--INO-->", ino)
+            .replace("<!--RIKO-->", riko)
             .replace("{{NAME}}", html.escape(user["name"]))
             .replace("{{AVATAR}}", html.escape(auth.avatar_url(user_id, user.get("avatar")), quote=True))
             .replace("{{REP}}", f"{rep:,}")
