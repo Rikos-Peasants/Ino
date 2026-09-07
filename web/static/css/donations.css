@@ -319,13 +319,15 @@
   transform: translate3d(var(--mx, 0px), var(--my, 0px), 0);
   transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
+/* Hairline baseline rather than a blurred orb behind the render. */
 .close-art::after {
   content: "";
   position: absolute;
-  inset: 18% 8% 4%;
-  z-index: -1;
-  background: radial-gradient(ellipse at center, rgba(173, 20, 87, 0.5), transparent 68%);
-  filter: blur(46px);
+  left: 10%;
+  right: 10%;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
 }
 .close-sign {
   margin-top: 2.5rem;

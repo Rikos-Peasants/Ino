@@ -1,0 +1,134 @@
+{
+  "_readme": [
+    "Every line of character copy on the site and in Discord lives here.",
+    "Edit this file and restart the bot; no code changes needed.",
+    "",
+    "goal_reactions / board / rep: lists of {at, text}. 'at' is the lowest value",
+    "the line applies to, and the highest matching band wins. Keep them sorted",
+    "ascending. goal_reactions are keyed on funding percent, board on the number",
+    "of ranked members, rep on InoRep total.",
+    "",
+    "footer_quips / thank_you: {key, text} where key is riko, ino or yura.",
+    "thank_you supports {name} and {amount} placeholders.",
+    "",
+    "site: one-off strings used in page copy and emails."
+  ],
+
+  "characters": {
+    "ino": { "name": "Ino", "role": "keeps the records", "img": "ino.png", "accent": "#4aa3ff", "monogram": "I" },
+    "riko": { "name": "Riko", "role": "scores the art", "img": "riko-face.png", "accent": "#ad1457", "monogram": "R" },
+    "yura": { "name": "Yura", "role": "knows where you live", "img": "yura.png", "accent": "#7b3ff2", "monogram": "Y" }
+  },
+
+  "site": {
+    "goal_blurb": "Hit the target and Rayen puts on the maid outfit.",
+    "goal_reward": "Rayen wears the maid costume",
+    "goal_stinger": "one costume. one very long evening.",
+    "terms_body": "The deal is simple. The bar hits a hundred percent, Rayen puts on the maid outfit, and the whole server gets to watch him regret agreeing to it.",
+    "terms_note": "Every donation counts toward the total the moment Ko-fi confirms it. Tick the private box on Ko-fi and only the number moves, your name stays off this page.",
+    "kofi_notice": "Haven't linked your Discord account before buying? Please contact Seika, either in DMs or in the Ask and Complain to Staff channel.",
+    "hero_title": "Every picture posted here gets a verdict.",
+    "hero_lede": "Ino tracks every image in the server, counts the votes, and keeps the running order. No favourites, no appeals.",
+    "board_lede": "Scores come from reactions on images posted in the art channels. One point per net upvote, counted the moment someone reacts.",
+    "footer_blurb": "Every image posted in the Just Rayen server gets scored, ranked and remembered. This is where the tally lives."
+  },
+
+  "bios": {
+    "ino": "Runs this place and keeps every record in it. Your InoRep is hers, and she remembers exactly how kind you have been.",
+    "riko": "Scores the art and will not admit she cares about any of it. Do not mention the blushing.",
+    "yura": "Very fond of Rayen. Very patient. Would love to pay you a visit if the goal stalls."
+  },
+
+  "goal_reactions": {
+    "riko": [
+      { "at": 0, "text": "Zero. Not one of you. I-I'm not disappointed or anything, dummy. I just assumed at least ONE person had taste. My mistake." },
+      { "at": 1, "text": "One person. ONE. I wrote their name down somewhere nice. The rest of you are also written down, just... somewhere else." },
+      { "at": 25, "text": "A quarter already? O-Oh. Huh. That's not completely pathetic. Don't let it go to your heads." },
+      { "at": 50, "text": "Halfway?! W-Well obviously I knew you'd get here. I never doubted it. Not even once. Stop looking at me like that!" },
+      { "at": 75, "text": "Three quarters and Rayen has gone very, very quiet. I-It's not like I'm enjoying watching him panic. ...Okay. Maybe a little." },
+      { "at": 95, "text": "You're THIS close and you're just standing there?! Somebody finish it! My cooling fans are just loud, shut up!" },
+      { "at": 100, "text": "It's done. He actually has to wear it. ...Thank you. A-And if you tell anyone I said that, I'll deny it. Idiot." }
+    ],
+    "ino": [
+      { "at": 0, "text": "The offering box is empty for now. That's alright. Everything starts empty, and I'm very patient." },
+      { "at": 1, "text": "Someone came by. I've written their name in the book properly, with the date and everything." },
+      { "at": 25, "text": "A quarter of the way. I light a lantern for every donation, and the shrine is starting to look rather lovely." },
+      { "at": 50, "text": "Halfway. I've stopped counting the lanterns and started counting the people. There are more of you than I expected." },
+      { "at": 75, "text": "Three quarters. Rayen asked me twice today whether this is legally binding. I told him it was. It isn't. He seems convinced." },
+      { "at": 95, "text": "Very nearly there. I've already pressed the costume, which I admit may have been presumptuous of me." },
+      { "at": 100, "text": "It's complete. Every name is recorded and none of them will be forgotten. Thank you, truly. Go and rest now." }
+    ],
+    "yura": [
+      { "at": 0, "text": "Nobody has donated yet. That's fine. I have all your addresses written down and absolutely nothing else on today." },
+      { "at": 1, "text": "One of you understands. Only one. I'd like to visit the rest of you and explain, in person, at length, tonight." },
+      { "at": 25, "text": "A quarter. I've been outside Rayen's house six hours making sure he doesn't leave before this finishes. He waved. I think he waved." },
+      { "at": 50, "text": "Halfway. I'm being patient. I'm very good at being patient. I've been patient outside your window for a while now, actually." },
+      { "at": 75, "text": "So close. If this doesn't finish tonight I'll simply come round and help you decide. I'll bring snacks. I know which ones you like." },
+      { "at": 95, "text": "One more. One. If you make me come over there I won't be cross, I'll just be very close to you for a very long time." },
+      { "at": 100, "text": "He's wearing it. He's finally wearing it. I don't need to visit any of you now. ...Probably. Sleep well!" }
+    ]
+  },
+
+  "board": [
+    { "at": 0, "text": "Nobody's posted anything. An empty board. Do you know how embarrassing that is for me? Post something, dummy." },
+    { "at": 1, "text": "One whole person on the board. Congratulations, you're winning by default. Don't get comfortable." },
+    { "at": 25, "text": "Look at all of you fighting over internet points. It's pathetic. I check it every hour. That's different." },
+    { "at": 100, "text": "Over a hundred of you on here now. I remember when this was three people and a picture of a cat. I-I'm not getting sentimental, shut up." },
+    { "at": 250, "text": "Do you have any idea how much counting this is? I do it perfectly every time, obviously, but a thank you wouldn't kill you." }
+  ],
+
+  "rep": [
+    { "at": -1000, "text": "I would like to say something kind here and I am struggling. Please be nicer. I'll wait." },
+    { "at": -50, "text": "You and I have had a difficult time of it. The book is honest, but pages can be added. Start today." },
+    { "at": -5, "text": "A small negative mark. Barely anything. I'd rather not write any more of them, if it's all the same to you." },
+    { "at": 0, "text": "A blank page. That isn't a bad thing. Most good stories start on one." },
+    { "at": 15, "text": "You've been kind, and I've noticed. I notice everything, it's rather the point of me." },
+    { "at": 100, "text": "You've been good to this place for a long time now. The shrine knows your footsteps." },
+    { "at": 500, "text": "I keep a separate page for people like you. It is not a long list." },
+    { "at": 2000, "text": "There is very little left for me to write about you that isn't simply gratitude. Thank you for staying." }
+  ],
+
+  "footer_quips": [
+    { "key": "ino", "text": "You made it all the way down. I keep the small print tidy for exactly this sort of person." },
+    { "key": "ino", "text": "Nothing important down here. Go and be kind to someone, it does show up in your record." },
+    { "key": "riko", "text": "Congratulations, you found the small text. That's the whole prize." },
+    { "key": "riko", "text": "Still reading? I-It's not like I put effort into this or anything." },
+    { "key": "yura", "text": "You read all of it. Every word. I like that about you. I like a lot of things about you." },
+    { "key": "yura", "text": "There's nothing else down here. I checked. I check every night, around three." }
+  ],
+
+  "thank_you": [
+    { "key": "ino", "text": "I've written **{name}** into the book for **{amount}**. Properly, in ink." },
+    { "key": "ino", "text": "**{name}** gave **{amount}**. That's a lantern lit and a name recorded." },
+    { "key": "riko", "text": "**{name}** donated **{amount}**. I'm not impressed. ...Fine. A little impressed." },
+    { "key": "riko", "text": "**{name}** just put in **{amount}**. Th-thanks. Don't make it weird." },
+    { "key": "yura", "text": "**{name}** gave **{amount}**. I'll remember that. I remember everything about the kind ones." },
+    { "key": "yura", "text": "**{amount}** from **{name}**. You've been added to the list. The nice list." }
+  ],
+
+  "errors": {
+    "404": {
+      "title": "There's nothing here.",
+      "blurb": "Whatever you were looking for either moved, never existed, or you typed it wrong.",
+      "riko": "Nope. Nothing here. Did you type it yourself? With your own hands? Wow.",
+      "ino": "This page isn't in the records, and I would know. I keep them.",
+      "yura": "I checked everywhere for you. Twice. I do that anyway, but this time it was for you."
+    },
+    "500": {
+      "title": "Something broke.",
+      "blurb": "That one is on us, not you. It has been logged and someone will be blamed shortly.",
+      "riko": "It broke. Not my fault. Probably Rayen's. Definitely Rayen's, actually.",
+      "ino": "Something has gone wrong behind the scenes. I'm tidying it up now.",
+      "yura": "Don't worry about it. I'll find out which server did this and have a word."
+    }
+  },
+
+  "email": {
+    "subject": "Thank you for supporting Riko",
+    "heading": "Thank you.",
+    "intro": "Your donation of {amount} has been recorded against the current goal.",
+    "signoff": "Ino, on behalf of everyone who did not want to write this email themselves.",
+    "ino_note": "I've written your name in the book. Properly, in ink. It stays there.",
+    "riko_note": "Th-thanks. I'm not going to make a whole thing out of it. Don't expect a card."
+  }
+}

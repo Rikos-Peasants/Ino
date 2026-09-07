@@ -17,24 +17,10 @@
      Riko's commentary is a function of the live funding percentage. Six
      bands; the copy changes as the fundraiser progresses without anyone
      editing the page. */
-  // Riko's running commentary, keyed to the live percentage. Same bands as
-  // web/characters.py so the two never disagree.
-  var SASS = [
-    { at: 0,   text: "Zero. Not one of you. I-I'm not disappointed or anything, dummy. I just assumed at least ONE person had taste." },
-    { at: 1,   text: "One person. ONE. I wrote their name down somewhere nice. The rest of you are also written down, just somewhere else." },
-    { at: 25,  text: "A quarter already? O-Oh. Huh. That's not completely pathetic. Don't let it go to your heads." },
-    { at: 50,  text: "Halfway?! W-Well obviously I knew you'd get here. I never doubted it. Not even once. Stop looking at me like that!" },
-    { at: 75,  text: "Three quarters and Rayen has gone very quiet. I-It's not like I'm enjoying this. ...Okay. Maybe a little." },
-    { at: 95,  text: "You're THIS close and you're just standing there?! Somebody finish it! My cooling fans are just loud, shut up!" },
-    { at: 100, text: "It's done. He actually has to wear it. ...Thank you. A-And if you tell anyone I said that, I'll deny it. Idiot." }
-  ];
-
-  function sassFor(pct) {
-    var chosen = SASS[0];
-    for (var i = 0; i < SASS.length; i++) {
-      if (pct >= SASS[i].at) chosen = SASS[i];
-    }
-    return chosen.text;
+  // Riko's line is chosen server side from phrases.json and handed over in
+  // the data island, so there is no second copy of the bands to drift.
+  function sassFor() {
+    return data.sass || "";
   }
 
   /* ------------------------------------------------------ helpers */
@@ -121,7 +107,7 @@
   var sassTyped = false;
   function runSass() {
     sassTyped = true;
-    typeInto(sassEl, sassFor(data.percent));
+    typeInto(sassEl, sassFor());
   }
 
   /* ------------------------------------------------------ act 1 boot */
@@ -173,7 +159,7 @@
   if (reduced && barFill) {
     barFill.style.setProperty("--fill-final", (target / 100).toFixed(4));
     barFill.style.setProperty("--fill", (target / 100).toFixed(4));
-    if (sassEl) sassEl.textContent = sassFor(data.percent);
+    if (sassEl) sassEl.textContent = sassFor();
   }
 
   window.addEventListener("scroll", onScroll, { passive: true });

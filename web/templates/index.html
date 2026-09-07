@@ -6,7 +6,7 @@
 <title>Ino</title>
 <meta name="description" content="Leaderboards, art rankings and the donation goal for the Just Rayen Discord server.">
 <meta name="theme-color" content="#000000">
-<meta property="og:title" content="Riko">
+<meta property="og:title" content="Ino">
 <meta property="og:description" content="Leaderboards, art rankings and the donation goal.">
 <meta property="og:type" content="website">
 <link rel="icon" href="/static/img/ino-mark.png">
@@ -20,18 +20,16 @@
 
   <section class="hero">
     <div class="hero-copy">
-      <p class="eyebrow">Just Rayen · community</p>
-      <h1>Every picture posted here gets a verdict.</h1>
-      <p class="lede">Riko tracks every image in the server, counts the votes, and keeps the running order. No favourites, no appeals.</p>
+      <h1>{{HERO_TITLE}}</h1>
+      <p class="lede">{{HERO_LEDE}}</p>
       <div class="hero-actions">
         <a class="btn" href="/leaderboard">See the rankings</a>
-        <a class="btn btn--ghost" href="/donations">The current goal</a>
+        <a class="btn btn--ghost" href="/how-it-works">How it works</a>
       </div>
 
       <dl class="stats">
         <div><dt>Ranked members</dt><dd>{{STAT_MEMBERS}}</dd></div>
         <div><dt>Images scored</dt><dd>{{STAT_IMAGES}}</dd></div>
-        <div><dt>Goal progress</dt><dd>{{PERCENT}}%</dd></div>
       </dl>
     </div>
 
@@ -40,55 +38,30 @@
     </div>
   </section>
 
-  <section class="section wrap">
-    <div class="cards">
-      <a class="card" href="/leaderboard">
-        <h2>Leaderboard</h2>
-        <p>The full standings, sortable by total score, images posted, or average rating.</p>
-        <span class="card-go">Open the table</span>
-      </a>
-      <a class="card card--accent" href="/donations">
-        <h2>{{GOAL_TITLE}}</h2>
-        <p>${{RAISED}} of ${{GOAL}} raised so far. Riko has been asked to comment and is refusing to be nice about it.</p>
-        <span class="card-go">See the goal</span>
-      </a>
-      <a class="card" href="{{KOFI_URL}}" rel="noopener" target="_blank">
-        <h2>Ko-fi</h2>
-        <p>One-off tips and memberships. No cut taken on tips, and your name appears on the donations page.</p>
-        <span class="card-go">ko-fi.com/rayenai</span>
-      </a>
+  <!-- Board and goal side by side. The board is the substance of the page and
+       the goal is a narrow panel beside it, rather than two equal cards in a
+       row of three identical ones. -->
+  <section class="split wrap">
+    <div class="split-main">
+      <div class="section-head">
+        <h2>Standing right now</h2>
+        <a href="/leaderboard">Full leaderboard</a>
+      </div>
+      <ol class="mini-board">
+        <!--TOP_ROWS-->
+      </ol>
     </div>
-  </section>
 
-  <section class="section wrap">
-    <div class="section-head">
-      <h2>Top five right now</h2>
-      <a href="/leaderboard">Full leaderboard</a>
-    </div>
-    <ol class="mini-board">
-      <!--TOP_ROWS-->
-    </ol>
-  </section>
-
-  <section class="section wrap" data-reveal>
-    <div class="section-head"><h2>How the scoring works</h2></div>
-    <ol class="steps">
-      <li>
-        <span class="step-n">1</span>
-        <h3>Post art in the server</h3>
-        <p>Anything you drop in the art channels gets picked up automatically. No command, no submission form.</p>
-      </li>
-      <li>
-        <span class="step-n">2</span>
-        <h3>People react</h3>
-        <p>A thumbs up is a point. A thumbs down takes one away. Your score is the net across everything you have posted.</p>
-      </li>
-      <li>
-        <span class="step-n">3</span>
-        <h3>The board updates live</h3>
-        <p>Rankings recalculate the moment someone reacts. There is no weekly reset and no way to appeal a bad night.</p>
-      </li>
-    </ol>
+    <aside class="goal-panel">
+      <p class="goal-panel-label">Current goal</p>
+      <h2>{{GOAL_TITLE}}</h2>
+      <p class="goal-panel-figure"><strong>${{RAISED}}</strong> of ${{GOAL}}</p>
+      <div class="goal-panel-track" role="progressbar" aria-valuenow="{{PERCENT}}" aria-valuemin="0" aria-valuemax="100" aria-label="Funding progress">
+        <i style="width:{{PERCENT}}%"></i>
+      </div>
+      <p class="goal-panel-pct">{{PERCENT}}%</p>
+      <a class="btn btn--sm" href="/donations">See the goal</a>
+    </aside>
   </section>
 
   <section class="section wrap" data-reveal>

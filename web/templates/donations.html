@@ -26,7 +26,7 @@
         <p class="eyebrow">Current goal</p>
         <h1 class="boot-title">{{GOAL_TITLE}}</h1>
         <p class="boot-sub">{{GOAL_DESC}}</p>
-        <p class="boot-line" data-type="one costume. one camera. no takebacks."></p>
+        <p class="boot-line" data-type="{{GOAL_STINGER}}"></p>
       </div>
     </div>
   </section>
@@ -34,8 +34,8 @@
   <!-- 2. the terms. authored silence: nothing here moves. -->
   <section class="act act--ask" data-act="ask" id="terms" aria-label="The terms">
     <div class="act-inner">
-      <p class="ask-body">The deal is simple. The bar hits a hundred percent, Rayen puts on the maid outfit, and the whole server gets to watch him regret it.</p>
-      <p class="ask-note">Every donation counts toward the total the moment Ko-fi confirms it. Tick the private box on Ko-fi and only the number moves, your name stays off this page.</p>
+      <p class="ask-body">{{TERMS_BODY}}</p>
+      <p class="ask-note">{{TERMS_NOTE}}</p>
     </div>
   </section>
 
@@ -107,6 +107,7 @@
         <p>Ko-fi takes no cut on one-off tips. Your name and message land on this page within seconds of the payment clearing.</p>
         <a class="btn" href="{{KOFI_URL}}" rel="noopener" target="_blank">Fund the costume</a>
         <p class="close-sign">At 100%: {{GOAL_REWARD}}</p>
+        <p class="doc-notice" style="margin-top:1.5rem;max-width:46ch">{{KOFI_NOTICE}}</p>
       </div>
       <div class="close-art">
         <img src="/static/img/riko-look.png" alt="Riko, arms down, looking unimpressed" width="567" height="1118" loading="lazy">
@@ -118,7 +119,7 @@
 
 <!--FOOT-->
 
-<script id="riko-data" type="application/json">{"raised": {{RAISED_RAW}}, "goal": {{GOAL_RAW}}, "percent": {{PERCENT_RAW}}, "count": {{COUNT}}}</script>
+<script id="riko-data" type="application/json">{"raised": {{RAISED_RAW}}, "goal": {{GOAL_RAW}}, "percent": {{PERCENT_RAW}}, "count": {{COUNT}}, "sass": {{SASS}}}</script>
 <script>window.__RIKO__ = JSON.parse(document.getElementById("riko-data").textContent);</script>
 <script src="/static/js/donations.js?v={{V}}" defer></script>
 <script src="/static/js/site.js?v={{V}}" defer></script>

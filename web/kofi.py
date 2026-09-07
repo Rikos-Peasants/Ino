@@ -94,6 +94,11 @@ def parse_payload(raw_data: str, expected_token: Optional[str]) -> Dict[str, Any
         "discord_userid": payload.get("discord_userid"),
         "timestamp": payload.get("timestamp"),
         "url": payload.get("url"),
-        # `email` and `shipping` are deliberately dropped here and never
-        # returned to callers, so no downstream code can persist or leak them.
+        # Returned so the thank-you email can be addressed, and for nothing
+        # else. DonationManager.record_donation builds its document field by
+        # field and never copies this in, the Discord log never includes it,
+        # and the mailer masks it before logging. If you add a new consumer of
+        # this dict, keep that contract.
+        "email": payload.get("email"),
+        # `shipping` carries a full postal address and is dropped entirely.
     }

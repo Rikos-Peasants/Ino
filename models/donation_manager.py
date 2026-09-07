@@ -51,6 +51,13 @@ def rate_to_usd(currency: Optional[str]) -> float:
     return _DEFAULT_RATES_TO_USD[code]
 
 
+def _site_text(key: str) -> str:
+    """Copy from web/phrases.json, so goal wording is editable without code."""
+    from web.characters import text
+
+    return text(key)
+
+
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
     return slug or "goal"
@@ -262,11 +269,8 @@ class DonationManager:
         created = await self.create_goal(
             name="maidmaster",
             title="Rayen in a maid costume",
-            description=(
-                "Hit the target and Rayen puts on the maid outfit. "
-                "On camera. No takebacks."
-            ),
-            reward="Rayen wears the maid costume on stream",
+            description=_site_text("goal_blurb"),
+            reward=_site_text("goal_reward"),
             target_usd=DEFAULT_GOAL_USD,
             bar_title="MAIDMASTER",
         )

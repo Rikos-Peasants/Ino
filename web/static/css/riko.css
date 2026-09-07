@@ -471,13 +471,16 @@ body.drawer-open { overflow: hidden; }
 
 .hero-art { position: relative; justify-self: center; max-width: 440px; }
 .hero-art img { width: 100%; height: auto; display: block; }
+/* No radial blur-blob behind the art. A hairline baseline instead, which
+   grounds the render without the floating-orb look. */
 .hero-art::after {
   content: "";
   position: absolute;
-  inset: 15% 6% 2%;
-  z-index: -1;
-  background: radial-gradient(ellipse at center, rgba(173, 20, 87, 0.45), transparent 68%);
-  filter: blur(52px);
+  left: 8%;
+  right: 8%;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
 }
 
 .stats {
@@ -514,7 +517,7 @@ body.drawer-open { overflow: hidden; }
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 12px;
   padding: 1.75rem;
   background: var(--surface);
   text-decoration: none;
@@ -624,40 +627,6 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
 @media (prefers-reduced-motion: reduce) {
   [data-reveal] { opacity: 1; transform: none; }
 }
-
-/* ---------------------------------------------------------------- steps */
-.steps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.25rem;
-  counter-reset: step;
-}
-.steps li {
-  position: relative;
-  padding: 1.75rem 1.5rem 1.5rem;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-}
-.step-n {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  margin-bottom: 1rem;
-  border-radius: 10px;
-  background: rgba(173, 20, 87, 0.18);
-  border: 1px solid rgba(216, 42, 117, 0.4);
-  color: var(--accent-text);
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-.steps h3 { font-size: 1.08rem; font-weight: 700; margin: 0 0 0.45rem; }
-.steps p { margin: 0; color: var(--ink-soft); font-size: 0.94rem; }
 
 /* ---------------------------------------------------------------- cast grid */
 .cast-grid {
@@ -1038,3 +1007,111 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
 }
 
 
+
+
+/* ---------------------------------------------------------------- split
+   The leaderboard preview carries the page and the goal sits beside it in a
+   narrow panel. Deliberately asymmetric: a row of three equal cards is the
+   single most recognisable machine-made layout there is. */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+  gap: 3rem;
+  padding-block: 4.5rem;
+  align-items: start;
+}
+.split-main { min-width: 0; }
+
+.goal-panel {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px 14px 14px 4px;
+  padding: 1.75rem;
+  background: var(--surface);
+}
+.goal-panel-label {
+  font-family: var(--font-mono);
+  /* 12px floor so the label stays legible. */
+  font-size: 0.76rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+  margin: 0 0 0.75rem;
+}
+.goal-panel h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0 0 1.1rem;
+  line-height: 1.2;
+}
+.goal-panel-figure {
+  margin: 0 0 0.85rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+.goal-panel-figure strong {
+  display: block;
+  font-size: 1.9rem;
+  color: var(--ink);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.goal-panel-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.goal-panel-track i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.goal-panel-pct {
+  margin: 0.6rem 0 1.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+/* ---------------------------------------------------------------- doc */
+.doc { max-width: 68ch; padding-bottom: 3rem; }
+.doc-block { padding: 0 0 2.5rem; }
+.doc-block + .doc-block {
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--line-soft);
+}
+.doc-block h2 {
+  font-size: clamp(1.4rem, 3.5vw, 1.9rem);
+  font-weight: 700;
+  margin: 0 0 1rem;
+}
+.doc-block p { margin: 0 0 1rem; color: var(--ink-soft); }
+/* Inline links in prose get vertical padding so they are a real touch
+   target without disturbing the line box. */
+.doc-block a {
+  color: var(--accent-text);
+  padding: 0.35rem 0;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.doc-block p:last-child { margin-bottom: 0; }
+.doc-aside {
+  font-size: 0.9rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--line);
+}
+.doc-notice {
+  padding: 1rem 1.15rem;
+  border: 1px solid rgba(216, 42, 117, 0.35);
+  border-radius: 10px;
+  background: rgba(173, 20, 87, 0.08);
+  color: var(--ink) !important;
+  font-size: 0.94rem;
+}
+.doc-cast { margin: 0 0 4rem; max-width: 68ch; }
+
+@media (max-width: 880px) {
+  .split { grid-template-columns: 1fr; gap: 2.5rem; padding-block: 3rem; }
+  .goal-panel { padding: 1.4rem; }
+}

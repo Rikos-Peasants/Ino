@@ -10,6 +10,7 @@ Discord login, a small JSON API, and the Ko-fi webhook receiver.
 import asyncio
 import hashlib
 import html
+import json
 import logging
 import os
 import secrets
@@ -24,8 +25,11 @@ from aiohttp import web
 from config import Config
 from web import auth
 from web.characters import (
-    CHARACTERS, all_reactions, board_line, card, footer_quip, portrait, rep_line,
+    BIOS, CHARACTERS, all_reactions, board_line, card, error_copy, footer_quip,
+    portrait, reaction_for, rep_line,
 )
+from web.characters import text as ctext
+from web.mailer import send_thank_you
 from web.discord_log import send_donation_log
 from web.kofi import KofiError, parse_payload
 
@@ -124,6 +128,7 @@ class RikoWebServer:
         self.app.router.add_get("/", self.handle_index)
         self.app.router.add_get("/leaderboard", self.handle_leaderboard)
         self.app.router.add_get("/donations", self.handle_donations)
+        self.app.router.add_get("/how-it-works", self.handle_how)
         self.app.router.add_get("/healthz", self.handle_health)
         self.app.router.add_get("/me", self.handle_me)
         self.app.router.add_get("/auth/login", self.handle_login)
@@ -158,30 +163,13 @@ class RikoWebServer:
             return web.json_response({"error": reason}, status=status)
         return await self._render_error(request, status)
 
-    ERROR_COPY = {
-        404: (
-            "There's nothing here.",
-            "Whatever you were looking for either moved, never existed, or you typed it wrong.",
-            "Nope. Nothing here. Did you type it yourself? With your own hands? Wow.",
-            "This page isn't in the records, and I would know. I keep them.",
-            "I checked everywhere for you. Twice. I do that anyway, but this time it was for you.",
-        ),
-        500: (
-            "Something broke.",
-            "That one is on us, not you. It has been logged and someone will be blamed shortly.",
-            "It broke. Not my fault. Probably Rayen's. Definitely Rayen's, actually.",
-            "Something has gone wrong behind the scenes. I'm tidying it up now.",
-            "Don't worry about it. I'll find out which server did this and have a word.",
-        ),
-    }
-
     async def _render_error(self, request: web.Request, status: int) -> web.Response:
-        title, blurb, riko_line, ino_line, yura_line = self.ERROR_COPY.get(
-            status, self.ERROR_COPY[500]
-        )
+        copy = error_copy(status)
+        title = copy.get("title", "Something went wrong.")
+        blurb = copy.get("blurb", "")
         cast = "\n".join(
-            _speech(card(key, line))
-            for key, line in (("riko", riko_line), ("ino", ino_line), ("yura", yura_line))
+            _speech(card(key, copy[key]))
+            for key in ("ino", "riko", "yura") if copy.get(key)
         )
         try:
             page = (
@@ -228,7 +216,8 @@ class RikoWebServer:
     NAV_LINKS = [
         ("/", "Home", "Rankings and the current goal"),
         ("/leaderboard", "Leaderboard", "Every ranked member"),
-        ("/donations", "Donations", "The maid costume fund"),
+        ("/donations", "Donations", "The current goal"),
+        ("/how-it-works", "How it works", "Scoring, InoRep and the goal"),
     ]
 
     async def _nav(self, request: web.Request, current: str = "") -> str:
@@ -520,18 +509,11 @@ class RikoWebServer:
 
         stats = await self._get_site_stats()
 
-        blurbs = {
-            "ino": "Runs this place and keeps every record in it. Your InoRep is hers, "
-                   "and she remembers exactly how kind you have been.",
-            "riko": "Scores the art and will not admit she cares about any of it. "
-                    "Do not mention the blushing.",
-            "yura": "Very fond of Rayen. Very patient. Would love to pay you a visit "
-                    "if the goal stalls.",
-        }
+        blurbs = BIOS
         cast_grid = "\n".join(
             f'<li><span class="cast-grid-face">{_face(card(key, ""), 88)}</span>'
             f'<h3>{html.escape(CHARACTERS[key]["name"])}</h3>'
-            f'<p>{html.escape(blurbs[key])}</p></li>'
+            f'<p>{html.escape(blurbs.get(key, ""))}</p></li>'
             for key in CHARACTERS
         )
 
@@ -542,12 +524,26 @@ class RikoWebServer:
             .replace("<!--TOP_ROWS-->", rows)
             .replace("<!--CAST_GRID-->", cast_grid)
             .replace("{{GOAL_TITLE}}", html.escape(goal.get("title") or "Rayen in a maid costume"))
+            .replace("{{HERO_TITLE}}", html.escape(ctext("hero_title")))
+            .replace("{{HERO_LEDE}}", html.escape(ctext("hero_lede")))
             .replace("{{RAISED}}", _fmt_money(progress["raised_usd"]))
             .replace("{{GOAL}}", _fmt_money(progress["goal_usd"]))
             .replace("{{PERCENT}}", f"{progress['percent']:.1f}")
             .replace("{{STAT_MEMBERS}}", f"{stats['members']:,}")
             .replace("{{STAT_IMAGES}}", f"{stats['images']:,}")
             .replace("{{KOFI_URL}}", html.escape(Config.KOFI_URL, quote=True))
+        )
+        return web.Response(text=page, content_type="text/html")
+
+    async def handle_how(self, request: web.Request) -> web.Response:
+        page = (
+            self._template("how.html")
+            .replace("<!--NAV-->", await self._nav(request, "/how-it-works"))
+            .replace("<!--FOOT-->", self._footer(request))
+            .replace("<!--CAST-->", _speech(card("ino",
+                "That is all of it. If something still does not make sense, ask me. "
+                "I would rather explain twice than have you guessing.")))
+            .replace("{{KOFI_NOTICE}}", html.escape(ctext("kofi_notice")))
         )
         return web.Response(text=page, content_type="text/html")
 
@@ -632,10 +628,8 @@ class RikoWebServer:
         ) or '<li class="empty">Nobody yet.</li>'
 
         title = goal.get("title") or "Rayen in a maid costume"
-        description = goal.get("description") or (
-            "Hit the target and Rayen puts on the maid outfit. On camera. No takebacks."
-        )
-        reward = goal.get("reward") or "Rayen wears the maid costume on stream"
+        description = goal.get("description") or ctext("goal_blurb")
+        reward = goal.get("reward") or ctext("goal_reward")
 
         # Rendered server side so the lines are real, selectable, translatable
         # markup rather than strings assembled by JavaScript.
@@ -651,6 +645,10 @@ class RikoWebServer:
             .replace("{{GOAL_TITLE}}", html.escape(title))
             .replace("{{GOAL_DESC}}", html.escape(description))
             .replace("{{GOAL_REWARD}}", html.escape(reward))
+            .replace("{{KOFI_NOTICE}}", html.escape(ctext("kofi_notice")))
+            .replace("{{GOAL_STINGER}}", html.escape(ctext("goal_stinger"), quote=True))
+            .replace("{{TERMS_BODY}}", html.escape(ctext("terms_body")))
+            .replace("{{TERMS_NOTE}}", html.escape(ctext("terms_note")))
             .replace("{{RAISED}}", _fmt_money(progress["raised_usd"]))
             .replace("{{GOAL}}", _fmt_money(progress["goal_usd"]))
             .replace("{{PERCENT}}", f"{progress['percent']:.1f}")
@@ -661,6 +659,9 @@ class RikoWebServer:
             .replace("{{RAISED_RAW}}", f"{progress['raised_usd']:.2f}")
             .replace("{{GOAL_RAW}}", f"{progress['goal_usd']:.2f}")
             .replace("{{PERCENT_RAW}}", f"{progress['percent']:.2f}")
+            # Riko's scrub line comes from phrases.json rather than a second
+            # copy of the bands living in JavaScript.
+            .replace("{{SASS}}", json.dumps(reaction_for("riko", progress["percent"])))
         )
         return web.Response(text=page, content_type="text/html")
 
@@ -944,13 +945,22 @@ class RikoWebServer:
         progress = await manager.get_progress()
 
         # Fan out without blocking the 200. Ko-fi retries anything slower than
-        # its timeout, which would double-post to Discord.
-        asyncio.create_task(self._announce_donation(donation, progress))
+        # its timeout, which would double-post to Discord. The supporter's
+        # address is handed over here and nowhere else; `donation` itself is
+        # the stored document, which has never contained it.
+        asyncio.create_task(
+            self._announce_donation(donation, progress, payload.get("email"))
+        )
 
         return web.json_response({"status": "ok"})
 
-    async def _announce_donation(self, donation: Dict[str, Any], progress: Dict[str, Any]):
-        """Log to Discord and refresh the in-server progress bar.
+    async def _announce_donation(
+        self,
+        donation: Dict[str, Any],
+        progress: Dict[str, Any],
+        supporter_email: Optional[str] = None,
+    ):
+        """Log to Discord, email the supporter, refresh the in-server bar.
 
         This runs on the web server's loop. The webhook post is plain aiohttp
         and is fine here, but refreshing the progress bar touches discord.py
@@ -960,6 +970,24 @@ class RikoWebServer:
             await send_donation_log(Config.DONATION_LOG_WEBHOOK_URL, donation, progress)
         except Exception as e:
             logger.error(f"Error sending donation log: {e}")
+
+        # Thank-you email. Only public donors get named; a private donation is
+        # still thanked, just impersonally.
+        try:
+            goal = progress.get("goal") or {}
+            await send_thank_you(
+                supporter_email,
+                supporter=(donation.get("from_name") or "there") if donation.get("is_public") else "there",
+                amount=f"${float(donation.get('amount_usd') or 0):,.2f}",
+                goal_title=goal.get("title") or "the current goal",
+                percent=float(progress.get("percent") or 0),
+                raised=f"${float(progress.get('raised_usd') or 0):,.2f}",
+                target=f"${float(progress.get('goal_usd') or 0):,.2f}",
+                site_url=Config.WEB_BASE_URL.rstrip("/"),
+                kofi_notice=ctext("kofi_notice"),
+            )
+        except Exception as e:
+            logger.error(f"Error sending thank-you email: {e}")
 
         controller = getattr(self.bot, "donation_controller", None)
         if not controller:
