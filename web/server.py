@@ -23,7 +23,9 @@ from aiohttp import web
 
 from config import Config
 from web import auth
-from web.characters import CHARACTERS, all_reactions, board_line, card, portrait, rep_line
+from web.characters import (
+    CHARACTERS, all_reactions, board_line, card, footer_quip, portrait, rep_line,
+)
 from web.discord_log import send_donation_log
 from web.kofi import KofiError, parse_payload
 
@@ -185,6 +187,7 @@ class RikoWebServer:
             page = (
                 self._template("error.html")
                 .replace("<!--NAV-->", await self._nav(request))
+                .replace("<!--FOOT-->", self._footer(request))
                 .replace("<!--CAST-->", cast)
                 .replace("{{CODE}}", str(status))
                 .replace("{{TITLE}}", html.escape(title))
@@ -316,6 +319,45 @@ class RikoWebServer:
             f'<a class="btn drawer-donate" href="{kofi}" rel="noopener" target="_blank">'
             'Donate on Ko-fi</a>'
             '</div></div>'
+        )
+
+    def _footer(self, request: web.Request) -> str:
+        """Shared site footer.
+
+        Structured columns rather than one flat row of links, which on a phone
+        was a cramped strip of 22px targets wrapping into itself.
+        """
+        kofi = html.escape(Config.KOFI_URL, quote=True)
+        signed_in = self._current_user(request) is not None
+        account = (
+            '<a href="/me">Your standing</a>' if signed_in
+            else '<a href="/auth/login">Log in with Discord</a>'
+        )
+        return (
+            '<footer class="foot">'
+            '<div class="foot-inner">'
+            '<div class="foot-brand">'
+            '<a class="brand" href="/">'
+            '<span class="brand-mark"><img src="/static/img/riko-greet.png" alt="" '
+            'width="34" height="34"></span><span class="brand-name">Riko</span></a>'
+            '<p>Every image posted in the Just Rayen server gets scored, ranked '
+            'and remembered. This is where the tally lives.</p>'
+            f'<a class="btn btn--sm" href="{kofi}" rel="noopener" target="_blank">'
+            'Support on Ko-fi</a>'
+            '</div>'
+            '<nav class="foot-cols" aria-label="Footer">'
+            '<div class="foot-col"><h2>Site</h2>'
+            '<a href="/">Home</a><a href="/leaderboard">Leaderboard</a>'
+            f'<a href="/donations">Donations</a>{account}</div>'
+            '<div class="foot-col"><h2>Support</h2>'
+            f'<a href="{kofi}" rel="noopener" target="_blank">Ko-fi</a>'
+            '<a href="/donations">Current goal</a>'
+            '<a href="/donations#terms">How it works</a></div>'
+            '</nav></div>'
+            '<div class="foot-bar">'
+            '<span>© Rikoverse</span>'
+            f'<span class="foot-quip">{html.escape(footer_quip())}</span>'
+            '</div></footer>'
         )
 
     async def _cached_progress(self) -> Dict[str, Any]:
@@ -479,6 +521,7 @@ class RikoWebServer:
         page = (
             self._template("index.html")
             .replace("<!--NAV-->", await self._nav(request, "/"))
+            .replace("<!--FOOT-->", self._footer(request))
             .replace("<!--TOP_ROWS-->", rows)
             .replace("{{GOAL_TITLE}}", html.escape(goal.get("title") or "Rayen in a maid costume"))
             .replace("{{RAISED}}", _fmt_money(progress["raised_usd"]))
@@ -511,6 +554,7 @@ class RikoWebServer:
         page = (
             self._template("leaderboard.html")
             .replace("<!--NAV-->", await self._nav(request, "/leaderboard"))
+            .replace("<!--FOOT-->", self._footer(request))
             .replace("<!--RIKO-->", riko)
             .replace("{{STAT_MEMBERS}}", f"{stats.get('members', 0):,}")
             .replace("{{STAT_IMAGES}}", f"{stats.get('images', 0):,}")
@@ -576,6 +620,7 @@ class RikoWebServer:
         page = (
             self._template("donations.html")
             .replace("<!--NAV-->", await self._nav(request, "/donations"))
+            .replace("<!--FOOT-->", self._footer(request))
             .replace("<!--DONOR_ROWS-->", donors_html)
             .replace("<!--TOP_DONORS-->", top_html)
             .replace("<!--CAST-->", cast_html)
@@ -775,6 +820,7 @@ class RikoWebServer:
         page = (
             self._template("me.html")
             .replace("<!--NAV-->", await self._nav(request, "/me"))
+            .replace("<!--FOOT-->", self._footer(request))
             .replace("<!--INO-->", ino)
             .replace("<!--RIKO-->", riko)
             .replace("{{NAME}}", html.escape(user["name"]))

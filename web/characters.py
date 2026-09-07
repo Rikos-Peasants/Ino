@@ -112,6 +112,24 @@ _REP_LINES = [
 ]
 
 
+# Riko, at the very bottom of the page. Picked per request, so scrolling to
+# the footer twice is not the same experience.
+FOOTER_QUIPS = [
+    "You scrolled all the way down here? There's nothing at the bottom. There's never anything at the bottom.",
+    "Still reading? I-It's not like I put effort into this or anything.",
+    "This is the footer. The boring bit. You did this to yourself.",
+    "Congratulations, you found the small text. That's the whole prize.",
+    "Go outside. ...Come back after, though.",
+    "If you're looking for the fine print, it says be nicer to Ino.",
+]
+
+
+def footer_quip(seed: Optional[int] = None) -> str:
+    import random
+
+    return random.Random(seed).choice(FOOTER_QUIPS) if seed is not None else random.choice(FOOTER_QUIPS)
+
+
 def _band(bands: List[Dict[str, Any]], value: float) -> str:
     chosen = bands[0]["text"] if bands else ""
     for band in bands:

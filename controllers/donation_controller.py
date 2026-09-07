@@ -17,10 +17,21 @@ from discord.ext import tasks
 from config import Config
 from models.donation_progress_bar import render_progress_bar
 from views.donation_setup_view import DonationSetupView, build_status_embed
+from views.donation_widget_view import DonationWidgetView
+from web.characters import CHARACTERS, reaction_for
 
 logger = logging.getLogger(__name__)
 
 ACCENT = 0xAD1457
+
+# Thresholds that trigger a celebration post, and what it is headed with.
+MILESTONES = (25.0, 50.0, 75.0, 100.0)
+MILESTONE_TITLES = {
+    25.0: "A quarter of the way",
+    50.0: "Halfway there",
+    75.0: "Three quarters",
+    100.0: "Goal reached",
+}
 
 
 class DonationController:
@@ -65,25 +76,48 @@ class DonationController:
 
     async def _build_embed(self, goal: Dict[str, Any]) -> discord.Embed:
         progress = await self.manager.get_progress(goal.get("goal_id"))
-        reward = goal.get("reward")
         description = goal.get("description") or ""
 
+        # Ko-fi and the supporters page are link buttons under the embed now,
+        # so the description carries the numbers rather than a row of links.
         embed = discord.Embed(
             title=goal.get("title") or "Donation goal",
             description=(
                 f"{description}\n\n" if description else ""
             ) + (
-                f"**${progress['raised_usd']:,.2f}** of **${progress['goal_usd']:,.2f}**\n"
-                f"[Donate on Ko-fi]({Config.KOFI_URL}) · "
-                f"[Every supporter]({Config.WEB_BASE_URL}/donations)"
+                f"**${progress['raised_usd']:,.2f}** raised of "
+                f"**${progress['goal_usd']:,.2f}**  ·  "
+                f"**{progress['percent']:.1f}%**"
             ),
             color=ACCENT,
             timestamp=datetime.now(timezone.utc),
         )
-        if reward:
-            embed.add_field(name="At 100%", value=reward, inline=False)
+
+        if goal.get("show_reward", True) and goal.get("reward"):
+            embed.add_field(name="At 100%", value=goal["reward"], inline=False)
+
+        if goal.get("show_recent", True):
+            try:
+                limit = max(1, min(int(goal.get("recent_count") or 3), 10))
+            except (TypeError, ValueError):
+                limit = 3
+            recent = await self.manager.list_donations(
+                limit=limit, goal_id=goal.get("goal_id")
+            )
+            if recent:
+                lines = "\n".join(
+                    f"**{discord.utils.escape_markdown(d.get('from_name') or 'Anonymous')}** "
+                    f"· ${float(d.get('amount_usd') or 0):,.2f}"
+                    for d in recent
+                )
+                embed.add_field(name="Latest supporters", value=lines, inline=False)
+
+        supporters = progress["donation_count"]
         embed.set_image(url="attachment://donation-goal.png")
-        embed.set_footer(text="Updates automatically when a donation lands")
+        embed.set_footer(
+            text=f"{supporters} supporter{'' if supporters == 1 else 's'} · "
+                 "updates automatically when a donation lands"
+        )
         return embed
 
     # ------------------------------------------------------------------
@@ -181,12 +215,16 @@ class DonationController:
             if file is None:
                 return False
 
+            # Link buttons need no persistence, so they can be rebuilt freely.
+            widget = DonationWidgetView(goal)
+            view = None if widget.is_empty else widget
+
             message_id = goal.get("message_id")
             if message_id:
                 try:
                     message = await channel.fetch_message(int(message_id))
-                    await message.edit(embed=embed, attachments=[file])
-                    await self._maybe_announce(channel, goal, donation)
+                    await message.edit(embed=embed, attachments=[file], view=view)
+                    await self._after_render(channel, goal, donation)
                     return True
                 except discord.NotFound:
                     logger.info("Goal message missing, posting a new one")
@@ -200,13 +238,13 @@ class DonationController:
                 file = await self.build_bar_file(goal)
 
             try:
-                message = await channel.send(embed=embed, file=file)
+                message = await channel.send(embed=embed, file=file, view=view)
                 await manager.update_goal(goal["goal_id"], message_id=str(message.id))
                 try:
                     await message.pin()
                 except discord.HTTPException:
                     pass
-                await self._maybe_announce(channel, goal, donation)
+                await self._after_render(channel, goal, donation)
                 return True
             except discord.Forbidden:
                 logger.error("Missing permission to post in the goal channel")
@@ -214,6 +252,62 @@ class DonationController:
             except Exception as e:
                 logger.error(f"Error posting goal message: {e}")
                 return False
+
+    async def _after_render(self, channel, goal: Dict[str, Any], donation: Optional[Dict[str, Any]]):
+        """Thank-you post, then any milestone the bar just crossed."""
+        await self._maybe_announce(channel, goal, donation)
+        await self._maybe_milestone(channel, goal)
+
+    async def _maybe_milestone(self, channel, goal: Dict[str, Any]):
+        """Post a celebration the first time the bar passes 25/50/75/100%.
+
+        `last_milestone` on the goal is what stops a restart, a manual refresh
+        or a second donation from reposting one that already fired.
+        """
+        if not goal.get("milestones", True):
+            return
+
+        progress = await self.manager.get_progress(goal.get("goal_id"))
+        percent = progress["percent"]
+        already = float(goal.get("last_milestone") or 0)
+
+        reached = [m for m in MILESTONES if percent >= m > already]
+        if not reached:
+            return
+        highest = max(reached)
+
+        # Record before posting: a failed send is better than a duplicate.
+        await self.manager.update_goal(goal["goal_id"], last_milestone=highest)
+
+        embed = discord.Embed(
+            title=MILESTONE_TITLES[highest],
+            description=(
+                f"**${progress['raised_usd']:,.2f}** of "
+                f"**${progress['goal_usd']:,.2f}** · {percent:.1f}%"
+            ),
+            color=ACCENT,
+        )
+        for key in ("riko", "ino", "yura"):
+            embed.add_field(
+                name=CHARACTERS[key]["name"],
+                value=reaction_for(key, percent),
+                inline=False,
+            )
+        if highest >= 100 and goal.get("reward"):
+            embed.set_footer(text=f"Owed: {goal['reward']}")
+
+        role_id = goal.get("ping_role_id")
+        try:
+            await channel.send(
+                content=f"<@&{role_id}>" if role_id else None,
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(
+                    everyone=False, users=False,
+                    roles=[discord.Object(id=int(role_id))] if role_id else False,
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Error posting donation milestone: {e}")
 
     async def _maybe_announce(self, channel, goal: Dict[str, Any], donation: Optional[Dict[str, Any]]):
         """Post a short thank-you under the bar for a new donation."""

@@ -80,6 +80,30 @@ async def build_status_embed(controller, goal: dict) -> discord.Embed:
     embed.add_field(name="Bar heading", value=f"`{_short(goal.get('bar_title'), 30)}`", inline=True)
     embed.add_field(name="Reward", value=_short(goal.get("reward"), 60, "*not set*"), inline=True)
 
+    buttons = [
+        name for name, on in (
+            (goal.get("kofi_button_label") or "Ko-fi", goal.get("show_kofi_button", True)),
+            (goal.get("page_button_label") or "Supporters", goal.get("show_page_button", True)),
+            ("Leaderboard", goal.get("show_board_button", False)),
+        ) if on
+    ]
+    extras = []
+    if goal.get("show_recent", True):
+        extras.append(f"{goal.get('recent_count', 3)} recent")
+    if goal.get("show_reward", True):
+        extras.append("reward line")
+    if goal.get("milestones", True):
+        last = float(goal.get("last_milestone") or 0)
+        extras.append(f"milestones (last {last:.0f}%)" if last else "milestones")
+    embed.add_field(
+        name="Widget",
+        value=(
+            ("Buttons: " + ", ".join(buttons) if buttons else "No buttons")
+            + ("\nShows: " + ", ".join(extras) if extras else "")
+        ),
+        inline=False,
+    )
+
     embed.add_field(
         name="Ko-fi webhook",
         value=(
@@ -204,6 +228,110 @@ class BackfillModal(discord.ui.Modal, title="Backfill"):
         await self.hub.controller.manager.update_goal(
             self.hub.goal["goal_id"], backfill_usd=amount
         )
+        await self.hub.reload_and_refresh(interaction)
+
+
+class WidgetLabelsModal(discord.ui.Modal, title="Button labels"):
+    def __init__(self, hub: "DonationSetupView"):
+        super().__init__(timeout=TIMEOUT)
+        self.hub = hub
+        goal = hub.goal
+        self.f_kofi = discord.ui.TextInput(
+            label="Ko-fi button", default=goal.get("kofi_button_label") or "Donate on Ko-fi",
+            max_length=80, required=True,
+        )
+        self.f_page = discord.ui.TextInput(
+            label="Supporters page button",
+            default=goal.get("page_button_label") or "All supporters",
+            max_length=80, required=True,
+        )
+        self.f_recent = discord.ui.TextInput(
+            label="How many recent supporters to list (0-10)",
+            default=str(goal.get("recent_count") or 3), max_length=2, required=True,
+        )
+        for f in (self.f_kofi, self.f_page, self.f_recent):
+            self.add_item(f)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            count = int(str(self.f_recent.value).strip())
+        except ValueError:
+            await interaction.response.send_message(
+                "The supporter count needs to be a number.", ephemeral=True
+            )
+            return
+        count = max(0, min(count, 10))
+        await self.hub.controller.manager.update_goal(
+            self.hub.goal["goal_id"],
+            kofi_button_label=str(self.f_kofi.value),
+            page_button_label=str(self.f_page.value),
+            recent_count=count,
+            # 0 is a valid "hide it" answer, and update_goal skips None only.
+            show_recent=count > 0,
+        )
+        await self.hub.reload_and_refresh(interaction, note="Widget labels updated")
+
+
+class WidgetView(discord.ui.View):
+    """Toggles for what the goal message shows and which buttons it carries."""
+
+    def __init__(self, hub: "DonationSetupView"):
+        super().__init__(timeout=TIMEOUT)
+        self.hub = hub
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await self.hub.interaction_check(interaction)
+
+    async def _toggle(self, interaction: discord.Interaction, field: str, label: str, default=True):
+        await interaction.response.defer(ephemeral=True)
+        new_value = not self.hub.goal.get(field, default)
+        await self.hub.controller.manager.update_goal(
+            self.hub.goal["goal_id"], **{field: new_value}
+        )
+        await self.hub.reload_and_refresh(
+            interaction, note=f"{label} {'on' if new_value else 'off'}"
+        )
+
+    @discord.ui.button(label="Labels & count", emoji="✏️", style=discord.ButtonStyle.primary, row=0)
+    async def labels(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await interaction.response.send_modal(WidgetLabelsModal(self.hub))
+
+    @discord.ui.button(label="Ko-fi button", style=discord.ButtonStyle.secondary, row=1)
+    async def kofi(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self._toggle(interaction, "show_kofi_button", "Ko-fi button")
+
+    @discord.ui.button(label="Supporters button", style=discord.ButtonStyle.secondary, row=1)
+    async def page(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self._toggle(interaction, "show_page_button", "Supporters button")
+
+    @discord.ui.button(label="Leaderboard button", style=discord.ButtonStyle.secondary, row=1)
+    async def board(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self._toggle(interaction, "show_board_button", "Leaderboard button", default=False)
+
+    @discord.ui.button(label="Reward line", style=discord.ButtonStyle.secondary, row=2)
+    async def reward(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self._toggle(interaction, "show_reward", "Reward line")
+
+    @discord.ui.button(label="Recent supporters", style=discord.ButtonStyle.secondary, row=2)
+    async def recent(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self._toggle(interaction, "show_recent", "Recent supporters")
+
+    @discord.ui.button(label="Milestone posts", style=discord.ButtonStyle.secondary, row=2)
+    async def milestones(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self._toggle(interaction, "milestones", "Milestone posts")
+
+    @discord.ui.button(label="Reset milestones", emoji="↩️", style=discord.ButtonStyle.danger, row=3)
+    async def reset_milestones(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await self.hub.controller.manager.update_goal(
+            self.hub.goal["goal_id"], last_milestone=0
+        )
+        await self.hub.reload_and_refresh(
+            interaction, note="Milestones armed again, they can re-fire"
+        )
+
+    @discord.ui.button(label="Back", style=discord.ButtonStyle.secondary, row=3)
+    async def back(self, interaction: discord.Interaction, _: discord.ui.Button):
         await self.hub.reload_and_refresh(interaction)
 
 
@@ -530,13 +658,22 @@ class DonationSetupView(discord.ui.View):
     async def backfill(self, interaction: discord.Interaction, _: discord.ui.Button):
         await interaction.response.send_modal(BackfillModal(self))
 
-    @discord.ui.button(label="Switch goal", emoji="🔁", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Widget", emoji="🧩", style=discord.ButtonStyle.primary, row=1)
+    async def widget(self, interaction: discord.Interaction, _: discord.ui.Button):
+        embed = await build_status_embed(self.controller, self.goal)
+        embed.description = (
+            "What the goal message shows, and which link buttons sit under it. "
+            "Changes apply the next time the bar renders."
+        )
+        await interaction.response.edit_message(embed=embed, view=WidgetView(self))
+
+    @discord.ui.button(label="Switch goal", emoji="🔁", style=discord.ButtonStyle.secondary, row=2)
     async def switch(self, interaction: discord.Interaction, _: discord.ui.Button):
         goals = await self.controller.manager.list_goals()
         embed = await build_status_embed(self.controller, self.goal)
         await interaction.response.edit_message(embed=embed, view=GoalSwitchView(self, goals))
 
-    @discord.ui.button(label="Post / update bar", emoji="✅", style=discord.ButtonStyle.success, row=2)
+    @discord.ui.button(label="Post / update bar", emoji="✅", style=discord.ButtonStyle.success, row=3)
     async def deploy(self, interaction: discord.Interaction, _: discord.ui.Button):
         if not self.goal.get("channel_id"):
             await interaction.response.send_message(
@@ -550,7 +687,7 @@ class DonationSetupView(discord.ui.View):
             note="Progress bar posted" if ok else "⚠️ Could not post, check my permissions",
         )
 
-    @discord.ui.button(label="Preview bar", emoji="👁", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="Preview bar", emoji="👁", style=discord.ButtonStyle.secondary, row=3)
     async def preview(self, interaction: discord.Interaction, _: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         file = await self.controller.build_bar_file(self.goal)

@@ -133,6 +133,19 @@ class DonationManager:
             "category_id": None,
             "announce": True,
             "ping_role_id": None,
+            # Widget: link buttons under the embed and what the embed shows.
+            "show_kofi_button": True,
+            "kofi_button_label": "Donate on Ko-fi",
+            "show_page_button": True,
+            "page_button_label": "All supporters",
+            "show_board_button": False,
+            "show_reward": True,
+            "show_recent": True,
+            "recent_count": 3,
+            # Milestone celebrations, and the highest one already fired so a
+            # restart or a re-render cannot repost the same one.
+            "milestones": True,
+            "last_milestone": 0,
             "bar_title": "MAIDMASTER",
             "bar_subtitle": None,
             "created_at": datetime.now(timezone.utc),

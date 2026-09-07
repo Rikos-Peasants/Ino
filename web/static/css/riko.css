@@ -849,23 +849,76 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
 .stat-row span { color: var(--ink-soft); }
 .stat-row strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 
-/* ---------------------------------------------------------------- footer */
+/* ---------------------------------------------------------------- footer
+   Structured columns. The old version was one flex row of links, which on a
+   phone collapsed into a cramped strip of 22px targets wrapping into itself. */
 .foot {
   border-top: 1px solid var(--line-soft);
-  padding: 2.5rem 0 3.5rem;
-  font-size: 0.85rem;
-  color: var(--ink-soft);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem 2rem;
+  margin-top: 2rem;
+  background: linear-gradient(180deg, transparent, rgba(173, 20, 87, 0.05));
 }
-.foot a {
+.foot-inner {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 3.5rem var(--pad) 2.5rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 3rem;
+}
+.foot-brand { max-width: 42ch; }
+.foot-brand .brand { margin-bottom: 1rem; }
+.foot-brand p {
   color: var(--ink-soft);
+  font-size: 0.94rem;
+  margin: 0 0 1.5rem;
+}
+
+.foot-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2rem;
+}
+.foot-col { display: flex; flex-direction: column; }
+.foot-col h2 {
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+.foot-col a {
+  color: var(--ink);
   text-decoration: none;
-  /* Padded so footer links are a real touch target, not a 22px sliver. */
-  padding: 0.5rem 0;
+  font-size: 0.94rem;
+  /* Padding is what makes these a real touch target. */
+  padding: 0.6rem 0;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s ease;
 }
-.foot a:hover { color: var(--accent-text); }
+.foot-col a:hover { color: var(--accent-text); }
+
+.foot-bar {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 1.25rem var(--pad) calc(2rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+.foot-quip {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  opacity: 0.75;
+  text-align: right;
+  max-width: 60ch;
+}
+.foot-quip::before { content: "riko: "; color: var(--accent-text); }
 
 /* ---------------------------------------------------------------- tablet */
 @media (max-width: 880px) {
@@ -963,7 +1016,17 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
   .hero-actions .btn { flex: 1 1 auto; text-align: center; }
   .section { padding-block: 3rem; }
   .card { padding: 1.4rem; border-radius: 16px; }
-  .foot { gap: 0.5rem 1.5rem; }
+  .foot-inner {
+    grid-template-columns: 1fr;
+    gap: 2.25rem;
+    padding-top: 2.75rem;
+  }
+  .foot-cols { gap: 1.5rem; }
+  .foot-brand .btn { display: block; text-align: center; }
+  .foot-col a { padding: 0.7rem 0; border-bottom-color: var(--line-soft); }
+  .foot-col a:last-child { border-bottom-color: transparent; }
+  .foot-bar { flex-direction: column; align-items: flex-start; gap: 0.6rem; }
+  .foot-quip { text-align: left; }
   /* Heading and its link fight for width at this size; stack them. */
   .section-head { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
   .section-head a { padding: 0.35rem 0; }
@@ -972,7 +1035,4 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
   .page-head { padding: 2.5rem 0 2rem; }
 }
 
-/* iOS home-indicator clearance. */
-@supports (padding: env(safe-area-inset-bottom)) {
-  .foot { padding-bottom: calc(3.5rem + env(safe-area-inset-bottom)); }
-}
+
