@@ -23,8 +23,9 @@
   "site": {
     "goal_blurb": "Hit the target and Rayen puts on the maid outfit.",
     "goal_reward": "Rayen wears the maid costume",
-    "goal_stinger": "one costume. one very long evening.",
-    "terms_body": "The deal is simple. The bar hits a hundred percent, Rayen puts on the maid outfit, and the whole server gets to watch him regret agreeing to it.",
+    "goal_stinger": "one costume. that's the whole prize.",
+    "terms_body": "The deal is simple. The bar hits a hundred percent and Rayen puts on the maid outfit. That is the whole prize.",
+    "how_goal": "When the bar fills, Rayen puts on the maid outfit. Hitting the goal is the costume — a target he can hit, not a stream.",
     "terms_note": "Every donation counts toward the total the moment Ko-fi confirms it. Tick the private box on Ko-fi and only the number moves, your name stays off this page.",
     "kofi_notice": "Haven't linked your Discord account before buying? Please contact Seika, either in DMs or in the Ask and Complain to Staff channel.",
     "hero_title": "Every picture posted here gets a verdict.",
@@ -124,11 +125,14 @@
   },
 
   "email": {
-    "subject": "Thank you for supporting Riko",
+    "subject": "Thank you for supporting Ino",
+    "eyebrow": "Donation received",
     "heading": "Thank you.",
     "intro": "Your donation of {amount} has been recorded against the current goal.",
+    "cta": "See the goal",
     "signoff": "Ino, on behalf of everyone who did not want to write this email themselves.",
     "ino_note": "I've written your name in the book. Properly, in ink. It stays there.",
-    "riko_note": "Th-thanks. I'm not going to make a whole thing out of it. Don't expect a card."
+    "riko_note": "Th-thanks. I'm not going to make a whole thing out of it. Don't expect a card.",
+    "yura_note": "You're on the nice list now. I don't need to visit. Probably."
   }
 }

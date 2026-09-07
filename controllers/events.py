@@ -2586,7 +2586,18 @@ class EventsController:
                 return
             
             # Note: Moderation is now handled via UI buttons, not reactions
-            
+
+            # Being reacted to by someone else earns the author a little rep.
+            if added:
+                economy = getattr(self.bot, 'rep_economy', None)
+                if economy:
+                    try:
+                        await economy.award_reaction_received(
+                            reaction.message.author, user, str(reaction.message.guild.id)
+                        )
+                    except Exception as e:
+                        logger.debug(f"Error awarding reaction rep: {e}")
+
             # Handle bookmark reactions FIRST (works in any channel with images)
             emoji_str = str(reaction.emoji)
             logger.info(f"Reaction detected: '{emoji_str}' (repr: {repr(emoji_str)}) by {user.display_name}")
@@ -4143,11 +4154,42 @@ class EventsController:
                 point_type=point_type,
                 reason=reason
             )
-            
+
             logger.debug(f"Awarded {points} {point_type} points to {message.author.display_name} for message")
-            
+
+            # Rep is earned on its own cooldown, so it is granted separately.
+            await self._award_message_rep(message)
+
         except Exception as e:
             logger.error(f"Error awarding text message points: {e}")
+
+    async def _award_message_rep(self, message: discord.Message):
+        """Grant InoRep for chatting and celebrate rank-ups."""
+        economy = getattr(self.bot, 'rep_economy', None)
+        if not economy:
+            return
+        try:
+            award = await economy.award_message(message)
+            if award and award.tier_changed:
+                await self._announce_rep_tier(message.channel, message.author, award)
+        except Exception as e:
+            logger.error(f"Error awarding message rep: {e}")
+
+    async def _announce_rep_tier(self, channel, member, award):
+        """Tell a member (quietly, and only on rank-up) that they climbed a tier."""
+        try:
+            _, title, emoji = award.tier
+            embed = discord.Embed(
+                title=f"{emoji} Rank up!",
+                description=(
+                    f"{member.mention} is now **{title}**\n"
+                    f"`{award.new_total}` InoRep"
+                ),
+                color=0xF2A65A
+            )
+            await channel.send(embed=embed, delete_after=60)
+        except Exception as e:
+            logger.debug(f"Could not announce rep tier change: {e}")
 
     async def _handle_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         """Handle voice channel state changes for point tracking"""
@@ -4217,7 +4259,16 @@ class EventsController:
                             reason=f"Voice chat for {time_spent:.1f} minutes in {before.channel.name}"
                         )
                         logger.debug(f"Awarded {points} voice points to {member.display_name} for {time_spent:.1f} minutes")
-                    
+
+                        economy = getattr(self.bot, 'rep_economy', None)
+                        if economy:
+                            try:
+                                await economy.award_voice_minutes(
+                                    member, str(member.guild.id), time_spent
+                                )
+                            except Exception as e:
+                                logger.error(f"Error awarding voice rep: {e}")
+
                     # Remove from tracking
                     del self.voice_tracking[user_id]
             

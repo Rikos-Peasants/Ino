@@ -1413,107 +1413,62 @@ class CommandsController:
         @self.bot.hybrid_command(name="leaderboard", description="Show all leaderboards (Points, Images, InoRep, Art)")
         @public_command
         async def leaderboard_command(ctx, type: Optional[str] = None):
-            """Show combined leaderboard with interactive buttons
-            
+            """Show the paginated, switchable leaderboard.
+
             Args:
-                type: Optional leaderboard type - 'points', 'images', 'inorep', or 'art' (default: points)
+                type: Which board to open on - 'points', 'images', 'inorep', or 'art'
             """
             try:
-                # Check if this is a slash command (has defer) or text command
-                if hasattr(ctx, 'defer'):
-                    await ctx.defer()  # This might take a while
-                
+                await ctx.defer()
+
                 guild = ctx.guild
                 if not guild or guild.id != Config.GUILD_ID:
-                    error_msg = "This command can only be used in the configured guild."
-                    if hasattr(ctx, 'followup'):
-                        await ctx.followup.send(error_msg, ephemeral=True)
-                    else:
-                        await ctx.send(error_msg)
+                    await ctx.send("This command can only be used in the configured guild.", ephemeral=True)
                     return
-                
-                # Get leaderboard manager
+
                 leaderboard_manager = self.get_leaderboard_manager()
                 if not leaderboard_manager:
-                    error_msg = "Leaderboard manager is not available."
-                    if hasattr(ctx, 'followup'):
-                        await ctx.followup.send(error_msg, ephemeral=True)
-                    else:
-                        await ctx.send(error_msg)
+                    await ctx.send("Leaderboard manager is not available.", ephemeral=True)
                     return
-                
-                # Get quest manager
+
                 events_controller = self.get_events_controller()
                 quest_manager = events_controller.quest_manager if events_controller else None
-                
-                # Normalize type parameter
-                if type:
-                    type = type.lower()
-                    if type not in ['points', 'images', 'inorep', 'art']:
-                        error_msg = "Invalid type. Use 'points', 'images', 'inorep', or 'art'."
-                        await ctx.send(error_msg, ephemeral=True)
-                        return
-                else:
-                    type = 'points'  # Default to combined points
-                
-                # Generate appropriate leaderboard based on type
-                if type == 'points':
-                    # Combined points leaderboard (general + quest points)
-                    leaderboard = await leaderboard_manager.get_combined_leaderboard(limit=10, quest_manager=quest_manager)
-                    embed = EmbedViews.combined_points_leaderboard_embed(leaderboard, ctx.author.id)
-                    
-                elif type == 'inorep':
-                    if not leaderboard_manager.inorep_manager:
-                        error_msg = "InoRep system is not available."
-                        await ctx.send(error_msg, ephemeral=True)
-                        return
-                    leaderboard_data = await leaderboard_manager.inorep_manager.get_leaderboard(
-                        str(guild.id), limit=10, reverse=False
-                    )
-                    embed = EmbedViews.inorep_leaderboard_embed(leaderboard_data, worst=False)
-                    
-                elif type == 'art':
-                    art_manager = getattr(self.bot, 'art_challenge_manager', None)
-                    if not art_manager:
-                        error_msg = "Art challenge system is not available."
-                        await ctx.send(error_msg, ephemeral=True)
-                        return
-                    leaderboard_data = art_manager.get_challenge_leaderboard(limit=10)
-                    embed = EmbedViews.art_challenge_leaderboard_embed(leaderboard_data)
-
-                else:  # images (default)
-                    leaderboard_data = leaderboard_manager.get_leaderboard(limit=10)
-                    embed = EmbedViews.leaderboard_embed(leaderboard_data, "all time")
-                    
-                    # Add stats summary for images
-                    stats = leaderboard_manager.get_stats_summary()
-                    embed.add_field(
-                        name="📊 Server Stats",
-                        value=f"**Total Users:** {stats['total_users']}\n"
-                              f"**Total Images:** {stats['total_images']}\n"
-                              f"**Average Score:** {stats['average_score']}",
-                        inline=False
-                    )
-                
-                # Create interactive view with buttons
-                from views.combined_leaderboard_view import CombinedLeaderboardView
                 art_manager = getattr(self.bot, 'art_challenge_manager', None)
-                view = CombinedLeaderboardView(ctx, leaderboard_manager, quest_manager, art_manager=art_manager, initial_type=type)
-                
-                # Send response based on command type
-                if hasattr(ctx, 'followup'):
-                    await ctx.followup.send(embed=embed, view=view)
-                else:
-                    await ctx.send(embed=embed, view=view)
-                
+
+                from views.leaderboard_boards import build_boards
+                from views.leaderboard_view import LeaderboardView
+
+                boards = build_boards(
+                    leaderboard_manager,
+                    quest_manager=quest_manager,
+                    art_manager=art_manager,
+                    guild_id=str(guild.id),
+                )
+                if not boards:
+                    await ctx.send("No leaderboards are available right now.", ephemeral=True)
+                    return
+
+                requested = (type or 'points').lower()
+                valid = {board.key for board in boards}
+                if requested not in valid:
+                    await ctx.send(
+                        f"Invalid type. Choose one of: {', '.join(sorted(valid))}.",
+                        ephemeral=True,
+                    )
+                    return
+
+                view = LeaderboardView(boards, invoker=ctx.author, initial_key=requested)
+                await view.load()
+                view._sync_buttons()
+                embed = await view.build_embed()
+
+                view.message = await ctx.send(embed=embed, view=view)
+
             except Exception as e:
-                logger.error(f"Error in leaderboard command: {e}")
+                logger.error(f"Error in leaderboard command: {e}", exc_info=True)
                 error_embed = EmbedViews.error_embed(f"Failed to generate leaderboard: {str(e)}")
-                if hasattr(ctx, 'followup'):
-                    await ctx.followup.send(embed=error_embed, ephemeral=True)
-                else:
-                    await ctx.send(embed=error_embed)
-        
+                await ctx.send(embed=error_embed, ephemeral=True)
+
         @self.bot.hybrid_command(name="stats", description="Show your image posting statistics")
         @public_command
         async def stats_command(ctx, user: Optional[discord.Member] = None):

@@ -145,11 +145,25 @@ class RikoBot(commands.Bot):
             logger.error(f"❌ Failed to initialize random announcer: {e}")
             self.random_announcer = None
         
+        # Initialize the rep economy (the earning side of InoRep)
+        self.rep_economy = None
+        try:
+            inorep_manager = getattr(self.leaderboard_manager, 'inorep_manager', None)
+            if inorep_manager:
+                from models.rep_economy import RepEconomy
+                self.rep_economy = RepEconomy(inorep_manager, self)
+                logger.info("✅ Rep economy initialized successfully")
+            else:
+                logger.warning("⚠️ InoRep manager unavailable - rep earning disabled")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize rep economy: {e}")
+            self.rep_economy = None
+
         # Initialize controllers
         from controllers.events import EventsController
-        from controllers.commands import CommandsController  
+        from controllers.commands import CommandsController
         from controllers.scheduler import SchedulerController
-        
+
         self.events_controller = EventsController(self)
         self.commands_controller = CommandsController(self)
         self.scheduler_controller = SchedulerController(self)
@@ -249,6 +263,18 @@ class RikoBot(commands.Bot):
             self.scam_image_controller.register_commands()
         if self.donation_controller:
             self.donation_controller.register_commands()
+
+        try:
+            from controllers.rep_commands import RepCommandsController
+            RepCommandsController(self).register_commands()
+        except Exception as e:
+            logger.error(f"❌ Failed to register rep commands: {e}")
+
+        try:
+            from controllers.fun_commands import FunCommandsController
+            FunCommandsController(self).register_commands()
+        except Exception as e:
+            logger.error(f"❌ Failed to register fun commands: {e}")
 
         # Initialize quest manager after bot is ready
         if self.events_controller:

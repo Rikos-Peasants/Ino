@@ -1,4 +1,3 @@
-# Views package
-from .combined_leaderboard_view import CombinedLeaderboardView
+from .leaderboard_view import Board, LeaderboardView, Row
 
-__all__ = ['CombinedLeaderboardView']
+__all__ = ['Board', 'LeaderboardView', 'Row']

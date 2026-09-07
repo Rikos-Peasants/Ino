@@ -8,13 +8,6 @@ import logging
 import re
 
 # Optional Google SDKs: import lazily/defensively so module import never fails
-try:  # New Google AI Python SDK (google-genai)
-    from google import genai  # type: ignore
-    from google.genai import types  # type: ignore
-except Exception:  # Library not installed or incompatible
-    genai = None  # type: ignore
-    types = None  # type: ignore
-
 try:  # YouTube Data API client
     from googleapiclient.discovery import build  # type: ignore
 except Exception:
@@ -24,7 +17,8 @@ from config import Config
 import discord
 from discord.ext import commands
 import aiohttp
-from models.gemini_utils import extract_gemini_stream_text
+from models.ai_router import AIRouter
+from models.youtube_transcript import YouTubeTranscriptFetcher
 
 if TYPE_CHECKING:
     from models.mongo_leaderboard_manager import MongoLeaderboardManager
@@ -37,7 +31,6 @@ class YouTubeMonitor:
     def __init__(self, mongodb_manager: Optional['MongoLeaderboardManager'] = None):
         self.monitored_channels: List[Dict[str, Any]] = []
         self.mongodb_manager = mongodb_manager
-        self.gemini_api_key = Config.GEMINI_API_KEY if hasattr(Config, 'GEMINI_API_KEY') and Config.GEMINI_API_KEY else None
         self.guild_id = Config.GUILD_ID
         self.bot: Optional[commands.Bot] = None
         
@@ -56,21 +49,12 @@ class YouTubeMonitor:
         else:
             logger.warning("No YouTube API key found - will use RSS fallback")
         
-        # Configure Gemini AI if API key and SDK are available
-        self.gemini_client = None
-        if self.gemini_api_key:
-            if genai is None:
-                logger.warning("google-genai SDK not installed; using non-AI fallback responses")
-            else:
-                try:
-                    self.gemini_client = genai.Client(api_key=self.gemini_api_key)  # type: ignore[attr-defined]
-                    logger.info("Gemini AI configured successfully")
-                except Exception as e:
-                    logger.error(f"Failed to configure Gemini AI: {e}")
-                    self.gemini_api_key = None
-                    self.gemini_client = None
-        else:
-            logger.warning("No Gemini API key found - Ino responses will use fallback templates")
+        # All generation goes through the router: Gemini first (it can watch the
+        # video), then OpenRouter models fed the video's subtitles.
+        self.ai_router = AIRouter()
+        self.transcript_fetcher = YouTubeTranscriptFetcher()
+        if not self.ai_router.available:
+            logger.warning("No AI provider configured - Ino responses will use fallback templates")
 
         # Note: monitored channels will be loaded later when an event loop is available
 
@@ -576,27 +560,42 @@ class YouTubeMonitor:
             logger.error(f"Error getting recent videos for {youtube_channel_id}: {e}")
             return []
 
-    async def generate_ino_response(self, video: Dict[str, Any], is_short: bool = False) -> Optional[str]:
-        """Generate Ino's response to a new video using Gemini AI."""
+    async def _get_video_transcript(self, video_link: str) -> Optional[str]:
+        """Best-effort subtitle fetch; never blocks an announcement on failure."""
+        if not Config.YOUTUBE_TRANSCRIPT_ENABLED or not video_link:
+            return None
         try:
-            if not self.gemini_client:
-                logger.warning("No Gemini client available for response generation")
+            return await self.transcript_fetcher.get_transcript(video_link)
+        except Exception as e:
+            logger.warning(f"Could not fetch transcript for {video_link}: {e}")
+            return None
+
+    async def generate_ino_response(self, video: Dict[str, Any], is_short: bool = False) -> Optional[str]:
+        """Generate Ino's announcement for a new video.
+
+        Gemini watches the video directly. If it is unavailable the router falls
+        back to OpenRouter, which gets the video's subtitles (including
+        auto-generated ones) so the announcement still reflects real content.
+        """
+        try:
+            if not self.ai_router.available:
+                logger.warning("No AI provider available for response generation")
                 # Use fallback template with proper role ping
                 video_title = video.get('title', 'Unknown')
                 channel_id = video.get('config', {}).get('channel_id', '')
                 is_rayen_channel = channel_id == 'UChhMeymAOC5PNbbnqxD_w4g'
-                
+
                 # Choose appropriate role based on video type
                 role_ping = self._role_ping_for_video_type(is_short)
-                
+
                 if is_rayen_channel:
                     return f"Oh my, Rayen uploaded something new: \"{video_title}\". Time to see what he's up to now, Riko simps. {role_ping}"
                 else:
                     return f"Oh my, our digital fox uploaded something new: \"{video_title}\". Time to see what mischief she's up to now, Riko simps. {role_ping}"
-            
+
             # Read the system prompt from file
             system_prompt = self.load_system_prompt()
-            
+
             # Get video details
             video_title = video.get('title', 'Unknown')
             video_link = video.get('link', '')
@@ -614,14 +613,12 @@ class YouTubeMonitor:
             else:
                 channel_context = "This video is from a channel associated with Riko, but since Riko is now a digital spirit trapped in the internet, physical videos are made by humans like Rayen or guest creators."
             
-            # Keep this text-only. Passing a YouTube URL as file_data can fail with
-            # permission errors even when the API key works for normal text calls.
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(
-                            text=f"""New video uploaded!
+            # Fetched up front so the OpenRouter fallback has it ready. Costs one
+            # cheap request and makes the announcement describe the actual video
+            # rather than guessing from the title.
+            transcript = await self._get_video_transcript(video_link)
+
+            prompt = f"""New video uploaded!
 
 TITLE: {video_title}
 URL: {video_link}
@@ -651,48 +648,33 @@ VIDEO TYPE: {'Short video (≤' + str(Config.SHORT_VIDEO_MAX_SECONDS) + ' second
 ROLE TO PING: {self._role_ping_for_video_type(is_short)}
 
 Remember to include the correct role ping at the end based on video type!
-                        """),
-                    ],
-                ),
-            ]
-            
-            config_kwargs = {
-                "response_mime_type": "text/plain",
-                "system_instruction": [
-                    types.Part.from_text(text=system_prompt),
-                ],
-            }
-            thinking_config_type = getattr(types, "ThinkingConfig", None)
-            if thinking_config_type is not None:
-                config_kwargs["thinking_config"] = thinking_config_type(thinking_level="HIGH")
-            generate_content_config = types.GenerateContentConfig(**config_kwargs)
-            
-            response_text = extract_gemini_stream_text(self.gemini_client.models.generate_content_stream(
-                model="gemini-flash-latest",
-                contents=contents,
-                config=generate_content_config,
-            ))
-            if response_text:
-                return response_text
-            else:
-                # Fallback to context-aware template
+"""
+
+            result = await self.ai_router.generate(
+                prompt,
+                system_prompt=system_prompt,
+                video_url=video_link,
+                transcript=transcript,
+                max_tokens=200,
+            )
+
+            if result.text:
                 logger.info(
-                    "Using fallback Ino response template; empty Gemini streaming response"
+                    "Generated YouTube announcement via %s/%s%s",
+                    result.provider,
+                    result.model,
+                    " using subtitles" if result.used_transcript else "",
                 )
-                return self._get_fallback_response(video_title, is_rayen_channel, video_author, is_short)
-            
+                return result.text
+
+            logger.info(
+                "Using fallback Ino response template; every AI provider failed (%s)",
+                "; ".join(result.attempts),
+            )
+            return self._get_fallback_response(video_title, is_rayen_channel, video_author, is_short)
+
         except Exception as e:
-            error_text = str(e)
-            if "403" in error_text or "PERMISSION_DENIED" in error_text.upper():
-                self.gemini_client = None
-                logger.error(
-                    "Gemini permission denied while generating YouTube announcement. "
-                    "Disabling Gemini announcements for this process. Check GEMINI_API_KEY, "
-                    "the enabled Generative Language API, and model access. Error: %s",
-                    e,
-                )
-            else:
-                logger.error(f"Error generating Ino response: {e}")
+            logger.error(f"Error generating Ino response: {e}")
             # Use context-aware fallbacks
             channel_id = video.get('config', {}).get('channel_id', '')
             is_rayen_channel = channel_id == 'UChhMeymAOC5PNbbnqxD_w4g'

@@ -125,18 +125,14 @@ h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.06; margin: 0; }
   text-decoration: none;
   flex: none;
 }
+/* Just the artwork. No plate, no border, no rounding. */
 .brand-mark {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  background: linear-gradient(150deg, rgba(173, 20, 87, 0.35), rgba(173, 20, 87, 0.05));
-  border: 1px solid rgba(216, 42, 117, 0.3);
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  display: block;
+  flex: none;
+  transition: transform 0.2s ease;
 }
-.brand-mark img { width: 30px; height: 30px; border-radius: 8px; display: block; }
-.brand:hover .brand-mark { border-color: var(--accent-bright); transform: rotate(-4deg); }
+.brand-mark img { width: 34px; height: 34px; display: block; }
+.brand:hover .brand-mark { transform: scale(1.06); }
 
 .nav-links { margin-left: auto; display: flex; gap: 0.2rem; }
 .nav-links a {

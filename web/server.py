@@ -544,6 +544,7 @@ class RikoWebServer:
                 "That is all of it. If something still does not make sense, ask me. "
                 "I would rather explain twice than have you guessing.")))
             .replace("{{KOFI_NOTICE}}", html.escape(ctext("kofi_notice")))
+            .replace("{{HOW_GOAL}}", html.escape(ctext("how_goal")))
         )
         return web.Response(text=page, content_type="text/html")
 

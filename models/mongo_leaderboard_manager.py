@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
@@ -1319,21 +1320,34 @@ class MongoLeaderboardManager:
 
     # GENERAL POINT SYSTEM METHODS
     async def add_points(self, user_id: int, user_name: str, points: int, point_type: str = "general", reason: str = None):
-        """Add points to a user for various activities (text messages, voice chat, etc.)"""
-        try:
-            # Initialize user_points collection if not exists
-            if not hasattr(self, 'user_points_collection'):
-                self.user_points_collection = self.db['user_points']
-                # Create index for better performance
-                self.user_points_collection.create_index([("user_id", 1)])
-            
-            # Update user's total points
-            result = self.user_points_collection.update_one(
+        """Add points to a user for various activities (text messages, voice chat, etc.).
+
+        This runs on every single message, so the two Mongo round-trips are moved
+        onto a worker thread. Left inline they block the event loop, which stalls
+        command responses and gateway heartbeats behind ordinary chatter.
+        """
+        # Initialize collections once, off the hot path.
+        if not hasattr(self, 'user_points_collection'):
+            self.user_points_collection = self.db['user_points']
+            await asyncio.to_thread(
+                self.user_points_collection.create_index, [("user_id", 1)]
+            )
+        if not hasattr(self, 'point_history_collection'):
+            self.point_history_collection = self.db['point_history']
+            await asyncio.to_thread(
+                self.point_history_collection.create_index,
+                [("user_id", 1), ("timestamp", -1)]
+            )
+
+        now = datetime.now()
+
+        def _write():
+            self.user_points_collection.update_one(
                 {"user_id": str(user_id)},
                 {
                     "$set": {
                         "user_name": user_name,
-                        "last_updated": datetime.now()
+                        "last_updated": now
                     },
                     "$inc": {
                         "total_points": points,
@@ -1341,30 +1355,26 @@ class MongoLeaderboardManager:
                     },
                     "$setOnInsert": {
                         "user_id": str(user_id),
-                        "created_at": datetime.now()
+                        "created_at": now
                     }
                 },
                 upsert=True
             )
-            
-            # Log the point addition
-            if not hasattr(self, 'point_history_collection'):
-                self.point_history_collection = self.db['point_history']
-                # Create index for better performance
-                self.point_history_collection.create_index([("user_id", 1), ("timestamp", -1)])
-            
+
             self.point_history_collection.insert_one({
                 "user_id": str(user_id),
                 "user_name": user_name,
                 "points": points,
                 "point_type": point_type,
                 "reason": reason,
-                "timestamp": datetime.now()
+                "timestamp": now
             })
-            
+
+        try:
+            await asyncio.to_thread(_write)
             logger.debug(f"Added {points} {point_type} points to {user_name}: {reason}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error adding points: {e}")
             return False

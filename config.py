@@ -53,6 +53,25 @@ class Config:
     TWITCH_CLIENT = os.getenv('TWITCH_CLIENT')
     TWITCH_SECRET = os.getenv('TWITCH_SECRET')
 
+    # ---- AI routing -------------------------------------------------------
+    # Gemini is tried first because it can watch a YouTube video directly.
+    # When it fails (quota, 403, safety block) we fall back to OpenRouter,
+    # feeding it the video's subtitles instead so it still has real context.
+    OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+    OPENROUTER_MODELS = [
+        model.strip()
+        for model in os.getenv(
+            'OPENROUTER_MODELS',
+            'google/gemma-4-31b-it:free,z-ai/glm-5.3-flash'
+        ).split(',')
+        if model.strip()
+    ]
+    GEMINI_TEXT_MODEL = os.getenv('GEMINI_TEXT_MODEL', 'gemini-flash-latest')
+    AI_REQUEST_TIMEOUT = get_float_env('AI_REQUEST_TIMEOUT', 45.0)
+    # Subtitles are trimmed to this before being pasted into a prompt.
+    TRANSCRIPT_MAX_CHARS = get_int_env('TRANSCRIPT_MAX_CHARS', 12000)
+    YOUTUBE_TRANSCRIPT_ENABLED = os.getenv('YOUTUBE_TRANSCRIPT_ENABLED', 'true').lower() == 'true'
+
     # Scam image detection
     SCAM_IMAGE_DETECTION_ENABLED = os.getenv('SCAM_IMAGE_DETECTION_ENABLED', 'true').lower() == 'true'
     SCAM_IMAGE_DELETE_MATCHES = os.getenv('SCAM_IMAGE_DELETE_MATCHES', 'true').lower() == 'true'
@@ -120,6 +139,46 @@ class Config:
         1424015547661811945
     ]
     
+    # ---- InoRep economy ---------------------------------------------------
+    # Rep used to only ever go down (spam and ping penalties), which made the
+    # leaderboard a shame list. These are the ways to earn it back.
+    REP_EARNING_ENABLED = os.getenv('REP_EARNING_ENABLED', 'true').lower() == 'true'
+    REP_PER_MESSAGE = get_int_env('REP_PER_MESSAGE', 1)
+    REP_MESSAGE_COOLDOWN_SECONDS = get_int_env('REP_MESSAGE_COOLDOWN_SECONDS', 60)
+    REP_MESSAGE_MIN_LENGTH = get_int_env('REP_MESSAGE_MIN_LENGTH', 4)
+    REP_DAILY_MESSAGE_CAP = get_int_env('REP_DAILY_MESSAGE_CAP', 40)
+    # Daily check-in
+    REP_DAILY_BASE = get_int_env('REP_DAILY_BASE', 25)
+    REP_DAILY_STREAK_BONUS = get_int_env('REP_DAILY_STREAK_BONUS', 5)
+    REP_DAILY_STREAK_BONUS_CAP = get_int_env('REP_DAILY_STREAK_BONUS_CAP', 75)
+    # Getting upvoted / reacted to by other people
+    REP_PER_REACTION_RECEIVED = get_int_env('REP_PER_REACTION_RECEIVED', 1)
+    REP_REACTION_DAILY_CAP = get_int_env('REP_REACTION_DAILY_CAP', 30)
+    # Voice presence
+    REP_PER_VOICE_INTERVAL = get_int_env('REP_PER_VOICE_INTERVAL', 2)
+    REP_VOICE_INTERVAL_MINUTES = get_int_env('REP_VOICE_INTERVAL_MINUTES', 10)
+    # Peer-to-peer thanks
+    REP_THANK_AMOUNT = get_int_env('REP_THANK_AMOUNT', 10)
+    REP_THANK_DAILY_LIMIT = get_int_env('REP_THANK_DAILY_LIMIT', 3)
+    # One-off bonuses
+    REP_IMAGE_POST_BONUS = get_int_env('REP_IMAGE_POST_BONUS', 3)
+    REP_QUEST_COMPLETE_BONUS = get_int_env('REP_QUEST_COMPLETE_BONUS', 15)
+    REP_ART_CHALLENGE_BONUS = get_int_env('REP_ART_CHALLENGE_BONUS', 25)
+    # Patreon supporters earn rep faster, same as they do points.
+    REP_PATREON_MULTIPLIER = get_float_env('REP_PATREON_MULTIPLIER', 1.5)
+
+    # Rank ladder. (minimum rep, title, emoji) ascending.
+    REP_TIERS = [
+        (-100, "Shrine Nuisance", "🍂"),
+        (0, "Wandering Stray", "🐾"),
+        (50, "Shrine Visitor", "⛩️"),
+        (150, "Offering Bearer", "🍡"),
+        (350, "Trusted Regular", "🏮"),
+        (700, "Shrine Keeper", "🦊"),
+        (1200, "Ino's Confidant", "✨"),
+        (2000, "Kitsune Ascendant", "🌸"),
+    ]
+
     # Point system configuration
     POINTS_PER_MESSAGE = 1  # Regular text channels
     POINTS_PER_MESSAGE_BOOSTER = 2  # Booster text channels

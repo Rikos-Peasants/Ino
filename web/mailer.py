@@ -9,6 +9,7 @@ exists only for the lifetime of the request that received the webhook.
 """
 
 import asyncio
+import html
 import logging
 import os
 import re
@@ -16,9 +17,31 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from email.utils import formataddr
+from pathlib import Path
 from typing import Optional
 
-from web.characters import email_copy
+from web.characters import CHARACTERS, email_copy, text as ctext
+
+IMG_DIR = Path(__file__).resolve().parent / "static" / "img"
+
+# Site tokens, inlined. Email clients ignore stylesheets and most <style>.
+CANVAS = "#000000"
+SURFACE = "#0a0708"
+SURFACE_2 = "#120d10"
+LINE = "#241a1e"
+INK = "#f2ecee"
+INK_SOFT = "#9b8f95"
+ACCENT = "#ad1457"
+ACCENT_BRIGHT = "#d82a75"
+ACCENT_TEXT = "#ff4d8d"
+FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif"
+MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace'
+
+FACES = {
+    "ino": ("ino.png", "face-ino"),
+    "riko": ("riko-face.png", "face-riko"),
+    "yura": ("yura.png", "face-yura"),
+}
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +70,226 @@ def sender() -> str:
     return formataddr((name, f"donations@{domain}"))
 
 
+def _esc(value: object) -> str:
+    return html.escape(str(value), quote=True)
+
+
+def _face_html(key: str, meta: dict) -> str:
+    """Portrait if the file exists, otherwise the same monogram the site uses."""
+    filename, cid = FACES.get(key, ("", ""))
+    if filename and (IMG_DIR / filename).is_file():
+        return (
+            f'<img src="cid:{cid}" alt="" width="56" height="56" '
+            f'style="display:block;width:56px;height:56px;border:0;'
+            f'border-radius:10px;background:{SURFACE_2};">'
+        )
+    accent = meta.get("accent", ACCENT)
+    mono = _esc(meta.get("monogram") or key[:1].upper())
+    return (
+        f'<table role="presentation" width="56" height="56" cellpadding="0" cellspacing="0" '
+        f'style="width:56px;height:56px;background:{SURFACE_2};border-radius:10px;">'
+        f'<tr><td width="56" height="56" align="center" valign="middle" '
+        f'style="width:56px;height:56px;font:700 22px/56px {FONT};color:{accent};">{mono}</td></tr>'
+        f'</table>'
+    )
+
+
+def _voice_card(key: str, note: str) -> str:
+    meta = CHARACTERS.get(key, {})
+    name = _esc(meta.get("name") or key.title())
+    role = _esc(meta.get("role") or "")
+    accent = meta.get("accent", ACCENT)
+    line_color = {"ino": "#d6e8ff", "riko": "#ffd7e6", "yura": "#e0d4ff"}.get(key, INK)
+    return f"""
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="margin:0 0 10px;background:{SURFACE};border:1px solid {LINE};
+              border-left:3px solid {accent};border-radius:12px;">
+  <tr>
+    <td width="56" valign="top" style="padding:16px 0 16px 16px;">{_face_html(key, meta)}</td>
+    <td valign="top" style="padding:16px 16px 16px 14px;">
+      <p style="margin:0 0 4px;font:700 15px/1.3 {FONT};color:{INK};">
+        {name}
+        <span style="padding-left:8px;font:400 12px/1.3 {MONO};letter-spacing:.03em;
+                     text-transform:lowercase;color:{INK_SOFT};">{role}</span>
+      </p>
+      <p style="margin:0;font:400 14px/1.55 {FONT};color:{line_color};">{_esc(note)}</p>
+    </td>
+  </tr>
+</table>"""
+
+
+def _progress_bar(percent: float) -> str:
+    pct = max(0.0, min(float(percent), 100.0))
+    fill = f"{max(pct, 2.0):.0f}%" if pct > 0 else "0%"
+    return f"""
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="background:{SURFACE_2};border:1px solid {LINE};border-radius:28px;">
+  <tr>
+    <td style="padding:0;">
+      <table role="presentation" width="{fill}" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="height:18px;background:{ACCENT};background:linear-gradient(180deg,{ACCENT_BRIGHT},{ACCENT});
+                     border-radius:28px;font-size:0;line-height:0;">&nbsp;</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>"""
+
+
+def _html_body(
+    *,
+    supporter: str,
+    heading: str,
+    eyebrow: str,
+    intro: str,
+    goal_title: str,
+    goal_blurb: str,
+    percent: float,
+    raised: str,
+    target: str,
+    ino_note: str,
+    riko_note: str,
+    yura_note: str,
+    kofi_notice: str,
+    signoff: str,
+    cta: str,
+    site_url: str,
+    preheader: str,
+) -> str:
+    donations = f"{site_url}/donations"
+    pct = max(0.0, min(float(percent), 100.0))
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark only">
+<meta name="supported-color-schemes" content="dark only">
+<title>{_esc(heading)}</title>
+<style>
+  :root {{ color-scheme: dark only; }}
+  body {{ background-color: {CANVAS} !important; }}
+</style>
+</head>
+<body style="margin:0;padding:0;background:{CANVAS};color:{INK};">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:{CANVAS};">
+  {_esc(preheader)}
+  {"&nbsp;&zwnj;" * 40}
+</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{CANVAS}"
+       style="background:{CANVAS};margin:0;padding:0;">
+<tr><td align="center" bgcolor="{CANVAS}" style="background:{CANVAS};padding:0;">
+<!--[if mso]><table role="presentation" width="560"><tr><td><![endif]-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="max-width:560px;width:100%;background:{CANVAS};">
+
+  <tr><td style="padding:28px 28px 18px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td valign="middle">
+          <table role="presentation" cellpadding="0" cellspacing="0">
+            <tr>
+              <td valign="middle" style="padding-right:10px;">
+                <img src="cid:ino-mark" alt="Ino" width="34" height="34"
+                     style="display:block;width:34px;height:34px;border:0;">
+              </td>
+              <td valign="middle" style="font:700 17px/1 {FONT};letter-spacing:-.02em;color:{INK};">
+                Ino
+              </td>
+            </tr>
+          </table>
+        </td>
+        <td valign="middle" align="right"
+            style="font:500 13px/1 {FONT};color:{INK_SOFT};">donations</td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <tr><td style="padding:0 28px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="height:1px;background:{LINE};font-size:0;line-height:0;">&nbsp;</td></tr>
+    </table>
+  </td></tr>
+
+  <tr><td style="padding:28px 28px 8px;">
+    <p style="margin:0 0 10px;font:600 11px/1.4 {MONO};letter-spacing:.14em;
+              text-transform:uppercase;color:{ACCENT_TEXT};">{_esc(eyebrow)}</p>
+    <h1 style="margin:0 0 14px;font:700 34px/1.08 {FONT};letter-spacing:-.03em;color:{INK};">
+      {_esc(heading)}
+    </h1>
+    <p style="margin:0;font:400 16px/1.6 {FONT};color:{INK_SOFT};">
+      Hi {_esc(supporter)}. {_esc(intro)}
+    </p>
+  </td></tr>
+
+  <tr><td style="padding:22px 28px 8px;">
+    <p style="margin:0 0 6px;font:600 11px/1.4 {MONO};letter-spacing:.1em;
+              text-transform:uppercase;color:{ACCENT_TEXT};">Current goal</p>
+    <p style="margin:0 0 16px;font:700 22px/1.2 {FONT};letter-spacing:-.02em;color:{INK};">
+      {_esc(goal_title)}
+    </p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
+      <tr>
+        <td valign="bottom" style="font:700 42px/1 {FONT};letter-spacing:-.04em;color:{INK};padding-right:10px;">
+          {_esc(raised)}
+        </td>
+        <td valign="bottom" style="font:400 16px/1.2 {FONT};color:{INK_SOFT};padding-bottom:4px;">
+          &nbsp;of {_esc(target)}
+        </td>
+      </tr>
+    </table>
+    {_progress_bar(pct)}
+    <p style="margin:12px 0 0;font:400 13px/1.5 {MONO};color:{INK_SOFT};">{pct:.1f}%</p>
+    <p style="margin:14px 0 0;font:400 15px/1.5 {FONT};color:{INK};">{_esc(goal_blurb)}</p>
+  </td></tr>
+
+  <tr><td style="padding:22px 28px 4px;">
+    {_voice_card("ino", ino_note)}
+    {_voice_card("riko", riko_note)}
+    {_voice_card("yura", yura_note)}
+  </td></tr>
+
+  <tr><td style="padding:18px 28px 8px;">
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td bgcolor="{ACCENT}" style="background:{ACCENT};border-radius:9px;">
+          <a href="{_esc(donations)}"
+             style="display:inline-block;background:{ACCENT};color:#ffffff;text-decoration:none;
+                    font:600 15px/1 {FONT};padding:14px 26px;border-radius:9px;
+                    border:1px solid {ACCENT};">{_esc(cta)}</a>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <tr><td style="padding:22px 28px 36px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="height:1px;background:{LINE};font-size:0;line-height:0;">&nbsp;</td></tr>
+    </table>
+    <p style="margin:18px 0 0;font:400 13px/1.6 {FONT};color:{INK_SOFT};">{_esc(kofi_notice)}</p>
+    <p style="margin:14px 0 0;font:400 12px/1.6 {FONT};color:#6f656a;">{_esc(signoff)}</p>
+  </td></tr>
+
+</table>
+<!--[if mso]></td></tr></table><![endif]-->
+</td></tr></table>
+</body></html>"""
+
+
+def _attach_png(html_part: EmailMessage, filename: str, cid: str) -> None:
+    path = IMG_DIR / filename
+    if not path.is_file():
+        return
+    html_part.add_related(
+        path.read_bytes(),
+        maintype="image",
+        subtype="png",
+        cid=cid,
+        filename=filename,
+    )
+
+
 def build_message(
     to: str,
     supporter: str,
@@ -62,15 +305,22 @@ def build_message(
     copy = email_copy()
     subject = copy.get("subject", "Thank you for your donation")
     heading = copy.get("heading", "Thank you.")
+    eyebrow = copy.get("eyebrow", "Donation received")
     intro = copy.get("intro", "Your donation of {amount} has been recorded.").format(
         amount=amount
     )
     ino_note = copy.get("ino_note", "")
     riko_note = copy.get("riko_note", "")
+    yura_note = copy.get("yura_note", "")
     signoff = copy.get("signoff", "Ino")
+    cta = copy.get("cta", "See the goal")
+    goal_blurb = ctext("goal_blurb")
+    site_url = site_url.rstrip("/")
+    pct = max(0.0, min(float(percent), 100.0))
 
-    filled = int(max(0.0, min(percent, 100.0)) // 5)
+    filled = int(pct // 5)
     bar = "█" * filled + "░" * (20 - filled)
+    preheader = f"Your donation of {amount} is in. {pct:.1f}% of the way."
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -82,69 +332,44 @@ def build_message(
         f"Hi {supporter},\n\n"
         f"{intro}\n\n"
         f"{goal_title}\n"
-        f"{bar}  {percent:.1f}%\n"
-        f"{raised} of {target}\n\n"
+        f"{bar}  {pct:.1f}%\n"
+        f"{raised} of {target}\n"
+        f"{goal_blurb}\n\n"
         f"Ino: {ino_note}\n"
-        f"Riko: {riko_note}\n\n"
+        f"Riko: {riko_note}\n"
+        f"Yura: {yura_note}\n\n"
         f"{kofi_notice}\n\n"
-        f"See every supporter: {site_url}/donations\n\n"
+        f"{cta}: {site_url}/donations\n\n"
         f"{signoff}\n"
     )
 
-    # Table-based and inline-styled, because email clients ignore most CSS.
-    pct = max(0.0, min(percent, 100.0))
     msg.add_alternative(
-        f"""<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#0a0708;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0a0708;padding:32px 16px;">
-<tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#000;border:1px solid #241a1e;border-radius:14px;">
-  <tr><td style="padding:32px 32px 8px;">
-    <p style="margin:0 0 6px;font:600 12px/1.4 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#ff4d8d;">Donation received</p>
-    <h1 style="margin:0 0 14px;font:700 30px/1.15 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#f2ecee;letter-spacing:-.02em;">{heading}</h1>
-    <p style="margin:0 0 22px;font:400 16px/1.6 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#c9bfc4;">Hi {supporter}, {intro}</p>
-  </td></tr>
-
-  <tr><td style="padding:0 32px 8px;">
-    <p style="margin:0 0 8px;font:600 15px/1.4 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#f2ecee;">{goal_title}</p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#120d10;border-radius:999px;">
-      <tr><td style="padding:0;">
-        <table role="presentation" width="{pct:.0f}%" cellpadding="0" cellspacing="0" style="min-width:2%;">
-          <tr><td style="height:12px;background:#ad1457;border-radius:999px;font-size:0;line-height:0;">&nbsp;</td></tr>
-        </table>
-      </td></tr>
-    </table>
-    <p style="margin:10px 0 24px;font:400 13px/1.5 ui-monospace,Menlo,monospace;color:#9b8f95;">{raised} of {target} · {percent:.1f}%</p>
-  </td></tr>
-
-  <tr><td style="padding:0 32px;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:3px solid #4aa3ff;background:#0d0a0c;border-radius:0 8px 8px 0;margin-bottom:10px;">
-      <tr><td style="padding:12px 14px;">
-        <p style="margin:0 0 3px;font:600 13px/1.4 -apple-system,Segoe UI,sans-serif;color:#4aa3ff;">Ino</p>
-        <p style="margin:0;font:400 14px/1.55 -apple-system,Segoe UI,sans-serif;color:#d6e8ff;">{ino_note}</p>
-      </td></tr>
-    </table>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:3px solid #ad1457;background:#0d0a0c;border-radius:0 8px 8px 0;">
-      <tr><td style="padding:12px 14px;">
-        <p style="margin:0 0 3px;font:600 13px/1.4 -apple-system,Segoe UI,sans-serif;color:#ff4d8d;">Riko</p>
-        <p style="margin:0;font:400 14px/1.55 -apple-system,Segoe UI,sans-serif;color:#ffd7e6;">{riko_note}</p>
-      </td></tr>
-    </table>
-  </td></tr>
-
-  <tr><td style="padding:26px 32px 0;">
-    <a href="{site_url}/donations" style="display:inline-block;background:#ad1457;color:#fff;text-decoration:none;font:600 15px/1 -apple-system,Segoe UI,sans-serif;padding:14px 26px;border-radius:9px;">See every supporter</a>
-  </td></tr>
-
-  <tr><td style="padding:24px 32px 30px;">
-    <p style="margin:22px 0 0;padding-top:18px;border-top:1px solid #241a1e;font:400 13px/1.6 -apple-system,Segoe UI,sans-serif;color:#9b8f95;">{kofi_notice}</p>
-    <p style="margin:14px 0 0;font:400 12px/1.6 -apple-system,Segoe UI,sans-serif;color:#6f656a;">{signoff}</p>
-  </td></tr>
-</table>
-</td></tr></table>
-</body></html>""",
+        _html_body(
+            supporter=supporter,
+            heading=heading,
+            eyebrow=eyebrow,
+            intro=intro,
+            goal_title=goal_title,
+            goal_blurb=goal_blurb,
+            percent=pct,
+            raised=raised,
+            target=target,
+            ino_note=ino_note,
+            riko_note=riko_note,
+            yura_note=yura_note,
+            kofi_notice=kofi_notice,
+            signoff=signoff,
+            cta=cta,
+            site_url=site_url,
+            preheader=preheader,
+        ),
         subtype="html",
     )
+
+    html_part = msg.get_payload()[-1]
+    _attach_png(html_part, "ino-mark.png", "ino-mark")
+    for key, (filename, cid) in FACES.items():
+        _attach_png(html_part, filename, cid)
     return msg
 
 
