@@ -19,6 +19,7 @@ import discord
 from discord.ext import commands
 
 from controllers.security import public_command
+from models.fortune_teller import static_fortune_for
 
 logger = logging.getLogger(__name__)
 
@@ -38,19 +39,6 @@ EIGHTBALL_ANSWERS = [
     ("No. And stop asking.", 0xE05252),
     ("The omens are dreadful.", 0xE05252),
     ("Not in this timeline.", 0xE05252),
-]
-
-FORTUNES = [
-    "A stranger will misread your tone today. It will be funny.",
-    "Something you lost will resurface at the least useful moment.",
-    "You will win an argument nobody was having.",
-    "Your next idea is better than you think. Your next three are not.",
-    "Someone is about to send you a message you will reread four times.",
-    "Beware of Tuesdays. No further detail is available.",
-    "The shrine foresees snacks. Act accordingly.",
-    "You will be right, and nobody will notice. As usual.",
-    "An old grudge becomes funny this week.",
-    "Today rewards patience. Tomorrow rewards the opposite.",
 ]
 
 VIBES = [
@@ -268,19 +256,37 @@ class FunCommandsController:
             embed.set_footer(text="Rechecked at midnight. No rerolls.")
             await ctx.send(embed=embed)
 
-        @self.bot.hybrid_command(name="fortune", description="Receive a fortune from the shrine")
+        @self.bot.hybrid_command(name="fortune", description="Receive today's fortune from the shrine")
         @public_command
         async def fortune_command(ctx):
-            frames = [
-                discord.Embed(title="🏮 Drawing a slip…", color=0x4A4A5A),
-                discord.Embed(
-                    title="🏮 Your fortune",
-                    description=f"*{random.choice(FORTUNES)}*",
-                    color=ACCENT,
-                ),
-            ]
-            frames[-1].set_footer(text=f"For {ctx.author.display_name}")
-            await self._animate(ctx, frames)
+            await ctx.defer()
+
+            teller = getattr(self.bot, "fortune_teller", None)
+            if teller is None:
+                # No database or router wired up; still answer, deterministically.
+                text = static_fortune_for(str(ctx.author.id))
+                source, fresh = "shrine", True
+            else:
+                result = await teller.get_fortune(ctx.author.id, ctx.author.display_name)
+                text, source, fresh = result["text"], result["source"], result["fresh"]
+
+            embed = discord.Embed(
+                title="🏮 Your fortune",
+                description=f"*{text}*",
+                color=ACCENT,
+            )
+            embed.set_author(
+                name=ctx.author.display_name, icon_url=ctx.author.display_avatar.url
+            )
+            # Say plainly that it is fixed, so nobody re-runs it hoping for better.
+            embed.set_footer(
+                text=(
+                    "Drawn just now · one slip per day"
+                    if fresh
+                    else "Today's slip · a new one is drawn at midnight UTC"
+                )
+            )
+            await ctx.send(embed=embed)
 
         @self.bot.hybrid_command(name="choose", description="Let Ino pick between options")
         @public_command

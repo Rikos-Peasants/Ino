@@ -10,7 +10,7 @@ import discord
 from pymongo import MongoClient, DESCENDING
 from difflib import SequenceMatcher
 import json as _json
-from models.gemini_utils import describe_gemini_response, extract_gemini_text
+from models.gemini_utils import apply_thinking_defaults, describe_gemini_response, extract_gemini_text
 
 try:
     from google import genai
@@ -663,7 +663,10 @@ Respond with ONLY valid JSON (no markdown, no code fences):
                         contents=prompt,
                         config=genai_types.GenerateContentConfig(
                             temperature=0.1,  # Low temperature for consistent moderation decisions
-                            max_output_tokens=200,
+                            # The old 200-token cap covered thinking as well as
+                            # the verdict, so a longer message returned nothing
+                            # and verification was silently skipped.
+                            **apply_thinking_defaults(genai_types, {}),
                         ),
                     )
                     response_text = extract_gemini_text(response)

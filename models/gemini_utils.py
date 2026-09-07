@@ -2,7 +2,50 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Headroom for any call that does still think, so a reply is never cut off.
+MIN_OUTPUT_TOKENS = 800
+
+
+def low_thinking_config(types_module: Any) -> Any:
+    """Build a ThinkingConfig that suppresses the reasoning monologue.
+
+    ``gemini-flash-latest`` bills thinking against ``max_output_tokens`` and
+    will happily spend several hundred tokens on a one-line answer, so a caller
+    with a tight cap gets a truncated reply or an empty one. ``thinking_level``
+    reliably suppresses it; ``thinking_budget=0`` is accepted but not always
+    honoured, so it is only the fallback for older SDKs.
+
+    Returns None when the SDK has no ThinkingConfig at all, in which case
+    callers should just raise their token ceiling.
+    """
+    thinking_config = getattr(types_module, "ThinkingConfig", None)
+    if thinking_config is None:
+        return None
+
+    for attempt in ({"thinking_level": "LOW"}, {"thinking_budget": 0}):
+        try:
+            return thinking_config(**attempt)
+        except Exception:
+            continue
+
+    logger.debug("No usable ThinkingConfig form found")
+    return None
+
+
+def apply_thinking_defaults(types_module: Any, config_kwargs: dict) -> dict:
+    """Add a low thinking budget and a sane output floor to a config dict."""
+    thinking = low_thinking_config(types_module)
+    if thinking is not None:
+        config_kwargs.setdefault("thinking_config", thinking)
+
+    requested = config_kwargs.get("max_output_tokens") or 0
+    config_kwargs["max_output_tokens"] = max(requested, MIN_OUTPUT_TOKENS)
+    return config_kwargs
 
 
 def extract_gemini_text(response: Any) -> str:

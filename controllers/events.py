@@ -1172,7 +1172,15 @@ class EventsController:
         
         # Award points for text messages (before other processing)
         await self._award_text_message_points(message)
-        
+
+        # Clear the author's AFK and answer for anyone they pinged
+        utility = getattr(self.bot, 'utility_controller', None)
+        if utility:
+            try:
+                await utility.handle_afk(message)
+            except Exception as e:
+                logger.debug(f"AFK handling failed: {e}")
+
         # Check for art challenge submissions (!submit command)
         await self._handle_art_challenge_submission(message)
         

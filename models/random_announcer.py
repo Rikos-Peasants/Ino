@@ -17,7 +17,7 @@ import aiohttp
 import feedparser
 import json
 from datetime import datetime
-from models.gemini_utils import describe_gemini_response, extract_gemini_text
+from models.gemini_utils import apply_thinking_defaults, describe_gemini_response, extract_gemini_text
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +81,8 @@ class RandomAnnouncer:
                     # Test the connection
                     logger.info("🧪 Testing Gemini AI connection...")
                     test_cfg = types.GenerateContentConfig(
-                        max_output_tokens=32,
                         response_mime_type="text/plain",
+                        **apply_thinking_defaults(types, {}),
                     )
                     test_response = self.gemini_client.models.generate_content(
                         model="gemini-flash-latest",
@@ -351,8 +351,10 @@ Generate a short Ino announcement (10-20 words) that captures her {personality} 
 
             generate_content_config = types.GenerateContentConfig(
                 temperature=0.8,
-                max_output_tokens=150,
                 system_instruction=[types.Part.from_text(text=system_prompt)],
+                # Thinking is billed against max_output_tokens; without this the
+                # 150-token cap was consumed before any announcement was written.
+                **apply_thinking_defaults(types, {}),
             )
 
             logger.info(f"📝 Sending conversational prompt to Gemini AI (personality: {personality})")

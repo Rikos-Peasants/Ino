@@ -29,7 +29,11 @@ except ImportError:  # pragma: no cover - exercised only on installs without the
     genai = None  # type: ignore
     genai_types = None  # type: ignore
 
-from models.gemini_utils import describe_gemini_response, extract_gemini_text
+from models.gemini_utils import (
+    apply_thinking_defaults,
+    describe_gemini_response,
+    extract_gemini_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -234,20 +238,17 @@ class AIRouter:
                 logger.debug("Could not build Gemini video part: %s", exc)
         parts.append(genai_types.Part.from_text(text=prompt))
 
-        config_kwargs: dict[str, Any] = {
-            "response_mime_type": "text/plain",
-            # Thinking tokens are billed against max_output_tokens, so a model
-            # left to think freely returns a truncated answer. These are short
-            # creative writes; skipping the monologue is both correct and faster.
-            "max_output_tokens": max_tokens * 2,
-            "temperature": temperature,
-        }
-        thinking_config = getattr(genai_types, "ThinkingConfig", None)
-        if thinking_config is not None:
-            try:
-                config_kwargs["thinking_config"] = thinking_config(thinking_budget=0)
-            except Exception:
-                pass
+        # Suppresses the thinking monologue and enforces an output floor.
+        # Without it, thinking is billed against max_output_tokens and replies
+        # come back truncated mid-sentence. See models/gemini_utils.py.
+        config_kwargs: dict[str, Any] = apply_thinking_defaults(
+            genai_types,
+            {
+                "response_mime_type": "text/plain",
+                "max_output_tokens": max_tokens * 2,
+                "temperature": temperature,
+            },
+        )
         if system_prompt:
             config_kwargs["system_instruction"] = [
                 genai_types.Part.from_text(text=system_prompt)

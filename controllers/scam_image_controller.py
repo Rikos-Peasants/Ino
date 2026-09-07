@@ -980,8 +980,11 @@ class ScamImageController:
             )
             review_role_id = await self._get_review_role_id(message.guild)
             content = f"<@&{review_role_id}> Repeated image burst detected" if review_role_id else None
+            # Ban / kick / timeout buttons so a moderator can act straight from
+            # the alert instead of copying the ID into a command.
+            action_view = self._build_alert_view(message.author.id, "repeated image burst")
             try:
-                alert_message = await log_channel.send(content=content, embed=embed)
+                alert_message = await log_channel.send(content=content, embed=embed, view=action_view)
             except discord.Forbidden:
                 await asyncio.to_thread(
                     self.manager.release_cross_channel_alert_reservation,
@@ -1183,6 +1186,21 @@ class ScamImageController:
         leaderboard_manager = getattr(self.bot, "leaderboard_manager", None)
         return getattr(leaderboard_manager, "moderation_manager", None) if leaderboard_manager else None
 
+    def _build_alert_view(self, target_id: int, context: str):
+        """Ban / kick / timeout / dismiss buttons for an alert.
+
+        Returns None when the moderation layer is unavailable, so an alert is
+        still posted (without buttons) rather than being lost entirely.
+        """
+        if getattr(self.bot, "mod_actions", None) is None:
+            return None
+        try:
+            from views.mod_action_view import AlertActionView
+            return AlertActionView(self.bot, target_id, context)
+        except Exception as e:
+            logger.warning("Could not build alert action view: %s", e)
+            return None
+
     async def _get_moderation_log_channel(self, guild: discord.Guild):
         moderation_manager = self._get_moderation_manager()
         if not moderation_manager:
@@ -1212,8 +1230,9 @@ class ScamImageController:
         if not log_channel:
             return
         embed = scam_detection_embed(message, attachment, match, deleted=deleted, delete_error=delete_error)
+        action_view = self._build_alert_view(message.author.id, "scam image detection")
         try:
-            await log_channel.send(embed=embed)
+            await log_channel.send(embed=embed, view=action_view)
         except discord.Forbidden:
             logger.warning("Missing permission to send scam image detection log in %s", log_channel)
         except discord.HTTPException as e:
@@ -1269,8 +1288,9 @@ class ScamImageController:
         if not reservation_token:
             return
 
+        action_view = self._build_alert_view(message.author.id, "scam image burst")
         try:
-            await log_channel.send(content=content, embed=embed)
+            await log_channel.send(content=content, embed=embed, view=action_view)
             await asyncio.to_thread(
                 self.manager.mark_cross_channel_alert_sent,
                 str(message.guild.id),

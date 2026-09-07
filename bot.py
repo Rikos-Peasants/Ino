@@ -76,6 +76,7 @@ class RikoBot(commands.Bot):
         self.donation_manager: Optional[object] = None
         self.donation_controller: Optional[object] = None
         self.web_server: Optional[object] = None
+        self.utility_controller: Optional[object] = None
         
         # Initialize leaderboard manager first (required by other components)
         try:
@@ -158,6 +159,29 @@ class RikoBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Failed to initialize rep economy: {e}")
             self.rep_economy = None
+
+        # Shared moderation action layer. Both the slash commands and the
+        # buttons on scam alerts execute through this, so every path logs.
+        self.mod_actions = None
+        try:
+            from models.mod_actions import ModerationActions
+            self.mod_actions = ModerationActions(self)
+            logger.info("✅ Moderation actions initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize moderation actions: {e}")
+            self.mod_actions = None
+
+        # Daily fortunes, generated through the same router the announcements use
+        self.fortune_teller = None
+        try:
+            if self.leaderboard_manager and hasattr(self.leaderboard_manager, 'db'):
+                from models.fortune_teller import FortuneTeller
+                router = getattr(self.youtube_monitor, 'ai_router', None)
+                self.fortune_teller = FortuneTeller(self.leaderboard_manager.db, router)
+                logger.info("✅ Fortune teller initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize fortune teller: {e}")
+            self.fortune_teller = None
 
         # Initialize controllers
         from controllers.events import EventsController
@@ -258,6 +282,11 @@ class RikoBot(commands.Bot):
         from controllers.rep_commands import RepCommandsController
         from controllers.fun_commands import FunCommandsController
         from controllers.system_commands import SystemCommandsController
+        from controllers.moderation_commands import ModerationCommandsController
+        from controllers.utility_commands import UtilityCommandsController
+
+        # Kept on the bot so on_message can reach the AFK handler.
+        self.utility_controller = UtilityCommandsController(self)
 
         registrations = [
             Registration("events", self.events_controller.register_events, required=True)
@@ -271,8 +300,16 @@ class RikoBot(commands.Bot):
             Registration("rep commands", RepCommandsController(self).register_commands),
             Registration("fun commands", FunCommandsController(self).register_commands),
             Registration("system commands", SystemCommandsController(self).register_commands),
+            Registration("moderation commands", ModerationCommandsController(self).register_commands),
+            Registration("utility commands", self.utility_controller.register_commands),
         ]
         register_all([entry for entry in registrations if entry])
+
+        # Background loops start after registration, not during it.
+        try:
+            self.utility_controller.start_tasks()
+        except Exception as e:
+            logger.error(f"❌ Failed to start utility tasks: {e}")
 
         # Initialize quest manager after bot is ready
         if self.events_controller:
@@ -325,6 +362,12 @@ class RikoBot(commands.Bot):
             # Register ForumThreadView for persistent view handling
             # This allows Discord.py to recreate views after bot restart
             self.add_view(ForumThreadView())
+            # Moderation buttons on scam/burst alerts. Registered with a zero
+            # target because the real one is read from the alert's embed footer,
+            # which is what lets these keep working across restarts.
+            if self.mod_actions:
+                from views.mod_action_view import AlertActionView
+                self.add_view(AlertActionView(self))
             logger.info("✅ Persistent view registration completed")
         except Exception as e:
             logger.error(f"❌ Failed to register persistent views: {e}")

@@ -25,7 +25,9 @@ def scam_detection_embed(message, attachment, match, *, deleted: bool, delete_er
     embed.add_field(name="Attachment", value=f"`{attachment.filename}`\n{attachment.size} bytes", inline=False)
     embed.add_field(name="Match", value=f"`{match.kind}` {match.label}\n{match.detail}", inline=False)
     embed.add_field(name="Jump", value=f"[Open message]({message.jump_url})", inline=True)
-    embed.set_footer(text=f"Message ID: {message.id}")
+    # The user ID is parsed back out by the alert action buttons, so they still
+    # know who the alert is about after a restart. Keep the prefix stable.
+    embed.set_footer(text=f"User ID: {message.author.id} · Message ID: {message.id}")
     return embed
 
 
