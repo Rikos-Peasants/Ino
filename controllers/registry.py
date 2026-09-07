@@ -170,7 +170,13 @@ class CommandSyncer:
 
         result: dict[str, Any] = {"synced": True, "reason": reason, "commands": command_count}
 
-        # Guild sync applies instantly, so it is what members actually get.
+        # Guild-only, deliberately.
+        #
+        # Registering the same command both globally and to a guild makes
+        # Discord list it twice in the picker. The bot refuses to run outside
+        # the configured guild anyway (see the global check in bot.py), so the
+        # global copies were pure duplication. Guild commands also apply
+        # instantly instead of taking up to an hour to propagate.
         if self.guild_id:
             try:
                 guild = discord.Object(id=self.guild_id)
@@ -182,19 +188,26 @@ class CommandSyncer:
                 result["guild_error"] = str(exc)
                 logger.error("❌ Guild sync failed: %s", exc)
 
-        # The global sync takes up to an hour to propagate and is only needed so
-        # the commands exist outside the home guild.
+        # Clear anything a previous version registered globally, or those copies
+        # linger and keep appearing alongside the guild ones.
+        #
+        # This overwrites the remote list directly rather than going through
+        # tree.clear_commands(): that empties the *local* tree, so a later
+        # /sync in the same process would find nothing to copy and wipe the
+        # guild commands instead.
         try:
-            synced_global = await self.bot.tree.sync()
-            result["global"] = len(synced_global)
-            logger.info("✅ Synced %s commands globally", len(synced_global))
+            app_id = self.bot.application_id
+            if app_id:
+                await self.bot.http.bulk_upsert_global_commands(app_id, [])
+                result["global_cleared"] = True
+                logger.info("🧹 Cleared global commands (registration is guild-only)")
         except discord.HTTPException as exc:
             result["global_error"] = str(exc)
-            logger.error("❌ Global sync failed: %s", exc)
+            logger.error("❌ Could not clear global commands: %s", exc)
 
-        # Only remember the fingerprint if at least one sync landed, so a failed
+        # Only remember the fingerprint if the guild sync landed, so a failed
         # sync retries next boot instead of being cached as done.
-        if result.get("guild") is not None or result.get("global") is not None:
+        if result.get("guild") is not None:
             self._write(current)
 
         return result

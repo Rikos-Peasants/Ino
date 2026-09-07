@@ -259,7 +259,8 @@ class ModerationCommandsController:
             name="ban", description="[Admin] Ban a user from the server"
         )
         @discord.app_commands.describe(
-            user="Who to ban — a member, or paste a user ID to ban someone not here",
+            user="Who to ban — pick them from the list",
+            user_id="Or paste an ID, to ban someone who already left or has not joined",
             reason="Why. The user is told this.",
             delete_days="Delete their messages from the last N days (0-7)",
             silent="Skip the DM notification",
@@ -268,7 +269,8 @@ class ModerationCommandsController:
         @admin_command
         async def ban_command(
             ctx,
-            user: str,
+            user: Optional[discord.User] = None,
+            user_id: Optional[str] = None,
             *,
             reason: str = "No reason provided",
             delete_days: int = 0,
@@ -280,12 +282,28 @@ class ModerationCommandsController:
                 await self._fail(ctx, "The moderation system is not available.")
                 return
 
-            target = await self._resolve_user(ctx, user)
-            if target is None:
+            # `user` is a real user picker, which is what you want almost every
+            # time. `user_id` stays available because banning someone who has
+            # already left, or pre-banning a raider, cannot go through a picker.
+            if user is None and not user_id:
                 await self._fail(
-                    ctx, f"Could not find a user matching `{user[:60]}`. Try a mention or an ID."
+                    ctx, "Pick a user, or pass `user_id` to ban someone who is not in the server."
                 )
                 return
+            if user is not None and user_id:
+                await self._fail(ctx, "Give me either a user or an ID, not both.")
+                return
+
+            target = user
+            if target is None:
+                target = await self._resolve_user(ctx, user_id)
+                if target is None:
+                    await self._fail(
+                        ctx,
+                        f"Could not find a user matching `{user_id[:60]}`. "
+                        f"Check the ID is right.",
+                    )
+                    return
 
             if not 0 <= delete_days <= 7:
                 await self._fail(ctx, "`delete_days` must be between 0 and 7.")

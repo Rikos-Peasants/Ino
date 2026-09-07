@@ -41,6 +41,17 @@ class RikoBot(commands.Bot):
             intents=intents,
             case_insensitive=True,
             help_command=None,
+            # Ino never has a legitimate reason to ping everyone, and several
+            # commands echo user-supplied text. Denying @everyone/@here at the
+            # client level means no command, present or future, can be used to
+            # mass-ping the server. Roles stay enabled because announcements
+            # and moderation alerts genuinely need them.
+            allowed_mentions=discord.AllowedMentions(
+                everyone=False,
+                roles=True,
+                users=True,
+                replied_user=False,
+            ),
             activity=discord.Activity(type=discord.ActivityType.watching, name="Discord members"),
             status=discord.Status.online
         )

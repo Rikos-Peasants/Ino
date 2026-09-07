@@ -4563,7 +4563,11 @@ class CommandsController:
                     if target_user == ctx.author:
                         await ctx.send("👍 You haven't liked any images yet! React with 👍 on images to like them.")
                     else:
-                        await ctx.send(f"👍 {target_user.display_name} hasn't liked any images yet!")
+                        await ctx.send(
+                            f"👍 {target_user.display_name} hasn't liked any images yet!",
+                            # A display name is user-controlled text.
+                            allowed_mentions=discord.AllowedMentions.none(),
+                        )
                     return
                 
                 # Create embed
@@ -6719,7 +6723,11 @@ class CommandsController:
                     if target_user == ctx.author:
                         await ctx.send("📊 You haven't participated in any art challenges yet!", ephemeral=True)
                     else:
-                        await ctx.send(f"📊 {target_user.display_name} hasn't participated in any art challenges yet!", ephemeral=True)
+                        await ctx.send(
+                            f"📊 {target_user.display_name} hasn't participated in any art challenges yet!",
+                            ephemeral=True,
+                            allowed_mentions=discord.AllowedMentions.none(),
+                        )
                     return
                 
                 from views.art_challenge_view import ArtChallengeEmbed

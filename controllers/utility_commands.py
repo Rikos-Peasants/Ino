@@ -380,9 +380,12 @@ class UtilityCommandsController:
         @self.bot.hybrid_command(
             name="afk", description="Mark yourself AFK; Ino tells anyone who pings you"
         )
-        @discord.app_commands.describe(reason="What you are doing (optional)")
         @public_command
-        async def afk_command(ctx, *, reason: str = "AFK"):
+        async def afk_command(ctx):
+            # No custom reason, by design. The status is echoed into a normal
+            # message when someone pings you, which made a free-text field a
+            # way to get Ino to say arbitrary things to a channel on demand.
+            # "Away" is all anyone actually needs to know.
             if self.afk is None:
                 await ctx.send("❌ AFK is not available right now.", ephemeral=True)
                 return
@@ -394,7 +397,6 @@ class UtilityCommandsController:
                     "$set": {
                         "user_id": str(ctx.author.id),
                         "guild_id": str(ctx.guild.id),
-                        "reason": reason[:200],
                         "since": datetime.now(timezone.utc),
                     }
                 },
@@ -402,7 +404,10 @@ class UtilityCommandsController:
             )
             await ctx.send(
                 embed=discord.Embed(
-                    description=f"💤 You are AFK: *{reason[:200]}*\nI will let people know.",
+                    description=(
+                        "💤 You are marked as away.\n"
+                        "Anyone who pings you will be told. Send a message to clear it."
+                    ),
                     color=ACCENT,
                 ),
                 ephemeral=True,
@@ -530,11 +535,17 @@ class UtilityCommandsController:
     # ------------------------------------------------------------------
 
     async def handle_afk(self, message: discord.Message) -> None:
-        """Clear the author's AFK, and answer for anyone they pinged."""
+        """Clear the author's AFK, and answer for anyone they pinged.
+
+        Everything here replies with mentions fully suppressed. A display name
+        is attacker-controlled text, and a name like ``<@&1234...>`` echoed into
+        message content would otherwise ping that role.
+        """
         if self.afk is None or not message.guild or message.author.bot:
             return
 
         guild_id = str(message.guild.id)
+        silent = discord.AllowedMentions.none()
 
         try:
             own = await asyncio.to_thread(
@@ -547,10 +558,17 @@ class UtilityCommandsController:
                 if since:
                     away = f" You were away for {format_duration(datetime.now(timezone.utc) - since)}."
                 await message.reply(
-                    f"👋 Welcome back.{away}", mention_author=False, delete_after=30
+                    f"👋 Welcome back.{away}",
+                    mention_author=False,
+                    allowed_mentions=silent,
+                    delete_after=30,
                 )
 
-            for mentioned in message.mentions[:3]:
+            # One reply per message however many AFK people were pinged, so a
+            # message tagging several of them cannot be turned into a wall of
+            # bot messages.
+            away_names = []
+            for mentioned in message.mentions[:5]:
                 if mentioned.id == message.author.id:
                     continue
                 entry = await asyncio.to_thread(
@@ -560,9 +578,15 @@ class UtilityCommandsController:
                     continue
                 since = entry.get("since")
                 ago = f" (<t:{int(since.timestamp())}:R>)" if since else ""
+                name = discord.utils.escape_markdown(mentioned.display_name)[:32]
+                away_names.append(f"**{name}**{ago}")
+
+            if away_names:
+                who = ", ".join(away_names)
                 await message.reply(
-                    f"💤 **{mentioned.display_name}** is AFK{ago}: *{entry.get('reason', 'AFK')}*",
+                    f"💤 {who} {'is' if len(away_names) == 1 else 'are'} away.",
                     mention_author=False,
+                    allowed_mentions=silent,
                     delete_after=60,
                 )
         except Exception as exc:

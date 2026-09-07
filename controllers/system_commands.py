@@ -264,8 +264,8 @@ class SystemCommandsController:
             lines = [f"**Commands:** {report.get('commands', 0)}"]
             if "guild" in report:
                 lines.append(f"**Guild:** {report['guild']} synced")
-            if "global" in report:
-                lines.append(f"**Global:** {report['global']} synced")
+            if report.get("global_cleared"):
+                lines.append("**Global:** cleared (registration is guild-only)")
             for key in ("guild_error", "global_error"):
                 if key in report:
                     lines.append(f"⚠️ `{key}`: {report[key]}")

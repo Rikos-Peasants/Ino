@@ -123,5 +123,54 @@ class FortuneTests(unittest.TestCase):
         )
 
 
+
+class MentionSafetyTests(unittest.TestCase):
+    """Ino must not be usable as a mass-ping vector."""
+
+    def test_bot_denies_everyone_but_allows_roles(self):
+        """The client-level default is what makes mass-pinging impossible.
+
+        Read from the real constructor source rather than instantiating
+        RikoBot, which would open database connections.
+        """
+        import inspect
+        import re
+
+        from bot import RikoBot
+
+        source = inspect.getsource(RikoBot.__init__)
+        match = re.search(
+            r"allowed_mentions=discord\.AllowedMentions\((.*?)\)", source, re.S
+        )
+        self.assertIsNotNone(match, "no allowed_mentions default is configured")
+
+        configured = match.group(1)
+        self.assertIn("everyone=False", configured)
+        # Roles stay on: announcements and moderation alerts genuinely need them.
+        self.assertIn("roles=True", configured)
+
+    def test_afk_command_takes_no_free_text(self):
+        """A free-text AFK reason was a way to make Ino say anything."""
+        import inspect
+
+        from controllers.utility_commands import UtilityCommandsController
+
+        source = inspect.getsource(UtilityCommandsController.register_commands)
+        afk_start = source.index("async def afk_command")
+        signature = source[afk_start : source.index("\n", afk_start)]
+        self.assertIn("(ctx)", signature)
+        self.assertNotIn("reason", signature)
+
+    def test_afk_reply_suppresses_mentions(self):
+        import inspect
+
+        from controllers.utility_commands import UtilityCommandsController
+
+        source = inspect.getsource(UtilityCommandsController.handle_afk)
+        # Every reply in this path must pass the silent allowed_mentions.
+        self.assertEqual(source.count("allowed_mentions=silent"), source.count(".reply("))
+        self.assertIn("escape_markdown", source)
+
+
 if __name__ == "__main__":
     unittest.main()
