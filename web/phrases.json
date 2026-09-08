@@ -15,9 +15,9 @@
   ],
 
   "characters": {
-    "ino": { "name": "Ino", "role": "keeps the records", "img": "ino.png", "accent": "#4aa3ff", "monogram": "I" },
-    "riko": { "name": "Riko", "role": "scores the art", "img": "riko-face.png", "accent": "#ad1457", "monogram": "R" },
-    "yura": { "name": "Yura", "role": "knows where you live", "img": "yura.png", "accent": "#7b3ff2", "monogram": "Y" }
+    "ino": { "name": "Ino", "role": "keeps the shrine clean", "img": "ino.png", "accent": "#4aa3ff", "monogram": "I" },
+    "riko": { "name": "Riko", "role": "is busy ragebaiting Rayen", "img": "riko-face.png", "accent": "#ad1457", "monogram": "R" },
+    "yura": { "name": "Yura", "role": "is secretly spying on Rayen", "img": "yura.png", "accent": "#7b3ff2", "monogram": "Y" }
   },
 
   "site": {
@@ -26,7 +26,7 @@
     "goal_stinger": "one costume. that's the whole prize.",
     "terms_body": "The deal is simple. The bar hits a hundred percent and Rayen puts on the maid outfit. That is the whole prize.",
     "how_goal": "When the bar fills, Rayen puts on the maid outfit. Hitting the goal is the costume — a target he can hit, not a stream.",
-    "terms_note": "Every donation counts toward the total the moment Ko-fi confirms it. Tick the private box on Ko-fi and only the number moves, your name stays off this page.",
+    "terms_note": "Every donation counts toward the total the moment Ko-fi confirms it. Tick the private box on Ko-fi and only the number moves; your name stays off this page.",
     "kofi_notice": "Haven't linked your Discord account before buying? Please contact Seika, either in DMs or in the Ask and Complain to Staff channel.",
     "hero_title": "Every picture posted here gets a verdict.",
     "hero_lede": "Ino tracks every image in the server, counts the votes, and keeps the running order. No favourites, no appeals.",
@@ -35,9 +35,9 @@
   },
 
   "bios": {
-    "ino": "Runs this place and keeps every record in it. Your InoRep is hers, and she remembers exactly how kind you have been.",
-    "riko": "Scores the art and will not admit she cares about any of it. Do not mention the blushing.",
-    "yura": "Very fond of Rayen. Very patient. Would love to pay you a visit if the goal stalls."
+    "ino": "Working to keep the Fushimi Inari shrine clean, and helping out with her part-time job as a mod in the Just Rayen Discord server.",
+    "riko": "She wouldn't mind if you went over the goal, so she can extort even more money from Rayen.",
+    "yura": "Very fond of Rayen. Very patient. Would love to pay you a visit if the goal isn't hit and she can't see Rayen in his maid form."
   },
 
   "goal_reactions": {
@@ -62,7 +62,7 @@
     "yura": [
       { "at": 0, "text": "Nobody has donated yet. That's fine. I have all your addresses written down and absolutely nothing else on today." },
       { "at": 1, "text": "One of you understands. Only one. I'd like to visit the rest of you and explain, in person, at length, tonight." },
-      { "at": 25, "text": "A quarter. I've been outside Rayen's house six hours making sure he doesn't leave before this finishes. He waved. I think he waved." },
+      { "at": 25, "text": "A quarter. I've been outside Rayen's house for six hours making sure he doesn't leave before this finishes. He waved. I think he waved." },
       { "at": 50, "text": "Halfway. I'm being patient. I'm very good at being patient. I've been patient outside your window for a while now, actually." },
       { "at": 75, "text": "So close. If this doesn't finish tonight I'll simply come round and help you decide. I'll bring snacks. I know which ones you like." },
       { "at": 95, "text": "One more. One. If you make me come over there I won't be cross, I'll just be very close to you for a very long time." },
@@ -125,7 +125,7 @@
   },
 
   "email": {
-    "subject": "Thank you for supporting Ino",
+    "subject": "Thank you for supporting MaidMaster",
     "eyebrow": "Donation received",
     "heading": "Thank you.",
     "intro": "Your donation of {amount} has been recorded against the current goal.",

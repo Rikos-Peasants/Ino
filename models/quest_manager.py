@@ -1775,6 +1775,10 @@ class QuestManager:
             return []
     
     async def update_quest_progress(self, user_id: int, quest_type: str, count: int = 1):
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_update_quest_progress, user_id, quest_type, count)
+
+    def _sync_update_quest_progress(self, user_id: int, quest_type: str, count: int = 1):
         """Update quest progress for a user"""
         try:
             today = datetime.now().date()
@@ -1815,7 +1819,7 @@ class QuestManager:
             
             # Update streak if any quest was completed
             if completed_quests:
-                await self._update_quest_streak(user_id)
+                self._sync_update_quest_streak(user_id)
             
             return completed_quests
             
@@ -1824,6 +1828,10 @@ class QuestManager:
             return []
     
     async def track_unique_user_like(self, user_id: int, liked_user_id: int) -> List[Dict]:
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_track_unique_user_like, user_id, liked_user_id)
+
+    def _sync_track_unique_user_like(self, user_id: int, liked_user_id: int) -> List[Dict]:
         """Track likes from unique users for the 'diverse_reactions' quest"""
         try:
             if user_id == liked_user_id:  # Don't count self-likes
@@ -1832,17 +1840,9 @@ class QuestManager:
             today = datetime.now().date()
             tracking_key = f"liked_users_{today.isoformat()}"
             
-            # Ensure a compound index on (user_id, tracking_key) to allow multiple keys per user
-            try:
-                self.user_stats_collection.create_index([("user_id", 1), ("tracking_key", 1)], unique=True)
-            except Exception:
-                pass
-
-            # Ensure a compound index on (user_id, tracking_key) to allow multiple keys per user
-            try:
-                self.user_stats_collection.create_index([("user_id", 1), ("tracking_key", 1)], unique=True)
-            except Exception:
-                pass
+            # The (user_id, tracking_key) index is created once in _connect().
+            # It used to be rebuilt here -- and the block was duplicated, so it
+            # happened twice -- costing two extra round trips on every reaction.
 
             # Get or create tracking document for today
             track_doc = self.user_stats_collection.find_one({
@@ -1922,7 +1922,7 @@ class QuestManager:
                     logger.info(f"User {user_id} completed diverse_reactions quest! ({unique_count} unique users)")
             
             if completed_quests:
-                await self._update_quest_streak(user_id)
+                self._sync_update_quest_streak(user_id)
             
             return completed_quests
             
@@ -1931,6 +1931,10 @@ class QuestManager:
             return []
     
     async def track_channel_exploration(self, user_id: int, channel_id: int) -> List[Dict]:
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_track_channel_exploration, user_id, channel_id)
+
+    def _sync_track_channel_exploration(self, user_id: int, channel_id: int) -> List[Dict]:
         """Track reactions in different channels for the 'explore_channels' quest"""
         try:
             today = datetime.now().date()
@@ -2036,7 +2040,7 @@ class QuestManager:
                     logger.info(f"User {user_id} completed explore_channels quest! ({channel_count} channels)")
             
             if completed_quests:
-                await self._update_quest_streak(user_id)
+                self._sync_update_quest_streak(user_id)
             
             return completed_quests
             
@@ -2045,6 +2049,10 @@ class QuestManager:
             return []
     
     async def track_viral_image(self, user_id: int, message_id: str, like_count: int) -> List[Dict]:
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_track_viral_image, user_id, message_id, like_count)
+
+    def _sync_track_viral_image(self, user_id: int, message_id: str, like_count: int) -> List[Dict]:
         """Track viral images (15+ likes) for the 'viral_image' quest"""
         try:
             today = datetime.now().date()
@@ -2122,7 +2130,7 @@ class QuestManager:
                     logger.info(f"User {user_id} completed viral_image quest! (Image got {like_count} likes)")
             
             if completed_quests:
-                await self._update_quest_streak(user_id)
+                self._sync_update_quest_streak(user_id)
             
             return completed_quests
             
@@ -2131,6 +2139,10 @@ class QuestManager:
             return []
     
     async def track_quality_post(self, user_id: int, message_id: str, like_count: int, min_likes: int) -> List[Dict]:
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_track_quality_post, user_id, message_id, like_count, min_likes)
+
+    def _sync_track_quality_post(self, user_id: int, message_id: str, like_count: int, min_likes: int) -> List[Dict]:
         """Track quality posts (images with specific minimum likes) for the 'quality_post' quest
         
         Args:
@@ -2245,7 +2257,7 @@ class QuestManager:
                     logger.info(f"User {user_id} completed quality_post quest! (Image got {like_count} likes, needed {min_likes})")
             
             if completed_quests:
-                await self._update_quest_streak(user_id)
+                self._sync_update_quest_streak(user_id)
             
             return completed_quests
             
@@ -2503,6 +2515,10 @@ class QuestManager:
             return []
     
     async def get_user_daily_quests(self, user_id: int) -> List[Dict]:
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_get_user_daily_quests, user_id)
+
+    def _sync_get_user_daily_quests(self, user_id: int) -> List[Dict]:
         """Get today's quests for a user"""
         try:
             today = datetime.now().date()
@@ -2650,11 +2666,14 @@ class QuestManager:
         """Get all currently active events"""
         try:
             now = datetime.now()
-            events = list(self.events_collection.find({
-                "is_active": True,
-                "start_date": {"$lte": now},
-                "end_date": {"$gte": now}
-            }))
+            # Reached on every image post, through add_event_contestant.
+            events = await asyncio.to_thread(
+                lambda: list(self.events_collection.find({
+                    "is_active": True,
+                    "start_date": {"$lte": now},
+                    "end_date": {"$gte": now}
+                }))
+            )
             return events
         except Exception as e:
             logger.error(f"Error getting active events: {e}")
@@ -2671,7 +2690,8 @@ class QuestManager:
                     continue
                 
                 # Add user as contestant
-                self.events_collection.update_one(
+                await asyncio.to_thread(
+                    self.events_collection.update_one,
                     {"_id": event["_id"]},
                     {
                         "$push": {
@@ -2682,7 +2702,7 @@ class QuestManager:
                                 "joined_at": datetime.now()
                             }
                         }
-                    }
+                    },
                 )
                 
                 logger.info(f"Added {user_name} as contestant to event '{event['name']}'")
@@ -2744,6 +2764,10 @@ class QuestManager:
             return None
     
     async def update_user_stat(self, user_id: int, stat_type: str, count: int = 1):
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_update_user_stat, user_id, stat_type, count)
+
+    def _sync_update_user_stat(self, user_id: int, stat_type: str, count: int = 1):
         """Update user statistics for quest tracking"""
         try:
             self.user_stats_collection.update_one(
@@ -2953,6 +2977,10 @@ class QuestManager:
     # ==================== STREAK SYSTEM ====================
     
     async def update_post_streak(self, user_id: int):
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_update_post_streak, user_id)
+
+    def _sync_update_post_streak(self, user_id: int):
         """Update posting streak for a user"""
         try:
             today = datetime.now().date()
@@ -3057,6 +3085,10 @@ class QuestManager:
             return 0
     
     async def _update_quest_streak(self, user_id: int):
+        """Runs the blocking implementation on a worker thread."""
+        return await asyncio.to_thread(self._sync_update_quest_streak, user_id)
+
+    def _sync_update_quest_streak(self, user_id: int):
         """Update quest completion streak for a user (internal method)"""
         try:
             today = datetime.now().date()
