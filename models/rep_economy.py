@@ -20,6 +20,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from config import Config
+from models.inorep_status import (
+    INOREP_TIERS,
+    get_inorep_tier,
+    get_next_inorep_threshold,
+    get_previous_inorep_threshold,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,29 +49,38 @@ class RepAward:
     new_total: int
     reason: str
     tier_changed: bool = False
-    tier: Optional[tuple[int, str, str]] = None
+    tier: Optional[dict[str, Any]] = None
 
     def __bool__(self) -> bool:
         return self.granted != 0
 
 
-def tier_for(rep: int) -> tuple[int, str, str]:
-    """Return the (threshold, title, emoji) tier a rep score sits in."""
-    current = Config.REP_TIERS[0]
-    for tier in Config.REP_TIERS:
-        if rep >= tier[0]:
-            current = tier
-        else:
-            break
-    return current
+def tier_for(rep: int, user_id: Optional[int] = None) -> dict[str, Any]:
+    """Return the InoRep tier a score sits in.
+
+    Delegates to :mod:`models.inorep_status`, which is the single source of
+    truth for the tier ladder and is what ``/inorep check``, the profile embeds
+    and the website have always used. This module briefly had its own shorter
+    ladder, which meant ``/rep`` and the leaderboard disagreed with everything
+    else about what rank someone held.
+    """
+    return get_inorep_tier(rep, user_id)
 
 
-def next_tier_for(rep: int) -> Optional[tuple[int, str, str]]:
-    """Return the tier above the current one, or None at max rank."""
-    for tier in Config.REP_TIERS:
-        if rep < tier[0]:
+def next_tier_for(rep: int) -> Optional[dict[str, Any]]:
+    """Return the tier above the current one, or None at the top."""
+    threshold = get_next_inorep_threshold(rep)
+    if threshold is None:
+        return None
+    for tier in INOREP_TIERS:
+        if int(tier["threshold"]) == threshold:
             return tier
     return None
+
+
+def tier_label(tier: dict[str, Any]) -> str:
+    """The display name of a tier, e.g. '⭐ Ino's Friend'."""
+    return str(tier.get("status", "Unknown"))
 
 
 def progress_bar(current: int, target: int, width: int = 12) -> str:
@@ -166,12 +181,14 @@ class RepEconomy:
             return RepAward(0, before, reason)
 
         after = before + amount
-        old_tier, new_tier = tier_for(before), tier_for(after)
+        member_id = getattr(user, "id", None)
+        old_tier = tier_for(before, member_id)
+        new_tier = tier_for(after, member_id)
         return RepAward(
             granted=amount,
             new_total=after,
             reason=reason,
-            tier_changed=old_tier != new_tier,
+            tier_changed=old_tier["threshold"] != new_tier["threshold"],
             tier=new_tier,
         )
 
@@ -461,13 +478,16 @@ class RepEconomy:
             self.get_rank(user_id, guild_id),
         )
 
-        current = tier_for(rep)
+        current = tier_for(rep, getattr(user, "id", None))
         upcoming = next_tier_for(rep)
         if upcoming:
-            span = upcoming[0] - current[0]
-            done = rep - current[0]
-            bar = progress_bar(done, span)
-            to_next = upcoming[0] - rep
+            floor = get_previous_inorep_threshold(rep)
+            if floor is None:
+                floor = int(current["threshold"])
+            ceiling = int(upcoming["threshold"])
+            span = max(1, ceiling - floor)
+            bar = progress_bar(rep - floor, span)
+            to_next = ceiling - rep
         else:
             bar = progress_bar(1, 1)
             to_next = 0

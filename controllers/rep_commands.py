@@ -14,6 +14,8 @@ from discord.ext import commands
 
 from config import Config
 from controllers.security import public_command
+from models.inorep_status import INOREP_TIERS
+from models.rep_economy import tier_label
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +60,12 @@ class RepCommandsController:
             await ctx.defer()
             profile = await economy.get_profile(target, str(ctx.guild.id))
 
-            _, title, emoji = profile["tier"]
+            tier = profile["tier"]
             embed = discord.Embed(
-                title=f"{emoji} {title}",
-                color=ACCENT,
+                title=tier_label(tier),
+                # The ladder carries its own colour per tier; use it so /rep
+                # looks the same as /inorep check and the profile embeds.
+                color=int(tier.get("color", ACCENT)),
             )
             embed.set_author(
                 name=target.display_name,
@@ -82,7 +86,7 @@ class RepCommandsController:
             next_tier = profile["next_tier"]
             if next_tier:
                 embed.add_field(
-                    name=f"Progress to {next_tier[2]} {next_tier[1]}",
+                    name=f"Progress to {tier_label(next_tier)}",
                     value=f"`{profile['bar']}` **{profile['to_next']:,}** to go",
                     inline=False,
                 )
@@ -156,9 +160,10 @@ class RepCommandsController:
 
             award = result.get("award")
             if award and award.tier_changed:
-                _, title, emoji = award.tier
                 embed.add_field(
-                    name="Rank up!", value=f"{emoji} You are now **{title}**", inline=False
+                    name="Rank up!",
+                    value=f"You are now **{tier_label(award.tier)}**",
+                    inline=False,
                 )
 
             await ctx.send(embed=embed)
@@ -197,10 +202,9 @@ class RepCommandsController:
             embed.set_footer(text=f"{result['remaining']} thanks left today")
 
             if award.tier_changed:
-                _, title, emoji = award.tier
                 embed.add_field(
                     name="Rank up!",
-                    value=f"{emoji} {user.display_name} is now **{title}**",
+                    value=f"{user.display_name} is now **{tier_label(award.tier)}**",
                     inline=False,
                 )
 
@@ -269,11 +273,16 @@ class RepCommandsController:
                 inline=False,
             )
 
-            ladder = "\n".join(
-                f"{emoji} **{title}** — {threshold:,}"
-                for threshold, title, emoji in Config.REP_TIERS
+            embed.add_field(
+                name="🏅 Ranks",
+                value=(
+                    "Your standing with Ino runs from "
+                    f"**{tier_label(INOREP_TIERS[-1])}** all the way up to "
+                    f"**{tier_label(INOREP_TIERS[0])}**.\n"
+                    "Run `/inorep statuses` for the full ladder, or `/rep` for yours."
+                ),
+                inline=False,
             )
-            embed.add_field(name="🏅 Ranks", value=ladder, inline=False)
 
             if Config.PATREON_ROLE_ID:
                 embed.set_footer(

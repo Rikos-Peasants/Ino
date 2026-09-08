@@ -28,6 +28,7 @@ from discord.ext import commands, tasks
 from config import Config
 from controllers.security import public_command
 from models.mod_actions import format_duration, parse_duration
+from models.rep_economy import tier_label
 
 logger = logging.getLogger(__name__)
 
@@ -218,10 +219,9 @@ class UtilityCommandsController:
             if economy:
                 try:
                     profile = await economy.get_profile(target, str(ctx.guild.id))
-                    _, title, emoji = profile["tier"]
                     embed.add_field(
                         name="InoRep",
-                        value=f"{emoji} **{profile['rep']:,}** · {title}"
+                        value=f"**{profile['rep']:,}** · {tier_label(profile['tier'])}"
                         + (f" · rank #{profile['rank']}" if profile["rank"] else ""),
                         inline=False,
                     )

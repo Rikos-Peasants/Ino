@@ -167,17 +167,10 @@ class Config:
     # Patreon supporters earn rep faster, same as they do points.
     REP_PATREON_MULTIPLIER = get_float_env('REP_PATREON_MULTIPLIER', 1.5)
 
-    # Rank ladder. (minimum rep, title, emoji) ascending.
-    REP_TIERS = [
-        (-100, "Shrine Nuisance", "🍂"),
-        (0, "Wandering Stray", "🐾"),
-        (50, "Shrine Visitor", "⛩️"),
-        (150, "Offering Bearer", "🍡"),
-        (350, "Trusted Regular", "🏮"),
-        (700, "Shrine Keeper", "🦊"),
-        (1200, "Ino's Confidant", "✨"),
-        (2000, "Kitsune Ascendant", "🌸"),
-    ]
+    # The InoRep tier ladder lives in models/inorep_status.py (INOREP_TIERS).
+    # It is the single source of truth for /rep, /inorep check, the profile
+    # embeds, the leaderboard and the website. There was briefly a second,
+    # shorter ladder here, which made /rep disagree with everything else.
 
     # Point system configuration
     POINTS_PER_MESSAGE = 1  # Regular text channels

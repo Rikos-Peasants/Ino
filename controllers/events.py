@@ -4211,23 +4211,41 @@ class EventsController:
         try:
             award = await economy.award_message(message)
             if award and award.tier_changed:
-                await self._announce_rep_tier(message.channel, message.author, award)
+                await self._announce_rep_tier(message.author, award)
         except Exception as e:
             logger.error(f"Error awarding message rep: {e}")
 
-    async def _announce_rep_tier(self, channel, member, award):
-        """Tell a member (quietly, and only on rank-up) that they climbed a tier."""
+    async def _announce_rep_tier(self, member, award):
+        """DM a member when they climb a tier.
+
+        Sent privately rather than posted in the channel: rank-ups fire on an
+        ordinary message, so announcing them in-channel interrupted whatever
+        conversation was happening and told everyone else something only the
+        member cares about.
+        """
         try:
-            _, title, emoji = award.tier
+            from models.rep_economy import tier_label
+
+            tier = award.tier or {}
             embed = discord.Embed(
-                title=f"{emoji} Rank up!",
+                title="Rank up!",
                 description=(
-                    f"{member.mention} is now **{title}**\n"
-                    f"`{award.new_total}` InoRep"
+                    f"You are now **{tier_label(tier)}** in "
+                    f"{member.guild.name}.\n"
+                    f"`{award.new_total:,}` InoRep"
                 ),
-                color=0xF2A65A
+                color=int(tier.get("color", 0xF2A65A)),
             )
-            await channel.send(embed=embed, delete_after=60)
+            message = tier.get("message")
+            if message:
+                embed.add_field(name="Ino says", value=str(message)[:1000], inline=False)
+            embed.set_footer(text="Check yours any time with /rep")
+
+            await member.send(embed=embed)
+        except discord.Forbidden:
+            # DMs closed. Not worth falling back to the channel, since going
+            # private is the point.
+            logger.debug("Could not DM %s about their rank up: DMs closed", member.id)
         except Exception as e:
             logger.debug(f"Could not announce rep tier change: {e}")
 

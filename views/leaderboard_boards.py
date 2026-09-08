@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import Any, Optional
 
-from models.rep_economy import tier_for
+from models.rep_economy import tier_for, tier_label
 from views.leaderboard_view import Board, Row
 
 logger = logging.getLogger(__name__)
@@ -140,13 +140,13 @@ def build_boards(
             rows = []
             for entry in entries:
                 rep = entry.get("rep", 0)
-                _, title, emoji = tier_for(rep)
+                tier = tier_for(rep, _as_int(entry.get("user_id")))
                 rows.append(
                     Row(
                         user_id=_as_int(entry.get("user_id")),
                         name=entry.get("user_name", "Unknown"),
                         value=rep,
-                        detail=f"{emoji} {title}",
+                        detail=tier_label(tier),
                     )
                 )
             return rows

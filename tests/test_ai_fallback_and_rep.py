@@ -3,7 +3,13 @@
 import unittest
 
 from models.ai_router import AIRouter
-from models.rep_economy import next_tier_for, progress_bar, tier_for
+from models.inorep_status import INOREP_TIERS, get_inorep_tier
+from models.rep_economy import (
+    next_tier_for,
+    progress_bar,
+    tier_for,
+    tier_label,
+)
 from models.youtube_transcript import extract_video_id, parse_timedtext
 
 
@@ -92,25 +98,45 @@ class TranscriptPromptTests(unittest.TestCase):
 
 
 class RepTierTests(unittest.TestCase):
-    def test_tier_boundaries(self):
-        self.assertEqual(tier_for(-500)[1], "Shrine Nuisance")
-        self.assertEqual(tier_for(0)[1], "Wandering Stray")
-        self.assertEqual(tier_for(49)[1], "Wandering Stray")
-        self.assertEqual(tier_for(50)[1], "Shrine Visitor")
-        self.assertEqual(tier_for(10**9)[1], "Kitsune Ascendant")
+    """rep_economy must agree with the canonical ladder, not invent its own."""
 
-    def test_next_tier(self):
-        self.assertEqual(next_tier_for(0)[0], 50)
-        self.assertEqual(next_tier_for(49)[0], 50)
-        self.assertIsNone(next_tier_for(10**9))
+    def test_delegates_to_the_canonical_ladder(self):
+        # A second, shorter ladder used to live in config.py, which made /rep
+        # disagree with /inorep check about what rank someone held.
+        for rep in (-5000, -100, 0, 1, 45, 100, 800, 2000, 10000):
+            with self.subTest(rep=rep):
+                self.assertEqual(tier_for(rep), get_inorep_tier(rep))
+
+    def test_known_tier_names(self):
+        self.assertEqual(tier_for(0)["status"], "\U0001f610 Neutral")
+        self.assertEqual(tier_for(45)["status"], "\u2b50 Ino's Friend")
+        self.assertEqual(tier_for(10000)["status"], "\U0001f320 Ino's Mythic Constellation")
+
+    def test_next_tier_is_the_next_threshold_up(self):
+        self.assertEqual(next_tier_for(0)["threshold"], 1)
+        self.assertEqual(next_tier_for(45)["threshold"], 60)
+        self.assertEqual(next_tier_for(800)["threshold"], 1000)
+
+    def test_no_next_tier_at_the_top(self):
+        self.assertIsNone(next_tier_for(10000))
+        self.assertIsNone(next_tier_for(99999))
+
+    def test_tier_label_is_the_status_string(self):
+        self.assertEqual(tier_label(tier_for(45)), tier_for(45)["status"])
+
+    def test_every_tier_carries_what_the_ui_needs(self):
+        for tier in INOREP_TIERS:
+            with self.subTest(tier=tier["status"]):
+                for field in ("threshold", "status", "relationship", "color", "message"):
+                    self.assertIn(field, tier)
 
     def test_progress_bar_is_fixed_width_and_clamped(self):
         for current, target in [(0, 10), (5, 10), (10, 10), (99, 10), (-5, 10)]:
             with self.subTest(current=current):
                 self.assertEqual(len(progress_bar(current, target)), 12)
-        self.assertEqual(progress_bar(0, 10).count("█"), 0)
-        self.assertEqual(progress_bar(10, 10).count("█"), 12)
-        self.assertEqual(progress_bar(0, 0), "█" * 12)
+        self.assertEqual(progress_bar(0, 10).count("\u2588"), 0)
+        self.assertEqual(progress_bar(10, 10).count("\u2588"), 12)
+        self.assertEqual(progress_bar(0, 0), "\u2588" * 12)
 
 
 if __name__ == "__main__":
