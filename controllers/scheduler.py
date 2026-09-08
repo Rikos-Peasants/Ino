@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, List, Union, Any
 from config import Config
+from models.notification_preferences import should_dm
 from views.embeds import EmbedViews
 
 logger = logging.getLogger(__name__)
@@ -317,7 +318,7 @@ class SchedulerController:
                             user_name=best_image['author_name'],
                             competition_type=period
                         )
-                        if achievement:
+                        if achievement and await should_dm(self.bot, author_id, "achievements"):
                             try:
                                 author = await self.bot.fetch_user(author_id)
                                 embed_achievement = EmbedViews.achievement_earned_embed(achievement)

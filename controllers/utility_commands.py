@@ -12,6 +12,8 @@ already enabled. So:
 * ``/remindme``  — for "check back after the build finishes" in help threads.
 * ``/afk``       — so a help thread gets an answer instead of silence.
 * ``/timestamp`` — renders a time in everyone's own timezone, for events.
+* ``/notifications`` — per-category control over the DMs Ino sends, since
+  closing DMs server-wide was previously the only way to quiet the noisy ones.
 """
 
 from __future__ import annotations
@@ -28,7 +30,9 @@ from discord.ext import commands, tasks
 from config import Config
 from controllers.security import public_command
 from models.mod_actions import format_duration, parse_duration
+from models.notification_preferences import should_dm
 from models.rep_economy import tier_label
+from views.notification_settings_view import NotificationSettingsView, build_embed
 
 logger = logging.getLogger(__name__)
 
@@ -446,6 +450,30 @@ class UtilityCommandsController:
                 )
             await ctx.send(embed=embed)
 
+        @self.bot.hybrid_command(
+            name="notifications",
+            description="Choose which DMs Ino sends you",
+        )
+        @public_command
+        async def notifications_command(ctx):
+            prefs = getattr(self.bot, "notification_preferences", None)
+            # Ephemeral: these are the member's own settings, and the panel is
+            # long enough to be noise in a busy channel.
+            await ctx.defer(ephemeral=True)
+
+            if prefs is None or not prefs.is_configured:
+                await ctx.send(
+                    "Notification settings aren't available right now — the "
+                    "preferences store is offline. Everything is still sending "
+                    "as normal.",
+                    ephemeral=True,
+                )
+                return
+
+            states = await prefs.get_all(ctx.author.id)
+            view = NotificationSettingsView(prefs, ctx.author.id, states)
+            await ctx.send(embed=build_embed(states), view=view, ephemeral=True)
+
         logger.info("✅ Utility commands registered")
 
     # ------------------------------------------------------------------
@@ -522,6 +550,13 @@ class UtilityCommandsController:
                 return
             except discord.HTTPException:
                 pass
+
+        # The channel route above is not a notification the user opted into, it
+        # is the reminder they asked for in the place they asked for it. Only
+        # the DM fallback is covered by the preference.
+        if not await should_dm(self.bot, int(entry["user_id"]), "reminders"):
+            logger.info("Reminder DM for %s suppressed by preference", entry["user_id"])
+            return
 
         try:
             await user.send(embed=embed)

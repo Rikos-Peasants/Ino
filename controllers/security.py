@@ -23,7 +23,8 @@ class CommandSecurity:
         SecurityLevel.PUBLIC: {
             'leaderboard', 'stats', 'uptime', 'quests', 'achievements', 'streaks', 
             'events', 'bookmarks', 'bookmark', 'unbookmark', 'liked_images', 
-            'closethread', 'debug', 'inorep', 'patreon', 'pointsleaderboard'  # inorep group and subcommands
+            'closethread', 'debug', 'inorep', 'patreon', 'pointsleaderboard',  # inorep group and subcommands
+            'notifications'
         },
         
         # MODERATOR - Requires manage_guild permission or specific roles

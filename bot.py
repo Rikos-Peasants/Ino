@@ -85,6 +85,9 @@ class RikoBot(commands.Bot):
         self.scam_image_manager: Optional[object] = None
         self.scam_image_controller: Optional[object] = None
         self.donation_manager: Optional[object] = None
+        # Set below only when Mongo is up; send sites treat None as "no
+        # preferences recorded" and deliver anyway.
+        self.notification_preferences: Optional[object] = None
         self.donation_controller: Optional[object] = None
         self.web_server: Optional[object] = None
         self.utility_controller: Optional[object] = None
@@ -108,6 +111,13 @@ class RikoBot(commands.Bot):
             except Exception as e:
                 logger.error(f"❌ Failed to initialize donation manager: {e}")
                 self.donation_manager = None
+            try:
+                from models.notification_preferences import NotificationPreferences
+                self.notification_preferences = NotificationPreferences(self.leaderboard_manager.db)
+                logger.info("✅ Notification preferences initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize notification preferences: {e}")
+                self.notification_preferences = None
         except Exception as e:
             logger.error(f"❌ Failed to initialize MongoDB leaderboard manager: {e}")
             # Fallback to JSON-based leaderboard manager

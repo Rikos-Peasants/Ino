@@ -9,6 +9,7 @@ from views.ask_staff_topic_view import AskStaffTopicView
 from config import Config
 from models.user_safety_monitor import UserSafetyMonitor
 from models.translation_manager import TranslationManager
+from models.notification_preferences import should_dm
 import logging
 import asyncio
 import random
@@ -18,6 +19,21 @@ from collections import Counter
 from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
+
+OPT_OUT_HINT = "Don't want these? /notifications"
+
+
+def _with_opt_out_hint(embed: discord.Embed) -> discord.Embed:
+    """Point people at ``/notifications`` from the DMs they can turn off.
+
+    Otherwise the setting is undiscoverable from the exact moment someone is
+    annoyed enough to want it. Existing footers win, since those usually carry
+    something specific about the quest or achievement.
+    """
+    if embed.footer.text:
+        return embed
+    return embed.set_footer(text=OPT_OUT_HINT)
+
 
 # Quest tracking constants
 QUALITY_POST_MIN_LIKES = 4  # Minimum likes for "Quality Control (Expert)" quest
@@ -1315,6 +1331,9 @@ class EventsController:
             logger.error(f"Error deleting Discord invite message: {e}")
             return False
 
+        if not await should_dm(self.bot, message.author.id, "rule_nudges"):
+            return True
+
         try:
             await message.author.send(
                 "Hey! Please DM your Discord invite link directly to the person of interest. "
@@ -1572,6 +1591,12 @@ class EventsController:
             except (discord.NotFound, discord.HTTPException):
                 return
 
+        if not await should_dm(self.bot, user_id, "translation"):
+            # Mark it anyway, the same as a closed-DM user, so the prompt does
+            # not queue up again on every message they send.
+            await self.translation_manager.mark_language_prompted(user_id, guild_id)
+            return
+
         try:
             view = LanguagePromptView(controller=self, target_user_id=user_id, guild_id=guild_id)
             await user.send(embed=self._format_language_prompt_embed(), view=view)
@@ -1666,6 +1691,9 @@ class EventsController:
                 logger.warning(f"Missing permission to delete unspoilered media from {message.author} in #{message.channel.name}")
             except discord.NotFound:
                 pass
+
+            if not await should_dm(self.bot, message.author.id, "rule_nudges"):
+                return
 
             try:
                 await message.author.send(
@@ -2855,14 +2883,17 @@ class EventsController:
             if not has_image:
                 return
             
+            # The bookmark itself always happens; only the receipt is optional.
+            notify = await should_dm(self.bot, user.id, "bookmarks")
+
             if added:
                 # Add bookmark
                 success = await self.bot.leaderboard_manager.add_bookmark(
-                    user.id, 
-                    str(message.id), 
+                    user.id,
+                    str(message.id),
                     user.display_name
                 )
-                
+
                 if success:
                     # Send ephemeral confirmation
                     try:
@@ -2872,11 +2903,12 @@ class EventsController:
                             color=0x3498db
                         )
                         embed.set_footer(text="Use /bookmarks to view all your bookmarks")
-                        await user.send(embed=embed)
+                        if notify:
+                            await user.send(embed=embed)
                     except discord.Forbidden:
                         # User has DMs disabled, that's okay
                         pass
-                    
+
                     logger.info(f"User {user.display_name} bookmarked message {message.id}")
                 else:
                     # Already bookmarked or failed
@@ -2886,13 +2918,14 @@ class EventsController:
                             description="This image is already in your bookmarks!",
                             color=0xf39c12
                         )
-                        await user.send(embed=embed)
+                        if notify:
+                            await user.send(embed=embed)
                     except discord.Forbidden:
                         pass
             else:
                 # Remove bookmark
                 success = await self.bot.leaderboard_manager.remove_bookmark(user.id, str(message.id))
-                
+
                 if success:
                     try:
                         embed = discord.Embed(
@@ -2900,7 +2933,8 @@ class EventsController:
                             description="Bookmark removed successfully!",
                             color=0xe74c3c
                         )
-                        await user.send(embed=embed)
+                        if notify:
+                            await user.send(embed=embed)
                     except discord.Forbidden:
                         pass
                     
@@ -2909,6 +2943,44 @@ class EventsController:
         except Exception as e:
             logger.error(f"Error handling bookmark reaction: {e}")
     
+    async def _notify_quests(self, user: discord.User, quests) -> None:
+        """DM a user about quests they just finished, if they still want those.
+
+        Quest completions fire from four separate trackers (posting, liking,
+        reacting, exploring), and a busy member can clear several at once, so
+        this is the single loudest source of Ino DMs and the first thing people
+        turn off in ``/notifications``.
+        """
+        if not quests:
+            return
+        if not await should_dm(self.bot, user.id, "quests"):
+            return
+
+        for quest in quests:
+            try:
+                await user.send(embed=_with_opt_out_hint(EmbedViews.quest_completed_embed(quest)))
+            except discord.Forbidden:
+                # DMs closed. Nothing to fall back to, and no point trying the
+                # rest of the batch.
+                return
+            except discord.HTTPException as e:
+                logger.debug(f"Could not DM {user.id} about quest completion: {e}")
+
+    async def _notify_achievements(self, user: discord.User, achievements) -> None:
+        """DM a user about achievements they just unlocked, if they want those."""
+        if not achievements:
+            return
+        if not await should_dm(self.bot, user.id, "achievements"):
+            return
+
+        for achievement in achievements:
+            try:
+                await user.send(embed=_with_opt_out_hint(EmbedViews.achievement_earned_embed(achievement)))
+            except discord.Forbidden:
+                return
+            except discord.HTTPException as e:
+                logger.debug(f"Could not DM {user.id} about achievement: {e}")
+
     def initialize_quest_manager(self):
         """Initialize the quest manager (called from bot.py when ready)"""
         try:
@@ -2934,29 +3006,15 @@ class EventsController:
             post_streak = await self.quest_manager.update_post_streak(user.id)
             logger.info(f"{user.display_name}'s post streak updated: {post_streak} days")
             
-            # Send notifications for completed quests
-            for quest in completed_quests:
-                try:
-                    embed = EmbedViews.quest_completed_embed(quest)
-                    await user.send(embed=embed)
-                except discord.Forbidden:
-                    # User has DMs disabled
-                    pass
-            
+            await self._notify_quests(user, completed_quests)
+
             # Check for new achievements (including streak achievements)
             new_achievements = await self.quest_manager.check_achievements(
                 user_id=user.id,
                 leaderboard_manager=self.bot.leaderboard_manager
             )
-            
-            # Send notifications for new achievements
-            for achievement in new_achievements:
-                try:
-                    embed = EmbedViews.achievement_earned_embed(achievement)
-                    await user.send(embed=embed)
-                except discord.Forbidden:
-                    # User has DMs disabled
-                    pass
+
+            await self._notify_achievements(user, new_achievements)
             
             # Add to active events as contestant
             await self.quest_manager.add_event_contestant(
@@ -3009,14 +3067,8 @@ class EventsController:
                 )
                 completed_quests.extend(trending_completed)
             
-            # Send notifications for completed quests
-            for quest in completed_quests:
-                try:
-                    embed = EmbedViews.quest_completed_embed(quest)
-                    await user.send(embed=embed)
-                except discord.Forbidden:
-                    pass
-                    
+            await self._notify_quests(user, completed_quests)
+
         except Exception as e:
             logger.error(f"Error updating quest progress for likes: {e}")
     
@@ -3063,14 +3115,8 @@ class EventsController:
                 except Exception as e:
                     logger.error(f"Failed to track channel exploration: {e}")
             
-            # Send notifications for completed quests
-            for quest in completed_quests:
-                try:
-                    embed = EmbedViews.quest_completed_embed(quest)
-                    await user.send(embed=embed)
-                except discord.Forbidden:
-                    pass
-                    
+            await self._notify_quests(user, completed_quests)
+
         except Exception as e:
             logger.error(f"Error updating quest progress for rating: {e}")
     
@@ -3090,14 +3136,8 @@ class EventsController:
                 count=1
             )
             
-            # Send notifications for completed quests
-            for quest in completed_quests:
-                try:
-                    embed = EmbedViews.quest_completed_embed(quest)
-                    await user.send(embed=embed)
-                except discord.Forbidden:
-                    pass
-                    
+            await self._notify_quests(user, completed_quests)
+
         except Exception as e:
             logger.error(f"Error updating quest progress for giving likes: {e}")
     
@@ -4223,6 +4263,9 @@ class EventsController:
         conversation was happening and told everyone else something only the
         member cares about.
         """
+        if not await should_dm(self.bot, member.id, "rep"):
+            return
+
         try:
             from models.rep_economy import tier_label
 
