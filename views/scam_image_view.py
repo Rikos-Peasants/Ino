@@ -12,7 +12,15 @@ def signature_embed(title: str, signature) -> discord.Embed:
     return embed
 
 
-def scam_detection_embed(message, attachment, match, *, deleted: bool, delete_error: str | None = None) -> discord.Embed:
+def scam_detection_embed(
+    message,
+    attachment,
+    match,
+    *,
+    deleted: bool,
+    delete_error: str | None = None,
+    image_filename: str | None = None,
+) -> discord.Embed:
     embed = discord.Embed(
         title="Scam Image Detected",
         description="A message attachment matched a known scam image signature.",
@@ -25,13 +33,22 @@ def scam_detection_embed(message, attachment, match, *, deleted: bool, delete_er
     embed.add_field(name="Attachment", value=f"`{attachment.filename}`\n{attachment.size} bytes", inline=False)
     embed.add_field(name="Match", value=f"`{match.kind}` {match.label}\n{match.detail}", inline=False)
     embed.add_field(name="Jump", value=f"[Open message]({message.jump_url})", inline=True)
+    if image_filename:
+        embed.set_image(url=f"attachment://{image_filename}")
     # The user ID is parsed back out by the alert action buttons, so they still
     # know who the alert is about after a restart. Keep the prefix stable.
     embed.set_footer(text=f"User ID: {message.author.id} · Message ID: {message.id}")
     return embed
 
 
-def scam_cross_channel_alert_embed(message, detections, *, threshold: int, window_seconds: int) -> discord.Embed:
+def scam_cross_channel_alert_embed(
+    message,
+    detections,
+    *,
+    threshold: int,
+    window_seconds: int,
+    image_filename: str | None = None,
+) -> discord.Embed:
     channel_ids = []
     for detection in detections:
         channel_id = detection.get("channel_id")
@@ -60,6 +77,8 @@ def scam_cross_channel_alert_embed(message, detections, *, threshold: int, windo
         embed.add_field(name="Recent Matches", value="\n".join(recent), inline=False)
 
     embed.add_field(name="Latest Message", value=f"[Open message]({message.jump_url})", inline=True)
+    if image_filename:
+        embed.set_image(url=f"attachment://{image_filename}")
     embed.set_footer(text=f"User ID: {message.author.id}")
     return embed
 

@@ -814,6 +814,9 @@ class ScamImageController:
             should_delete = self.delete_matches if force_delete is None else force_delete
             deleted = False
             delete_error = None
+            # Copied from the bytes already in hand, before the delete below
+            # takes the original out of reach.
+            image_file, image_filename = await self._build_alert_image_file(attachment, body)
             logger.warning(
                 "Scam image match kind=%s label=%s user=%s channel=%s attachment=%s",
                 match.kind,
@@ -852,9 +855,17 @@ class ScamImageController:
             else:
                 delete_error = "auto-delete disabled"
 
-            await self._send_detection_log(message, attachment, match, deleted=deleted, delete_error=delete_error)
+            await self._send_detection_log(
+                message,
+                attachment,
+                match,
+                deleted=deleted,
+                delete_error=delete_error,
+                image_file=image_file,
+                image_filename=image_filename,
+            )
             if alert_on_burst:
-                await self._maybe_send_cross_channel_alert(message)
+                await self._maybe_send_cross_channel_alert(message, attachment, body)
             return True
         return False
 
@@ -945,108 +956,140 @@ class ScamImageController:
             if len(confirmed_channel_ids) < self.cross_channel_threshold:
                 return
 
-            log_channel = await self._get_moderation_log_channel(message.guild)
-            if not log_channel:
-                self._suppress_image_burst_user(confirmation_key)
-                self._clear_image_burst_entries(confirmation_key)
-                return
-
-            reservation_token = await asyncio.to_thread(
-                self.manager.reserve_cross_channel_alert,
-                guild_id=str(message.guild.id),
-                user_id=str(message.author.id),
-                user_name=str(message.author),
-                channel_ids=confirmed_channel_ids,
-                message_ids=[
-                    str(confirmed.get("message_id"))
-                    for confirmed in confirmed_entries
-                    if confirmed.get("message_id")
-                ],
-                threshold=self.cross_channel_threshold,
-                window_seconds=self.image_burst_window_seconds,
-                cooldown_minutes=self.cross_channel_alert_cooldown_minutes,
-                alert_kind="repeated_image_burst",
-            )
-            if not reservation_token:
-                self._suppress_image_burst_user(confirmation_key)
-                self._clear_image_burst_entries(confirmation_key)
-                return
-
+            # Copy the image before the response deletes the originals, then act
+            # on the burst. Enforcement deliberately runs before, and regardless
+            # of, the alert: an unset log channel, a send failure, or the alert
+            # cooldown used to abort the whole thing, so a burst raised while a
+            # previous alert was still cooling down was neither deleted nor
+            # timed out and nothing said so.
             image_file, image_filename = await self._build_alert_image_file(attachment)
-            embed = image_burst_alert_embed(
-                message,
-                confirmed_entries,
-                threshold=self.cross_channel_threshold,
-                window_seconds=self.image_burst_window_seconds,
-                match_kind=match_kind,
-                actions=["Actions pending"],
-                image_filename=image_filename,
-            )
-            review_role_id = await self._get_review_role_id(message.guild)
-            content = f"<@&{review_role_id}> Repeated image burst detected" if review_role_id else None
-            # Ban / kick / timeout buttons so a moderator can act straight from
-            # the alert instead of copying the ID into a command.
-            action_view = self._build_alert_view(message.author.id, "repeated image burst")
-            send_kwargs = {"content": content, "embed": embed, "view": action_view}
-            if image_file is not None:
-                send_kwargs["file"] = image_file
-            try:
-                alert_message = await log_channel.send(**send_kwargs)
-            except discord.Forbidden:
-                await asyncio.to_thread(
-                    self.manager.release_cross_channel_alert_reservation,
-                    str(message.guild.id),
-                    str(message.author.id),
-                    reservation_token,
-                    alert_kind="repeated_image_burst",
-                )
-                logger.warning("Missing permission to send repeated image burst alert in %s", log_channel)
-                self._suppress_image_burst_user(confirmation_key)
-                self._clear_image_burst_entries(confirmation_key)
-                return
-            except discord.HTTPException as e:
-                await asyncio.to_thread(
-                    self.manager.release_cross_channel_alert_reservation,
-                    str(message.guild.id),
-                    str(message.author.id),
-                    reservation_token,
-                    alert_kind="repeated_image_burst",
-                )
-                logger.warning("Could not send repeated image burst alert: %s", e)
-                self._suppress_image_burst_user(confirmation_key)
-                self._clear_image_burst_entries(confirmation_key)
-                return
-
             action_results = await self._apply_repeated_image_burst_actions(message, confirmed_entries)
-            embed = image_burst_alert_embed(
-                message,
-                confirmed_entries,
-                threshold=self.cross_channel_threshold,
-                window_seconds=self.image_burst_window_seconds,
-                match_kind=match_kind,
-                actions=action_results,
-                image_filename=image_filename,
+            logger.warning(
+                "Repeated image burst by %s (%s) across %d channels [%s]: %s",
+                message.author,
+                message.author.id,
+                len(confirmed_channel_ids),
+                match_kind,
+                "; ".join(action_results),
             )
+
             try:
-                # The kept attachments have to be named again on an edit, or the
-                # embed's attachment:// reference stops resolving.
-                await alert_message.edit(embed=embed, attachments=alert_message.attachments)
-            except discord.HTTPException as e:
-                logger.warning("Could not update repeated image burst alert actions: %s", e)
-            await asyncio.to_thread(
-                self.manager.mark_cross_channel_alert_sent,
-                str(message.guild.id),
-                str(message.author.id),
-                reservation_token,
-                alert_kind="repeated_image_burst",
-            )
-            self._suppress_image_burst_user(confirmation_key)
-            self._clear_image_burst_entries(confirmation_key)
+                await self._send_image_burst_alert(
+                    message,
+                    confirmed_entries,
+                    confirmed_channel_ids,
+                    match_kind=match_kind,
+                    action_results=action_results,
+                    image_file=image_file,
+                    image_filename=image_filename,
+                )
+            finally:
+                self._suppress_image_burst_user(confirmation_key)
+                self._clear_image_burst_entries(confirmation_key)
         finally:
             self._image_burst_confirmation_keys.discard(confirmation_key)
 
+    async def _send_image_burst_alert(
+        self,
+        message: discord.Message,
+        confirmed_entries: list[dict],
+        confirmed_channel_ids: list[str],
+        *,
+        match_kind: str,
+        action_results: list[str],
+        image_file,
+        image_filename: Optional[str],
+    ) -> None:
+        """Post the burst alert for moderators.
+
+        Best effort by design. The burst has already been acted on by the time
+        this runs, so every early return here costs a notification and nothing
+        more.
+        """
+        log_channel = await self._get_moderation_log_channel(message.guild)
+        if not log_channel:
+            logger.warning(
+                "No moderation log channel set, so the repeated image burst alert for %s was not posted",
+                message.author,
+            )
+            return
+
+        reservation_token = await asyncio.to_thread(
+            self.manager.reserve_cross_channel_alert,
+            guild_id=str(message.guild.id),
+            user_id=str(message.author.id),
+            user_name=str(message.author),
+            channel_ids=confirmed_channel_ids,
+            message_ids=[
+                str(confirmed.get("message_id"))
+                for confirmed in confirmed_entries
+                if confirmed.get("message_id")
+            ],
+            threshold=self.cross_channel_threshold,
+            window_seconds=self.image_burst_window_seconds,
+            cooldown_minutes=self.cross_channel_alert_cooldown_minutes,
+            alert_kind="repeated_image_burst",
+        )
+        if not reservation_token:
+            logger.info(
+                "Repeated image burst alert for %s suppressed: still within the %s minute cooldown",
+                message.author,
+                self.cross_channel_alert_cooldown_minutes,
+            )
+            return
+
+        embed = image_burst_alert_embed(
+            message,
+            confirmed_entries,
+            threshold=self.cross_channel_threshold,
+            window_seconds=self.image_burst_window_seconds,
+            match_kind=match_kind,
+            actions=action_results,
+            image_filename=image_filename,
+        )
+        review_role_id = await self._get_review_role_id(message.guild)
+        content = f"<@&{review_role_id}> Repeated image burst detected" if review_role_id else None
+        # Ban / kick / timeout buttons so a moderator can act straight from
+        # the alert instead of copying the ID into a command.
+        action_view = self._build_alert_view(message.author.id, "repeated image burst")
+        send_kwargs = {"content": content, "embed": embed, "view": action_view}
+        if image_file is not None:
+            send_kwargs["file"] = image_file
+
+        try:
+            await log_channel.send(**send_kwargs)
+        except discord.Forbidden:
+            await self._release_alert_reservation(message, reservation_token)
+            logger.warning("Missing permission to send repeated image burst alert in %s", log_channel)
+            return
+        except discord.HTTPException as e:
+            await self._release_alert_reservation(message, reservation_token)
+            logger.warning("Could not send repeated image burst alert: %s", e)
+            return
+
+        await asyncio.to_thread(
+            self.manager.mark_cross_channel_alert_sent,
+            str(message.guild.id),
+            str(message.author.id),
+            reservation_token,
+            alert_kind="repeated_image_burst",
+        )
+
+    async def _release_alert_reservation(self, message: discord.Message, reservation_token) -> None:
+        await asyncio.to_thread(
+            self.manager.release_cross_channel_alert_reservation,
+            str(message.guild.id),
+            str(message.author.id),
+            reservation_token,
+            alert_kind="repeated_image_burst",
+        )
+
     async def _apply_repeated_image_burst_actions(self, message: discord.Message, entries: list[dict]) -> list[str]:
         results = []
+        # The owner is spared the timeout, never the cleanup. Muting the person
+        # who administers the bot is how you lose the ability to fix it, but a
+        # compromised owner account is the scam vector, not an exception to it,
+        # so its images still get deleted.
         author_is_owner = await self.bot.is_owner(message.author)
         if self.image_burst_timeout_enabled:
             if not isinstance(message.author, discord.Member):
@@ -1070,26 +1113,23 @@ class ScamImageController:
             results.append("Timeout disabled")
 
         if self.image_burst_delete_messages:
-            if author_is_owner:
-                results.append("Message deletion skipped: bot owner")
-            else:
-                deleted = 0
-                failed = 0
-                seen_message_ids = set()
-                for entry in entries:
-                    entry_message = entry.get("message")
-                    message_id = entry.get("message_id")
-                    if not entry_message or message_id in seen_message_ids:
-                        continue
-                    seen_message_ids.add(message_id)
-                    try:
-                        await entry_message.delete()
-                        deleted += 1
-                    except discord.NotFound:
-                        deleted += 1
-                    except (discord.Forbidden, discord.HTTPException):
-                        failed += 1
-                results.append(f"Deleted {deleted} burst messages" if failed == 0 else f"Deleted {deleted} burst messages; failed {failed}")
+            deleted = 0
+            failed = 0
+            seen_message_ids = set()
+            for entry in entries:
+                entry_message = entry.get("message")
+                message_id = entry.get("message_id")
+                if not entry_message or message_id in seen_message_ids:
+                    continue
+                seen_message_ids.add(message_id)
+                try:
+                    await entry_message.delete()
+                    deleted += 1
+                except discord.NotFound:
+                    deleted += 1
+                except (discord.Forbidden, discord.HTTPException):
+                    failed += 1
+            results.append(f"Deleted {deleted} burst messages" if failed == 0 else f"Deleted {deleted} burst messages; failed {failed}")
         else:
             results.append("Message deletion disabled")
 
@@ -1196,12 +1236,16 @@ class ScamImageController:
         leaderboard_manager = getattr(self.bot, "leaderboard_manager", None)
         return getattr(leaderboard_manager, "moderation_manager", None) if leaderboard_manager else None
 
-    async def _build_alert_image_file(self, attachment):
+    async def _build_alert_image_file(self, attachment, body: Optional[bytes] = None):
         """A copy of the flagged image to hang off the alert itself.
 
-        The originals are deleted moments later by the burst response, so the
-        alert keeps its own copy. That copy is what the alert's Image button
-        shows, and what "Add to scam list" hashes into a signature.
+        The original is deleted moments later, so the alert keeps its own copy.
+        That copy is what the alert's Image button shows, and what "Add to scam
+        list" hashes into a signature.
+
+        Pass ``body`` when the bytes are already in hand — the scan path has
+        just read them to hash the image, and re-downloading risks racing the
+        deletion.
 
         Returns ``(None, None)`` whenever the copy cannot be made — an alert
         without a picture is still worth sending.
@@ -1210,18 +1254,17 @@ class ScamImageController:
             return None, None
         if getattr(attachment, "size", 0) > self.max_attachment_bytes:
             return None, None
-
-        suffix = Path(attachment.filename).suffix.lower()
         if not self.manager.is_supported_image(attachment.filename):
             return None, None
 
-        try:
-            body = await attachment.read()
-        except (discord.HTTPException, discord.NotFound) as e:
-            logger.warning("Could not copy the flagged image onto the alert: %s", e)
-            return None, None
+        if body is None:
+            try:
+                body = await attachment.read()
+            except (discord.HTTPException, discord.NotFound) as e:
+                logger.warning("Could not copy the flagged image onto the alert: %s", e)
+                return None, None
 
-        filename = f"flagged-image{suffix}"
+        filename = f"flagged-image{Path(attachment.filename).suffix.lower()}"
         return discord.File(io.BytesIO(body), filename=filename), filename
 
     def _build_alert_view(self, target_id: int, context: str):
@@ -1261,22 +1304,47 @@ class ScamImageController:
                 logger.warning("Could not read moderation review role for scam image alert: %s", e)
         return getattr(Config, "DEFAULT_MODERATION_REVIEW_ROLE_ID", None)
 
-    async def _send_detection_log(self, message, attachment, match, *, deleted: bool, delete_error: Optional[str]):
+    async def _send_detection_log(
+        self,
+        message,
+        attachment,
+        match,
+        *,
+        deleted: bool,
+        delete_error: Optional[str],
+        image_file=None,
+        image_filename: Optional[str] = None,
+    ):
         if not message.guild:
             return
         log_channel = await self._get_moderation_log_channel(message.guild)
         if not log_channel:
             return
-        embed = scam_detection_embed(message, attachment, match, deleted=deleted, delete_error=delete_error)
+        embed = scam_detection_embed(
+            message,
+            attachment,
+            match,
+            deleted=deleted,
+            delete_error=delete_error,
+            image_filename=image_filename,
+        )
         action_view = self._build_alert_view(message.author.id, "scam image detection")
+        send_kwargs = {"embed": embed, "view": action_view}
+        if image_file is not None:
+            send_kwargs["file"] = image_file
         try:
-            await log_channel.send(embed=embed, view=action_view)
+            await log_channel.send(**send_kwargs)
         except discord.Forbidden:
             logger.warning("Missing permission to send scam image detection log in %s", log_channel)
         except discord.HTTPException as e:
             logger.warning("Could not send scam image detection log: %s", e)
 
-    async def _maybe_send_cross_channel_alert(self, message: discord.Message):
+    async def _maybe_send_cross_channel_alert(
+        self,
+        message: discord.Message,
+        attachment=None,
+        body: Optional[bytes] = None,
+    ):
         if (
             not message.guild
             or self.cross_channel_threshold <= 1
@@ -1304,11 +1372,13 @@ class ScamImageController:
         log_channel = await self._get_moderation_log_channel(message.guild)
         if not log_channel:
             return
+        image_file, image_filename = await self._build_alert_image_file(attachment, body)
         embed = scam_cross_channel_alert_embed(
             message,
             detections,
             threshold=self.cross_channel_threshold,
             window_seconds=self.cross_channel_window_seconds,
+            image_filename=image_filename,
         )
         review_role_id = await self._get_review_role_id(message.guild)
         content = f"<@&{review_role_id}> Scam image burst detected" if review_role_id else None
@@ -1327,8 +1397,11 @@ class ScamImageController:
             return
 
         action_view = self._build_alert_view(message.author.id, "scam image burst")
+        send_kwargs = {"content": content, "embed": embed, "view": action_view}
+        if image_file is not None:
+            send_kwargs["file"] = image_file
         try:
-            await log_channel.send(content=content, embed=embed, view=action_view)
+            await log_channel.send(**send_kwargs)
             await asyncio.to_thread(
                 self.manager.mark_cross_channel_alert_sent,
                 str(message.guild.id),

@@ -202,6 +202,88 @@ def test_image_button_without_an_image_or_without_detection():
     assert interaction.sent[0]["embed"].image.url
 
 
+class FakeBurstMessage:
+    def __init__(self, author):
+        self.author = author
+        self.deleted = False
+        self.guild = type("G", (), {"name": "Riko's Place", "id": 1})()
+
+    async def delete(self):
+        self.deleted = True
+
+
+class FakeAuthor:
+    # Class attributes, not instance ones: discord.Member exposes id/mention as
+    # read-only properties, and FakeMember below inherits from it.
+    id = 742066956194152449
+    mention = "<@742066956194152449>"
+
+    def __init__(self):
+        self.dms = []
+        self.timed_out_until = None
+
+    def __str__(self):
+        return "seikadev."
+
+    async def edit(self, *, timed_out_until=None, reason=None):
+        self.timed_out_until = timed_out_until
+
+    async def send(self, *, embed=None):
+        self.dms.append(embed)
+
+
+class FakeMember(FakeAuthor, discord.Member):
+    """The timeout branch checks ``isinstance(author, discord.Member)``."""
+
+
+def build_burst_controller(is_owner: bool):
+    controller = build_controller()
+    controller.image_burst_timeout_enabled = True
+    controller.image_burst_timeout_seconds = 180
+    controller.image_burst_delete_messages = True
+    controller.image_burst_dm_security_notice = True
+
+    class Bot:
+        async def is_owner(self, _user):
+            return is_owner
+
+    controller.bot = Bot()
+    return controller
+
+
+def run_burst_actions(is_owner: bool):
+    controller = build_burst_controller(is_owner)
+    author = FakeMember()
+    message = FakeBurstMessage(author)
+    entries = [
+        {"message": FakeBurstMessage(author), "message_id": str(i)} for i in range(3)
+    ]
+    results = asyncio.run(controller._apply_repeated_image_burst_actions(message, entries))
+    return results, author, entries
+
+
+def test_owner_keeps_their_timeout_exemption_but_not_their_spam():
+    """A compromised owner account is the scam vector, not an exception to it."""
+    results, author, entries = run_burst_actions(is_owner=True)
+
+    assert "Timeout skipped: bot owner" in results
+    assert author.timed_out_until is None
+    # The images still go.
+    assert "Deleted 3 burst messages" in results
+    assert all(entry["message"].deleted for entry in entries)
+    assert not any("deletion skipped" in r for r in results)
+    assert len(author.dms) == 1
+
+
+def test_everyone_else_is_timed_out_and_cleaned_up():
+    results, author, entries = run_burst_actions(is_owner=False)
+
+    assert "Timed out for 180 seconds" in results
+    assert author.timed_out_until is not None
+    assert "Deleted 3 burst messages" in results
+    assert all(entry["message"].deleted for entry in entries)
+
+
 def test_preview_is_scoped_to_whoever_opened_it():
     view = AlertImagePreviewView(build_controller(), "https://example.com/a.png", invoker_id=99)
     assert asyncio.run(view.interaction_check(FakeInteraction(FakeMessage(), user_id=99))) is True
@@ -218,5 +300,7 @@ if __name__ == "__main__":
     test_button_finds_the_image_on_attachment_or_embed()
     test_image_button_offers_the_blocklist_action()
     test_image_button_without_an_image_or_without_detection()
+    test_owner_keeps_their_timeout_exemption_but_not_their_spam()
+    test_everyone_else_is_timed_out_and_cleaned_up()
     test_preview_is_scoped_to_whoever_opened_it()
     print("alert image button test passed")
