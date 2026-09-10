@@ -1501,8 +1501,8 @@ class ScamImageController:
                         )
                         return
 
-                    body = await response.content.read(self.max_attachment_bytes + 1)
-                    if len(body) > self.max_attachment_bytes:
+                    body = await self._read_limited(response)
+                    if body is None:
                         await interaction.followup.send(
                             "That URL returned an image larger than the configured limit.",
                             ephemeral=True,
@@ -1526,6 +1526,22 @@ class ScamImageController:
             added_by_name=str(interaction.user),
         )
         await interaction.followup.send(embed=signature_embed("Signature Added", signature), ephemeral=True)
+
+    async def _read_limited(self, response) -> Optional[bytes]:
+        """The whole response body, or None if it exceeds the size limit.
+
+        Not ``content.read(limit)``: aiohttp returns *up to* that many bytes,
+        which in practice is the first chunk off the socket. Anything bigger
+        than one chunk came back truncated, and a truncated image is one PIL
+        refuses to open — reported as "that URL did not return a readable
+        image" no matter how valid the image actually was.
+        """
+        body = bytearray()
+        async for chunk in response.content.iter_chunked(64 * 1024):
+            body.extend(chunk)
+            if len(body) > self.max_attachment_bytes:
+                return None
+        return bytes(body)
 
     async def _validate_fetch_url(self, url: str):
         parsed = urlparse(url.strip())

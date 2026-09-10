@@ -306,6 +306,42 @@ def test_everyone_else_is_timed_out_and_cleaned_up():
     assert all(entry["message"].deleted for entry in entries)
 
 
+class FakeStream:
+    """A body that arrives in several chunks, as any real one does."""
+
+    def __init__(self, payload, chunk=16 * 1024):
+        self.payload = payload
+        self.chunk = chunk
+
+    async def iter_chunked(self, _size):
+        for i in range(0, len(self.payload), self.chunk):
+            yield self.payload[i : i + self.chunk]
+
+
+class FakeResponse:
+    def __init__(self, payload):
+        self.content = FakeStream(payload)
+
+
+def test_a_multi_chunk_body_is_read_whole():
+    """content.read(limit) stopped at the first chunk, and PIL rejects those."""
+    controller = build_controller()
+    payload = png_bytes() * 4000  # comfortably more than one chunk
+
+    body = asyncio.run(controller._read_limited(FakeResponse(payload)))
+
+    assert body == payload
+    assert len(body) > 16 * 1024
+
+
+def test_oversized_bodies_are_refused():
+    controller = build_controller()
+    controller.max_attachment_bytes = 1024
+
+    assert asyncio.run(controller._read_limited(FakeResponse(b"x" * 5000))) is None
+    assert asyncio.run(controller._read_limited(FakeResponse(b"x" * 1024))) == b"x" * 1024
+
+
 def test_preview_is_scoped_to_whoever_opened_it():
     view = AlertImagePreviewView(build_controller(), "https://example.com/a.png", invoker_id=99)
     assert asyncio.run(view.interaction_check(FakeInteraction(FakeMessage(), user_id=99))) is True
@@ -325,5 +361,7 @@ if __name__ == "__main__":
     test_image_button_without_an_image_or_without_detection()
     test_owner_keeps_their_timeout_exemption_but_not_their_spam()
     test_everyone_else_is_timed_out_and_cleaned_up()
+    test_a_multi_chunk_body_is_read_whole()
+    test_oversized_bodies_are_refused()
     test_preview_is_scoped_to_whoever_opened_it()
     print("alert image button test passed")
