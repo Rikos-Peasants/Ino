@@ -900,12 +900,21 @@ class ScamImageController:
         ]
 
         confirmation_key = (str(message.guild.id), str(message.author.id))
-        if self._is_image_burst_suppressed(confirmation_key, now):
+        metadata_key = self._image_burst_metadata_key(attachment)
+        # Suppression is per image, not per user. Keyed on the user alone it
+        # muted every later burst from that account for ten minutes, including
+        # the deletion and the timeout, so someone who simply switched images
+        # got a free run.
+        suppression_key = confirmation_key + (metadata_key,)
+        if self._is_image_burst_suppressed(suppression_key, now):
+            logger.info(
+                "Skipping repeated image burst check for %s: this image was already handled recently",
+                message.author,
+            )
             return
         if confirmation_key in self._image_burst_confirmation_keys:
             return
 
-        metadata_key = self._image_burst_metadata_key(attachment)
         attachment_id = str(getattr(attachment, "id", attachment.filename))
         message_id = str(message.id)
         if any(
@@ -982,9 +991,10 @@ class ScamImageController:
                     action_results=action_results,
                     image_file=image_file,
                     image_url=image_url,
+                    subject=self._burst_subject(confirmed_entries),
                 )
             finally:
-                self._suppress_image_burst_user(confirmation_key)
+                self._suppress_image_burst_user(suppression_key)
                 self._clear_image_burst_entries(confirmation_key)
         finally:
             self._image_burst_confirmation_keys.discard(confirmation_key)
@@ -999,6 +1009,7 @@ class ScamImageController:
         action_results: list[str],
         image_file,
         image_url: Optional[str],
+        subject: Optional[str] = None,
     ) -> None:
         """Post the burst alert for moderators.
 
@@ -1029,10 +1040,12 @@ class ScamImageController:
             window_seconds=self.image_burst_window_seconds,
             cooldown_minutes=self.cross_channel_alert_cooldown_minutes,
             alert_kind="repeated_image_burst",
+            subject=subject,
         )
         if not reservation_token:
             logger.info(
-                "Repeated image burst alert for %s suppressed: still within the %s minute cooldown",
+                "Repeated image burst alert for %s suppressed: this image already alerted "
+                "within the %s minute cooldown",
                 message.author,
                 self.cross_channel_alert_cooldown_minutes,
             )
@@ -1168,6 +1181,18 @@ class ScamImageController:
             results.append("Security DM disabled")
 
         return results
+
+    def _burst_subject(self, confirmed_entries: list[dict]) -> Optional[str]:
+        """What this burst was about, for the per-image alert cooldown.
+
+        The signature hash of the offending image, so a scammer who rotates
+        images raises one alert per image instead of one per ten minutes.
+        """
+        for entry in confirmed_entries:
+            signature = entry.get("signature")
+            if signature is not None:
+                return signature.sha256
+        return None
 
     def _prioritize_image_burst_candidates(self, candidates: list[dict], metadata_key: tuple) -> list[dict]:
         same_metadata = [entry for entry in candidates if entry.get("metadata_key") == metadata_key]

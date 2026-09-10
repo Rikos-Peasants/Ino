@@ -286,10 +286,19 @@ class ScamImageManager:
         window_seconds: int,
         cooldown_minutes: int,
         alert_kind: str = "scam_image_match",
+        subject: Optional[str] = None,
     ) -> Optional[str]:
+        """Reserve the right to raise one alert, or return None if on cooldown.
+
+        ``subject`` narrows the cooldown to one image — pass the signature hash
+        and a scammer rotating images still raises an alert per image, while a
+        repeat of the same one stays quiet.
+        """
         now = datetime.utcnow()
         token = str(uuid.uuid4())
         cooldown_key = f"{guild_id}:{user_id}:{alert_kind}"
+        if subject:
+            cooldown_key = f"{cooldown_key}:{subject}"
         legacy_cooldown_key = f"{guild_id}:{user_id}"
         cooldown_until = now + timedelta(minutes=max(cooldown_minutes, 1))
         update = {
@@ -351,10 +360,8 @@ class ScamImageManager:
     ):
         self.alerts_collection.update_one(
             {
-                "$or": [
-                    {"cooldown_key": f"{guild_id}:{user_id}:{alert_kind}"},
-                    {"cooldown_key": f"{guild_id}:{user_id}", "alert_kind": {"$exists": False}},
-                ],
+                "guild_id": guild_id,
+                "user_id": user_id,
                 "reservation_token": token,
             },
             {
@@ -375,10 +382,8 @@ class ScamImageManager:
     ):
         self.alerts_collection.delete_one(
             {
-                "$or": [
-                    {"cooldown_key": f"{guild_id}:{user_id}:{alert_kind}"},
-                    {"cooldown_key": f"{guild_id}:{user_id}", "alert_kind": {"$exists": False}},
-                ],
+                "guild_id": guild_id,
+                "user_id": user_id,
                 "reservation_token": token,
                 "status": "pending",
             }

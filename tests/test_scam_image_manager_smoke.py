@@ -276,6 +276,37 @@ def main():
     manager.release_cross_channel_alert_reservation("10", "30", reservation)
     assert len(manager.alerts_collection.docs) == 3
 
+    # The cooldown is per image: the same user rotating to a different image
+    # still gets an alert, a repeat of the same one does not.
+    def burst_reservation(subject):
+        return manager.reserve_cross_channel_alert(
+            guild_id="10",
+            user_id="30",
+            user_name="poster",
+            channel_ids=["20", "21", "22"],
+            message_ids=["40"],
+            threshold=3,
+            window_seconds=15,
+            cooldown_minutes=10,
+            alert_kind="repeated_image_burst",
+            subject=subject,
+        )
+
+    first_image = burst_reservation("a" * 64)
+    assert first_image
+    assert burst_reservation("a" * 64) is None
+    second_image = burst_reservation("b" * 64)
+    assert second_image
+    # Distinct reservations, and each still resolvable by its token alone.
+    assert first_image != second_image
+    manager.mark_cross_channel_alert_sent("10", "30", second_image, alert_kind="repeated_image_burst")
+    second_doc = next(
+        doc for doc in manager.alerts_collection.docs
+        if doc.get("reservation_token") == second_image
+    )
+    assert second_doc["status"] == "sent"
+    assert second_doc["cooldown_key"].endswith(":" + "b" * 64)
+
     ok, message = manager.set_signature_active(signature.sha256[:12], False)
     assert ok is True
     assert "disabled" in message
