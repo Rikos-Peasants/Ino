@@ -72,6 +72,7 @@ def image_burst_alert_embed(
     window_seconds: int,
     match_kind: str,
     actions: list[str] | None = None,
+    image_filename: str | None = None,
 ) -> discord.Embed:
     channel_ids = []
     for entry in entries:
@@ -120,6 +121,10 @@ def image_burst_alert_embed(
         embed.add_field(name="Recent Images", value="\n".join(recent), inline=False)
 
     embed.add_field(name="Latest Message", value=f"[Open message]({message.jump_url})", inline=True)
+    # The alert carries its own copy of the offending image, because the
+    # originals are deleted seconds later by the burst response.
+    if image_filename:
+        embed.set_image(url=f"attachment://{image_filename}")
     embed.set_footer(text=f"User ID: {message.author.id}")
     return embed
 
@@ -165,3 +170,45 @@ class ScamImageAddUrlModal(discord.ui.Modal, title="Add Scam Image URL"):
 
     async def on_submit(self, interaction: discord.Interaction):
         await self.controller.add_url_from_modal(interaction, str(self.url), str(self.label))
+
+
+class ScamImageLabelModal(discord.ui.Modal, title="Add Image To Scam List"):
+    """Label prompt for an image we already have a URL for."""
+
+    label = discord.ui.TextInput(
+        label="Label",
+        placeholder="fake nitro giveaway",
+        max_length=120,
+    )
+
+    def __init__(self, controller, image_url: str):
+        super().__init__(timeout=180)
+        self.controller = controller
+        self.image_url = image_url
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self.controller.add_url_from_modal(interaction, self.image_url, str(self.label))
+
+
+class AlertImagePreviewView(discord.ui.View):
+    """The ephemeral image preview opened from an alert's "Image" button.
+
+    Short-lived and scoped to whoever pressed it, so it does not need a static
+    custom_id the way the alert buttons themselves do.
+    """
+
+    def __init__(self, controller, image_url: str, invoker_id: int):
+        super().__init__(timeout=300)
+        self.controller = controller
+        self.image_url = image_url
+        self.invoker_id = invoker_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.invoker_id:
+            return True
+        await interaction.response.send_message("This preview is not yours.", ephemeral=True)
+        return False
+
+    @discord.ui.button(label="Add to scam list", emoji="🚫", style=discord.ButtonStyle.danger)
+    async def add_button(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await interaction.response.send_modal(ScamImageLabelModal(self.controller, self.image_url))

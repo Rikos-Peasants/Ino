@@ -6,7 +6,8 @@ Two things live here:
   kick, showing the target's prior record so the decision is informed.
 * :class:`AlertActionView` — Ban / Kick / Timeout buttons attached directly to
   a scam or burst alert, so a moderator can act from the alert instead of
-  copying an ID into a command.
+  copying an ID into a command. It also carries the Image button, which shows
+  the flagged image and offers to add it to the scam image list.
 
 Both route through :class:`~models.mod_actions.ModerationActions`, so an action
 taken from a button is recorded exactly like one taken from a command.
@@ -274,6 +275,56 @@ class AlertActionView(discord.ui.View):
             await interaction.message.edit(embed=embed, view=self)
         except discord.HTTPException as exc:
             logger.warning("Could not update dismissed alert: %s", exc)
+
+    @staticmethod
+    def _alert_image_url(message: Optional[discord.Message]) -> Optional[str]:
+        """The alert's own copy of the flagged image, if it kept one."""
+        if message is None:
+            return None
+        for attachment in message.attachments:
+            if (attachment.content_type or "").startswith("image/"):
+                return attachment.url
+        for embed in message.embeds:
+            # Discord rewrites an attachment:// reference into a CDN link on the
+            # way back out, so this covers the same copy from the other side.
+            url = embed.image.url if embed.image else None
+            if url and url.startswith("https://"):
+                return url
+        return None
+
+    @discord.ui.button(
+        label="Image", emoji="🖼️", style=discord.ButtonStyle.secondary,
+        custom_id="alert:image", row=1,
+    )
+    async def image_button(self, interaction: discord.Interaction, _: discord.ui.Button):
+        """Show the flagged image, with a one-click way to blocklist it."""
+        image_url = self._alert_image_url(interaction.message)
+        if not image_url:
+            await interaction.response.send_message(
+                "❌ This alert did not keep a copy of the image.", ephemeral=True
+            )
+            return
+
+        controller = getattr(self.bot, "scam_image_controller", None)
+        embed = discord.Embed(
+            title="🖼️ Flagged image",
+            description=(
+                "Add it to the scam image list and Ino will delete it on sight from now on."
+                if controller
+                else "Scam image detection is not available, so this cannot be blocklisted."
+            ),
+            color=WARN,
+        )
+        embed.set_image(url=image_url)
+
+        view = None
+        if controller is not None:
+            try:
+                from views.scam_image_view import AlertImagePreviewView
+                view = AlertImagePreviewView(controller, image_url, interaction.user.id)
+            except Exception as exc:
+                logger.warning("Could not build the scam image preview view: %s", exc)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @discord.ui.button(
         label="History", emoji="📋", style=discord.ButtonStyle.secondary,

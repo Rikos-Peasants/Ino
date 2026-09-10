@@ -1,8 +1,10 @@
 import asyncio
+import io
 import ipaddress
 import logging
 import socket
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -970,6 +972,7 @@ class ScamImageController:
                 self._clear_image_burst_entries(confirmation_key)
                 return
 
+            image_file, image_filename = await self._build_alert_image_file(attachment)
             embed = image_burst_alert_embed(
                 message,
                 confirmed_entries,
@@ -977,14 +980,18 @@ class ScamImageController:
                 window_seconds=self.image_burst_window_seconds,
                 match_kind=match_kind,
                 actions=["Actions pending"],
+                image_filename=image_filename,
             )
             review_role_id = await self._get_review_role_id(message.guild)
             content = f"<@&{review_role_id}> Repeated image burst detected" if review_role_id else None
             # Ban / kick / timeout buttons so a moderator can act straight from
             # the alert instead of copying the ID into a command.
             action_view = self._build_alert_view(message.author.id, "repeated image burst")
+            send_kwargs = {"content": content, "embed": embed, "view": action_view}
+            if image_file is not None:
+                send_kwargs["file"] = image_file
             try:
-                alert_message = await log_channel.send(content=content, embed=embed, view=action_view)
+                alert_message = await log_channel.send(**send_kwargs)
             except discord.Forbidden:
                 await asyncio.to_thread(
                     self.manager.release_cross_channel_alert_reservation,
@@ -1018,9 +1025,12 @@ class ScamImageController:
                 window_seconds=self.image_burst_window_seconds,
                 match_kind=match_kind,
                 actions=action_results,
+                image_filename=image_filename,
             )
             try:
-                await alert_message.edit(embed=embed)
+                # The kept attachments have to be named again on an edit, or the
+                # embed's attachment:// reference stops resolving.
+                await alert_message.edit(embed=embed, attachments=alert_message.attachments)
             except discord.HTTPException as e:
                 logger.warning("Could not update repeated image burst alert actions: %s", e)
             await asyncio.to_thread(
@@ -1185,6 +1195,34 @@ class ScamImageController:
     def _get_moderation_manager(self):
         leaderboard_manager = getattr(self.bot, "leaderboard_manager", None)
         return getattr(leaderboard_manager, "moderation_manager", None) if leaderboard_manager else None
+
+    async def _build_alert_image_file(self, attachment):
+        """A copy of the flagged image to hang off the alert itself.
+
+        The originals are deleted moments later by the burst response, so the
+        alert keeps its own copy. That copy is what the alert's Image button
+        shows, and what "Add to scam list" hashes into a signature.
+
+        Returns ``(None, None)`` whenever the copy cannot be made — an alert
+        without a picture is still worth sending.
+        """
+        if attachment is None:
+            return None, None
+        if getattr(attachment, "size", 0) > self.max_attachment_bytes:
+            return None, None
+
+        suffix = Path(attachment.filename).suffix.lower()
+        if not self.manager.is_supported_image(attachment.filename):
+            return None, None
+
+        try:
+            body = await attachment.read()
+        except (discord.HTTPException, discord.NotFound) as e:
+            logger.warning("Could not copy the flagged image onto the alert: %s", e)
+            return None, None
+
+        filename = f"flagged-image{suffix}"
+        return discord.File(io.BytesIO(body), filename=filename), filename
 
     def _build_alert_view(self, target_id: int, context: str):
         """Ban / kick / timeout / dismiss buttons for an alert.
