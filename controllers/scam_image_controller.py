@@ -1238,7 +1238,16 @@ class ScamImageController:
                         body,
                         "repeated image burst",
                     )
-                except (discord.HTTPException, OSError, ValueError):
+                except Exception as e:
+                    # Broad on purpose: PIL signals a malformed PNG chunk with
+                    # a bare SyntaxError. One unreadable image should cost that
+                    # image, not the confirmation of the whole burst.
+                    logger.warning(
+                        "Skipping %s while confirming a burst: %s: %s",
+                        entry.get("attachment_name"),
+                        type(e).__name__,
+                        e,
+                    )
                     continue
             readable.append(entry)
 

@@ -192,7 +192,12 @@ class ScamImageManager:
         try:
             image = Image.open(io.BytesIO(body))
             image.load()
-        except (UnidentifiedImageError, OSError):
+        except Exception as e:
+            # Deliberately broad. A malformed PNG chunk makes PIL raise a bare
+            # SyntaxError, which is not an OSError, so it used to escape here
+            # and abort the scan of the whole message — one corrupt image was
+            # enough to wave the rest of it through.
+            logger.warning("Could not read %s for scam matching: %s: %s", filename, type(e).__name__, e)
             return None
 
         candidate = f"{self.dhash(image):016x}"

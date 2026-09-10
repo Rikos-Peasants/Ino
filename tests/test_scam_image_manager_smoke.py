@@ -307,6 +307,19 @@ def main():
     assert second_doc["status"] == "sent"
     assert second_doc["cooldown_key"].endswith(":" + "b" * 64)
 
+    # PIL raises a bare SyntaxError on a malformed PNG chunk, which is not an
+    # OSError; it used to escape find_match and abort the whole message scan.
+    class ExplodingImage:
+        def load(self):
+            raise SyntaxError("broken PNG file (chunk b'f\\xc5\\x0c\\x8a')")
+
+    real_open = Image.open
+    Image.open = lambda *a, **k: ExplodingImage()
+    try:
+        assert manager.find_match("corrupt.png", b"not really a png") is None
+    finally:
+        Image.open = real_open
+
     ok, message = manager.set_signature_active(signature.sha256[:12], False)
     assert ok is True
     assert "disabled" in message
