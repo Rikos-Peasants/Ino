@@ -277,28 +277,36 @@ class AlertActionView(discord.ui.View):
             logger.warning("Could not update dismissed alert: %s", exc)
 
     @staticmethod
-    def _alert_image_url(message: Optional[discord.Message]) -> Optional[str]:
-        """The alert's own copy of the flagged image, if it kept one."""
+    def _alert_image_urls(message: Optional[discord.Message]) -> list[str]:
+        """Every copy of the flagged images the alert kept.
+
+        A spam message can carry several images and the alert copies them all,
+        so this returns the set rather than the first.
+        """
         if message is None:
-            return None
+            return []
+
+        urls = []
         for attachment in message.attachments:
             if (attachment.content_type or "").startswith("image/"):
-                return attachment.url
+                urls.append(attachment.url)
+        if urls:
+            return urls
+
         for embed in message.embeds:
             # Discord rewrites an attachment:// reference into a CDN link on the
             # way back out, so this covers the same copy from the other side.
             url = embed.image.url if embed.image else None
-            if url and url.startswith("https://"):
-                return url
-        return None
+            if url and url.startswith("https://") and url not in urls:
+                urls.append(url)
+        return urls
 
     @discord.ui.button(
         label="Image", emoji="🖼️", style=discord.ButtonStyle.secondary,
         custom_id="alert:image", row=1,
     )
     async def image_button(self, interaction: discord.Interaction, _: discord.ui.Button):
-        """Show the flagged image, with a one-click way to blocklist it."""
-        image_url = self._alert_image_url(interaction.message)
+        """Show the flagged images, with a one-click way to blocklist them."""
         controller = getattr(self.bot, "scam_image_controller", None)
         if controller is None:
             await interaction.response.send_message(
@@ -306,28 +314,19 @@ class AlertActionView(discord.ui.View):
             )
             return
 
-        embed = discord.Embed(
-            title="🖼️ Flagged image",
-            description=(
-                "Add it to the scam image list and Ino will delete it on sight from now on."
-                if image_url
-                else (
-                    "This alert kept no copy of the image — it predates that change, or the "
-                    "upload could not be read. You can still blocklist it by pasting the URL."
-                )
-            ),
-            color=WARN,
-        )
-        if image_url:
-            embed.set_image(url=image_url)
-
-        view = None
+        image_urls = self._alert_image_urls(interaction.message)
         try:
             from views.scam_image_view import AlertImagePreviewView
-            view = AlertImagePreviewView(controller, image_url, interaction.user.id)
+            view = AlertImagePreviewView(controller, image_urls, interaction.user.id)
         except Exception as exc:
             logger.warning("Could not build the scam image preview view: %s", exc)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Could not open the image preview.", ephemeral=True
+            )
+            return
+        # A LayoutView carries its own text, so no content or embed here —
+        # Components V2 rejects a message that has both.
+        await interaction.response.send_message(view=view, ephemeral=True)
 
     @discord.ui.button(
         label="History", emoji="📋", style=discord.ButtonStyle.secondary,

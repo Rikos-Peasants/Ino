@@ -192,7 +192,7 @@ class ScamImageAddUrlModal(discord.ui.Modal, title="Add Scam Image URL"):
 
 
 class ScamImageLabelModal(discord.ui.Modal, title="Add Image To Scam List"):
-    """Label prompt for an image we already have a URL for."""
+    """Label prompt for images we already have URLs for."""
 
     label = discord.ui.TextInput(
         label="Label",
@@ -200,41 +200,82 @@ class ScamImageLabelModal(discord.ui.Modal, title="Add Image To Scam List"):
         max_length=120,
     )
 
-    def __init__(self, controller, image_url: str):
+    def __init__(self, controller, image_urls: list[str]):
         super().__init__(timeout=180)
         self.controller = controller
-        self.image_url = image_url
+        self.image_urls = image_urls
 
     async def on_submit(self, interaction: discord.Interaction):
-        await self.controller.add_url_from_modal(interaction, self.image_url, str(self.label))
+        await self.controller.add_urls_from_modal(interaction, self.image_urls, str(self.label))
 
 
-class AlertImagePreviewView(discord.ui.View):
-    """The ephemeral image preview opened from an alert's "Image" button.
+class AddToScamListButton(discord.ui.Button):
+    """The one action offered next to a flagged image."""
 
-    Short-lived and scoped to whoever pressed it, so it does not need a static
-    custom_id the way the alert buttons themselves do.
+    def __init__(self, controller, image_urls: list[str]):
+        super().__init__(label="Add to scam list", emoji="🚫", style=discord.ButtonStyle.danger)
+        self.controller = controller
+        self.image_urls = image_urls
+
+    async def callback(self, interaction: discord.Interaction):
+        # Without a known image, ask for the URL too rather than dead-ending on
+        # an alert that never kept a copy.
+        modal = (
+            ScamImageLabelModal(self.controller, self.image_urls)
+            if self.image_urls
+            else ScamImageAddUrlModal(self.controller)
+        )
+        await interaction.response.send_modal(modal)
+
+
+class AlertImagePreviewView(discord.ui.LayoutView):
+    """The ephemeral preview opened from an alert's "Image" button.
+
+    A LayoutView because a spam message often carries several images, and a
+    media gallery is the only way to show more than one — an embed holds a
+    single image. Components V2 forbids ``content`` and ``embeds`` alongside
+    it, which is why the caption is a TextDisplay; that restriction is also
+    why the alert itself keeps its embed and only the preview is built this
+    way.
+
+    Short-lived and scoped to whoever pressed the button, so it needs no
+    static custom_id the way the alert buttons do.
     """
 
-    def __init__(self, controller, image_url: str | None, invoker_id: int):
+    # Discord allows ten; the controller copies at most four onto an alert.
+    MAX_GALLERY_ITEMS = 10
+
+    def __init__(self, controller, image_urls: list[str] | None, invoker_id: int):
         super().__init__(timeout=300)
         self.controller = controller
-        self.image_url = image_url
+        self.image_urls = list(image_urls or [])[: self.MAX_GALLERY_ITEMS]
         self.invoker_id = invoker_id
+
+        if self.image_urls:
+            caption = (
+                "Flagged image. Add it to the scam list and Ino will delete it on sight."
+                if len(self.image_urls) == 1
+                else (
+                    f"{len(self.image_urls)} flagged images. Adding blocklists every one of them."
+                )
+            )
+        else:
+            caption = (
+                "This alert kept no copy of the image — it predates that change, or the "
+                "upload could not be read. You can still blocklist it by pasting the URL."
+            )
+        self.add_item(discord.ui.TextDisplay(f"### 🖼️ {caption}"))
+
+        if self.image_urls:
+            gallery = discord.ui.MediaGallery()
+            for image_url in self.image_urls:
+                gallery.add_item(media=image_url)
+            self.add_item(gallery)
+
+        self.add_item(discord.ui.ActionRow(AddToScamListButton(controller, self.image_urls)))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.invoker_id:
             return True
         await interaction.response.send_message("This preview is not yours.", ephemeral=True)
         return False
-
-    @discord.ui.button(label="Add to scam list", emoji="🚫", style=discord.ButtonStyle.danger)
-    async def add_button(self, interaction: discord.Interaction, _: discord.ui.Button):
-        # Without a known image, ask for the URL as well rather than dead-ending
-        # on an alert that never kept a copy.
-        modal = (
-            ScamImageLabelModal(self.controller, self.image_url)
-            if self.image_url
-            else ScamImageAddUrlModal(self.controller)
-        )
-        await interaction.response.send_modal(modal)

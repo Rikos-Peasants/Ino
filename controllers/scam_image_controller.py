@@ -59,6 +59,9 @@ class ScamImageController:
         self._image_burst_suppressed_until = {}
         self._image_burst_settings_loaded_guilds = set()
         self.allowed_url_content_types = {"image/jpeg", "image/png", "image/webp", "image/bmp", "image/x-ms-bmp"}
+        # A media gallery holds ten; four is what fits a spam message in
+        # practice without turning the mod log into a wall of pictures.
+        self.max_alert_images = 4
 
     def register_commands(self):
         group = app_commands.Group(
@@ -816,7 +819,7 @@ class ScamImageController:
             delete_error = None
             # Copied from the bytes already in hand, before the delete below
             # takes the original out of reach.
-            image_file, image_url = await self._build_alert_image_file(attachment, body)
+            image_files, image_url = await self._build_alert_image_files(message, attachment, body)
             logger.warning(
                 "Scam image match kind=%s label=%s user=%s channel=%s attachment=%s",
                 match.kind,
@@ -861,7 +864,7 @@ class ScamImageController:
                 match,
                 deleted=deleted,
                 delete_error=delete_error,
-                image_file=image_file,
+                image_files=image_files,
                 image_url=image_url,
             )
             if alert_on_burst:
@@ -971,7 +974,7 @@ class ScamImageController:
             # cooldown used to abort the whole thing, so a burst raised while a
             # previous alert was still cooling down was neither deleted nor
             # timed out and nothing said so.
-            image_file, image_url = await self._build_alert_image_file(attachment)
+            image_files, image_url = await self._build_alert_image_files(message, attachment)
             action_results = await self._apply_repeated_image_burst_actions(message, confirmed_entries)
             logger.warning(
                 "Repeated image burst by %s (%s) across %d channels [%s]: %s",
@@ -989,7 +992,7 @@ class ScamImageController:
                     confirmed_channel_ids,
                     match_kind=match_kind,
                     action_results=action_results,
-                    image_file=image_file,
+                    image_files=image_files,
                     image_url=image_url,
                     subject=self._burst_subject(confirmed_entries),
                 )
@@ -1007,7 +1010,7 @@ class ScamImageController:
         *,
         match_kind: str,
         action_results: list[str],
-        image_file,
+        image_files: list,
         image_url: Optional[str],
         subject: Optional[str] = None,
     ) -> None:
@@ -1066,8 +1069,8 @@ class ScamImageController:
         # the alert instead of copying the ID into a command.
         action_view = self._build_alert_view(message.author.id, "repeated image burst")
         send_kwargs = {"content": content, "embed": embed, "view": action_view}
-        if image_file is not None:
-            send_kwargs["file"] = image_file
+        if image_files:
+            send_kwargs["files"] = image_files
 
         try:
             await log_channel.send(**send_kwargs)
@@ -1261,7 +1264,38 @@ class ScamImageController:
         leaderboard_manager = getattr(self.bot, "leaderboard_manager", None)
         return getattr(leaderboard_manager, "moderation_manager", None) if leaderboard_manager else None
 
-    async def _build_alert_image_file(self, attachment, body: Optional[bytes] = None):
+    async def _build_alert_image_files(self, message, attachment, body: Optional[bytes] = None):
+        """Copies of every image the flagged message carried.
+
+        A spam message often holds several images at once, and the alert is
+        only useful if it shows what was actually posted, so all of them are
+        copied — the one that tripped detection first, since that is the one
+        the embed displays.
+
+        Returns ``(files, url)``: the files to upload, and the embed image URL
+        for the first of them.
+        """
+        attachments = [attachment] if attachment is not None else []
+        for other in getattr(message, "attachments", None) or []:
+            if other is not attachment and getattr(other, "id", None) != getattr(attachment, "id", None):
+                attachments.append(other)
+
+        files = []
+        primary_url = None
+        for index, candidate in enumerate(attachments[: self.max_alert_images]):
+            # Only the triggering attachment has its bytes already read.
+            image_file, image_url = await self._build_alert_image_file(
+                candidate,
+                body if candidate is attachment else None,
+                index=index,
+            )
+            if image_file is not None:
+                files.append(image_file)
+            if index == 0:
+                primary_url = image_url
+        return files, primary_url
+
+    async def _build_alert_image_file(self, attachment, body: Optional[bytes] = None, *, index: int = 0):
         """A copy of the flagged image to hang off the alert itself.
 
         The original is deleted moments later, so the alert keeps its own copy.
@@ -1313,7 +1347,8 @@ class ScamImageController:
             if body is None:
                 return None, fallback_url
 
-        filename = f"flagged-image{Path(attachment.filename).suffix.lower()}"
+        suffix = Path(attachment.filename).suffix.lower()
+        filename = f"flagged-image{suffix}" if index == 0 else f"flagged-image-{index + 1}{suffix}"
         return discord.File(io.BytesIO(body), filename=filename), f"attachment://{filename}"
 
     def _build_alert_view(self, target_id: int, context: str):
@@ -1361,7 +1396,7 @@ class ScamImageController:
         *,
         deleted: bool,
         delete_error: Optional[str],
-        image_file=None,
+        image_files: Optional[list] = None,
         image_url: Optional[str] = None,
     ):
         if not message.guild:
@@ -1379,8 +1414,8 @@ class ScamImageController:
         )
         action_view = self._build_alert_view(message.author.id, "scam image detection")
         send_kwargs = {"embed": embed, "view": action_view}
-        if image_file is not None:
-            send_kwargs["file"] = image_file
+        if image_files:
+            send_kwargs["files"] = image_files
         try:
             await log_channel.send(**send_kwargs)
         except discord.Forbidden:
@@ -1421,7 +1456,7 @@ class ScamImageController:
         log_channel = await self._get_moderation_log_channel(message.guild)
         if not log_channel:
             return
-        image_file, image_url = await self._build_alert_image_file(attachment, body)
+        image_files, image_url = await self._build_alert_image_files(message, attachment, body)
         embed = scam_cross_channel_alert_embed(
             message,
             detections,
@@ -1447,8 +1482,8 @@ class ScamImageController:
 
         action_view = self._build_alert_view(message.author.id, "scam image burst")
         send_kwargs = {"content": content, "embed": embed, "view": action_view}
-        if image_file is not None:
-            send_kwargs["file"] = image_file
+        if image_files:
+            send_kwargs["files"] = image_files
         try:
             await log_channel.send(**send_kwargs)
             await asyncio.to_thread(
@@ -1475,57 +1510,78 @@ class ScamImageController:
             logger.warning("Could not send scam image burst alert: %s", e)
 
     async def add_url_from_modal(self, interaction: discord.Interaction, url: str, label: str):
+        await self.add_urls_from_modal(interaction, [url], label)
+
+    async def add_urls_from_modal(self, interaction: discord.Interaction, urls: list[str], label: str):
+        """Blocklist every image behind ``urls`` under one label.
+
+        A spam message usually carries several images, and a moderator wants
+        the whole set gone, not one of them. One failure does not sink the
+        rest — each URL is reported on its own line.
+        """
         if not await self.can_manage_scam_images(interaction):
             await interaction.response.send_message("You need moderation permissions.", ephemeral=True)
             return
 
         await interaction.response.defer(ephemeral=True)
+        added = []
+        problems = []
+        for index, url in enumerate(urls, start=1):
+            body, error = await self._fetch_image_for_signature(url)
+            if body is None:
+                problems.append(f"Image {index}: {error}")
+                continue
+
+            image_label = label if len(urls) == 1 else f"{label} ({index}/{len(urls)})"
+            try:
+                signature = await asyncio.to_thread(self.manager.build_signature, body, image_label)
+            except Exception:
+                problems.append(f"Image {index}: not a readable image")
+                continue
+
+            await asyncio.to_thread(
+                self.manager.add_signature,
+                signature,
+                source=url,
+                added_by_id=interaction.user.id,
+                added_by_name=str(interaction.user),
+            )
+            added.append(signature)
+
+        if len(added) == 1 and not problems:
+            await interaction.followup.send(
+                embed=signature_embed("Signature Added", added[0]), ephemeral=True
+            )
+            return
+
+        summary = [f"Added {len(added)} of {len(urls)} images to the scam list."]
+        summary.extend(f"`{signature.sha256[:16]}` {signature.label}" for signature in added)
+        summary.extend(problems)
+        await interaction.followup.send("\n".join(summary), ephemeral=True)
+
+    async def _fetch_image_for_signature(self, url: str) -> tuple[Optional[bytes], Optional[str]]:
+        """Download one image for hashing, or explain why it could not be."""
         try:
             await self._validate_fetch_url(url)
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(url, allow_redirects=False) as response:
                     if response.status != 200:
-                        await interaction.followup.send(f"Could not fetch URL: HTTP {response.status}", ephemeral=True)
-                        return
+                        return None, f"could not fetch URL: HTTP {response.status}"
 
                     content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
                     if content_type not in self.allowed_url_content_types:
-                        await interaction.followup.send("That URL did not return a supported image type.", ephemeral=True)
-                        return
+                        return None, "that URL did not return a supported image type"
 
                     if response.content_length and response.content_length > self.max_attachment_bytes:
-                        await interaction.followup.send(
-                            "That URL returned an image larger than the configured limit.",
-                            ephemeral=True,
-                        )
-                        return
+                        return None, "larger than the configured limit"
 
                     body = await self._read_limited(response)
                     if body is None:
-                        await interaction.followup.send(
-                            "That URL returned an image larger than the configured limit.",
-                            ephemeral=True,
-                        )
-                        return
+                        return None, "larger than the configured limit"
+                    return body, None
         except Exception as e:
-            await interaction.followup.send(f"Could not fetch URL: `{e}`", ephemeral=True)
-            return
-
-        try:
-            signature = await asyncio.to_thread(self.manager.build_signature, body, label)
-        except Exception:
-            await interaction.followup.send("That URL did not return a readable image.", ephemeral=True)
-            return
-
-        await asyncio.to_thread(
-            self.manager.add_signature,
-            signature,
-            source=url,
-            added_by_id=interaction.user.id,
-            added_by_name=str(interaction.user),
-        )
-        await interaction.followup.send(embed=signature_embed("Signature Added", signature), ephemeral=True)
+            return None, f"could not fetch URL: {e}"
 
     async def _read_limited(self, response) -> Optional[bytes]:
         """The whole response body, or None if it exceeds the size limit.

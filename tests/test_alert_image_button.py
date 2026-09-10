@@ -89,6 +89,7 @@ class FakeBot:
 def build_controller() -> ScamImageController:
     controller = ScamImageController.__new__(ScamImageController)
     controller.max_attachment_bytes = 8 * 1024 * 1024
+    controller.max_alert_images = 4
 
     class Manager:
         @staticmethod
@@ -121,6 +122,58 @@ def test_bytes_already_in_hand_are_not_re_downloaded():
     assert image_url == "attachment://flagged-image.png"
     assert image_file.fp.read() == b"already-read"
     assert attachment.reads == []
+
+
+def test_every_image_on_the_spam_message_is_copied():
+    """Four images in one message means four copies on the alert."""
+    controller = build_controller()
+    controller.max_alert_images = 4
+    trigger = FakeAttachment(filename="a.png")
+    others = [FakeAttachment(filename=f"{n}.png") for n in "bcd"]
+    for i, a in enumerate([trigger] + others):
+        a.id = i
+
+    message = FakeMessage(attachments=[trigger] + others)
+    files, image_url = asyncio.run(
+        controller._build_alert_image_files(message, trigger, trigger.body)
+    )
+
+    assert image_url == "attachment://flagged-image.png"
+    # Distinct names, or they would collide on the one message.
+    assert [f.filename for f in files] == [
+        "flagged-image.png",
+        "flagged-image-2.png",
+        "flagged-image-3.png",
+        "flagged-image-4.png",
+    ]
+    # The trigger's bytes were already in hand; only the others are downloaded.
+    assert trigger.reads == []
+    assert all(a.reads == [False] for a in others)
+
+
+def test_the_copied_image_count_is_capped():
+    controller = build_controller()
+    controller.max_alert_images = 2
+    attachments = [FakeAttachment(filename=f"{i}.png") for i in range(6)]
+    for i, a in enumerate(attachments):
+        a.id = i
+
+    files, _ = asyncio.run(
+        controller._build_alert_image_files(FakeMessage(attachments=attachments), attachments[0])
+    )
+    assert len(files) == 2
+
+
+def test_a_single_image_message_copies_one():
+    controller = build_controller()
+    attachment = FakeAttachment()
+    attachment.id = 1
+
+    files, image_url = asyncio.run(
+        controller._build_alert_image_files(FakeMessage(attachments=[attachment]), attachment)
+    )
+    assert len(files) == 1
+    assert image_url == "attachment://flagged-image.png"
 
 
 def test_uncopyable_images_fall_back_to_the_original_url():
@@ -177,34 +230,43 @@ def test_burst_embed_points_at_the_attached_copy():
     assert without.image.url is None
 
 
-def test_button_finds_the_image_on_attachment_or_embed():
-    attached = FakeMessage(attachments=[FakeAttachment()])
-    assert AlertActionView._alert_image_url(attached) == attached.attachments[0].url
+def test_button_finds_every_image_on_attachment_or_embed():
+    attached = FakeMessage(attachments=[FakeAttachment(), FakeAttachment(filename="b.png")])
+    assert AlertActionView._alert_image_urls(attached) == [a.url for a in attached.attachments]
 
     # After a restart the alert comes back with the copy resolved into the embed.
     resolved = FakeMessage(embeds=[FakeEmbed("https://cdn.discordapp.com/attachments/1/2/x.png")])
-    assert AlertActionView._alert_image_url(resolved) == "https://cdn.discordapp.com/attachments/1/2/x.png"
+    assert AlertActionView._alert_image_urls(resolved) == ["https://cdn.discordapp.com/attachments/1/2/x.png"]
 
-    assert AlertActionView._alert_image_url(FakeMessage()) is None
-    assert AlertActionView._alert_image_url(None) is None
+    assert AlertActionView._alert_image_urls(FakeMessage()) == []
+    assert AlertActionView._alert_image_urls(None) == []
     # A stale attachment:// reference is not a usable URL.
-    assert AlertActionView._alert_image_url(FakeMessage(embeds=[FakeEmbed("attachment://x.png")])) is None
+    assert AlertActionView._alert_image_urls(FakeMessage(embeds=[FakeEmbed("attachment://x.png")])) == []
     # Non-image attachments are ignored.
     text_file = FakeAttachment(filename="notes.txt", content_type="text/plain")
-    assert AlertActionView._alert_image_url(FakeMessage(attachments=[text_file])) is None
+    assert AlertActionView._alert_image_urls(FakeMessage(attachments=[text_file])) == []
 
 
-def test_image_button_offers_the_blocklist_action():
+def test_image_button_shows_every_image_in_a_gallery():
     controller = build_controller()
     view = AlertActionView(FakeBot(controller))
-    interaction = FakeInteraction(FakeMessage(attachments=[FakeAttachment()]))
+    attachments = [FakeAttachment(filename=f"scam{i}.png") for i in range(4)]
+    interaction = FakeInteraction(FakeMessage(attachments=attachments))
 
     asyncio.run(view.image_button.callback(interaction))
 
     sent = interaction.sent[0]
-    assert sent["embed"].image.url == interaction.message.attachments[0].url
+    # Components V2 rejects a message carrying both a layout and an embed.
+    assert sent["embed"] is None and sent["content"] is None
     assert isinstance(sent["view"], AlertImagePreviewView)
-    assert sent["view"].image_url == interaction.message.attachments[0].url
+    assert sent["view"].image_urls == [a.url for a in attachments]
+
+    payload = sent["view"].to_components()
+    text, gallery, row = payload
+    assert text["type"] == 10 and "4 flagged images" in text["content"]
+    assert gallery["type"] == 12
+    assert [item["media"]["url"] for item in gallery["items"]] == [a.url for a in attachments]
+    assert row["components"][0]["label"] == "Add to scam list"
 
 
 def test_image_button_without_an_image_or_without_detection():
@@ -212,10 +274,12 @@ def test_image_button_without_an_image_or_without_detection():
     view = AlertActionView(FakeBot(build_controller()))
     empty = FakeInteraction(FakeMessage())
     asyncio.run(view.image_button.callback(empty))
-    assert "kept no copy" in empty.sent[0]["embed"].description
-    assert empty.sent[0]["embed"].image.url is None
-    assert isinstance(empty.sent[0]["view"], AlertImagePreviewView)
-    assert empty.sent[0]["view"].image_url is None
+    preview = empty.sent[0]["view"]
+    assert isinstance(preview, AlertImagePreviewView)
+    assert preview.image_urls == []
+    types = [c["type"] for c in preview.to_components()]
+    assert types == [10, 1]  # caption and button, no gallery
+    assert "kept no copy" in preview.to_components()[0]["content"]
 
     # Detection offline: nothing to add it to, so say so.
     view = AlertActionView(FakeBot(None))
@@ -343,7 +407,7 @@ def test_oversized_bodies_are_refused():
 
 
 def test_preview_is_scoped_to_whoever_opened_it():
-    view = AlertImagePreviewView(build_controller(), "https://example.com/a.png", invoker_id=99)
+    view = AlertImagePreviewView(build_controller(), ["https://example.com/a.png"], invoker_id=99)
     assert asyncio.run(view.interaction_check(FakeInteraction(FakeMessage(), user_id=99))) is True
 
     stranger = FakeInteraction(FakeMessage(), user_id=100)
@@ -354,10 +418,13 @@ def test_preview_is_scoped_to_whoever_opened_it():
 if __name__ == "__main__":
     test_alert_keeps_a_copy_of_the_image()
     test_bytes_already_in_hand_are_not_re_downloaded()
+    test_every_image_on_the_spam_message_is_copied()
+    test_the_copied_image_count_is_capped()
+    test_a_single_image_message_copies_one()
     test_uncopyable_images_fall_back_to_the_original_url()
     test_burst_embed_points_at_the_attached_copy()
-    test_button_finds_the_image_on_attachment_or_embed()
-    test_image_button_offers_the_blocklist_action()
+    test_button_finds_every_image_on_attachment_or_embed()
+    test_image_button_shows_every_image_in_a_gallery()
     test_image_button_without_an_image_or_without_detection()
     test_owner_keeps_their_timeout_exemption_but_not_their_spam()
     test_everyone_else_is_timed_out_and_cleaned_up()
