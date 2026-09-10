@@ -19,7 +19,7 @@ def scam_detection_embed(
     *,
     deleted: bool,
     delete_error: str | None = None,
-    image_filename: str | None = None,
+    image_url: str | None = None,
 ) -> discord.Embed:
     embed = discord.Embed(
         title="Scam Image Detected",
@@ -33,8 +33,8 @@ def scam_detection_embed(
     embed.add_field(name="Attachment", value=f"`{attachment.filename}`\n{attachment.size} bytes", inline=False)
     embed.add_field(name="Match", value=f"`{match.kind}` {match.label}\n{match.detail}", inline=False)
     embed.add_field(name="Jump", value=f"[Open message]({message.jump_url})", inline=True)
-    if image_filename:
-        embed.set_image(url=f"attachment://{image_filename}")
+    if image_url:
+        embed.set_image(url=image_url)
     # The user ID is parsed back out by the alert action buttons, so they still
     # know who the alert is about after a restart. Keep the prefix stable.
     embed.set_footer(text=f"User ID: {message.author.id} · Message ID: {message.id}")
@@ -47,7 +47,7 @@ def scam_cross_channel_alert_embed(
     *,
     threshold: int,
     window_seconds: int,
-    image_filename: str | None = None,
+    image_url: str | None = None,
 ) -> discord.Embed:
     channel_ids = []
     for detection in detections:
@@ -77,8 +77,8 @@ def scam_cross_channel_alert_embed(
         embed.add_field(name="Recent Matches", value="\n".join(recent), inline=False)
 
     embed.add_field(name="Latest Message", value=f"[Open message]({message.jump_url})", inline=True)
-    if image_filename:
-        embed.set_image(url=f"attachment://{image_filename}")
+    if image_url:
+        embed.set_image(url=image_url)
     embed.set_footer(text=f"User ID: {message.author.id}")
     return embed
 
@@ -91,7 +91,7 @@ def image_burst_alert_embed(
     window_seconds: int,
     match_kind: str,
     actions: list[str] | None = None,
-    image_filename: str | None = None,
+    image_url: str | None = None,
 ) -> discord.Embed:
     channel_ids = []
     for entry in entries:
@@ -140,10 +140,10 @@ def image_burst_alert_embed(
         embed.add_field(name="Recent Images", value="\n".join(recent), inline=False)
 
     embed.add_field(name="Latest Message", value=f"[Open message]({message.jump_url})", inline=True)
-    # The alert carries its own copy of the offending image, because the
-    # originals are deleted seconds later by the burst response.
-    if image_filename:
-        embed.set_image(url=f"attachment://{image_filename}")
+    # Normally attachment:// pointing at the alert's own copy of the image,
+    # because the originals are deleted seconds later by the burst response.
+    if image_url:
+        embed.set_image(url=image_url)
     embed.set_footer(text=f"User ID: {message.author.id}")
     return embed
 
@@ -216,7 +216,7 @@ class AlertImagePreviewView(discord.ui.View):
     custom_id the way the alert buttons themselves do.
     """
 
-    def __init__(self, controller, image_url: str, invoker_id: int):
+    def __init__(self, controller, image_url: str | None, invoker_id: int):
         super().__init__(timeout=300)
         self.controller = controller
         self.image_url = image_url
@@ -230,4 +230,11 @@ class AlertImagePreviewView(discord.ui.View):
 
     @discord.ui.button(label="Add to scam list", emoji="🚫", style=discord.ButtonStyle.danger)
     async def add_button(self, interaction: discord.Interaction, _: discord.ui.Button):
-        await interaction.response.send_modal(ScamImageLabelModal(self.controller, self.image_url))
+        # Without a known image, ask for the URL as well rather than dead-ending
+        # on an alert that never kept a copy.
+        modal = (
+            ScamImageLabelModal(self.controller, self.image_url)
+            if self.image_url
+            else ScamImageAddUrlModal(self.controller)
+        )
+        await interaction.response.send_modal(modal)

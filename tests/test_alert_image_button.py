@@ -35,8 +35,10 @@ class FakeAttachment:
         self.content_type = content_type
         self.url = "https://cdn.discordapp.com/attachments/1/2/" + filename
         self.fail = fail
+        self.reads = []
 
-    async def read(self):
+    async def read(self, *, use_cached=False):
+        self.reads.append(use_cached)
         if self.fail:
             raise discord.NotFound(_FakeResponse(), "gone")
         return self.body
@@ -101,26 +103,43 @@ def test_alert_keeps_a_copy_of_the_image():
     controller = build_controller()
     attachment = FakeAttachment()
 
-    image_file, filename = asyncio.run(controller._build_alert_image_file(attachment))
+    image_file, image_url = asyncio.run(controller._build_alert_image_file(attachment))
 
-    assert filename == "flagged-image.png", filename
+    assert image_url == "attachment://flagged-image.png", image_url
     assert isinstance(image_file, discord.File)
     assert image_file.fp.read() == attachment.body
 
 
-def test_no_copy_for_oversized_unsupported_or_vanished_images():
+def test_bytes_already_in_hand_are_not_re_downloaded():
+    controller = build_controller()
+    attachment = FakeAttachment(fail=True)  # a second download would raise
+
+    image_file, image_url = asyncio.run(
+        controller._build_alert_image_file(attachment, b"already-read")
+    )
+
+    assert image_url == "attachment://flagged-image.png"
+    assert image_file.fp.read() == b"already-read"
+    assert attachment.reads == []
+
+
+def test_uncopyable_images_fall_back_to_the_original_url():
+    """No copy is not the same as no picture: the CDN link still works."""
     controller = build_controller()
 
     oversized = FakeAttachment()
     oversized.size = controller.max_attachment_bytes + 1
-    assert asyncio.run(controller._build_alert_image_file(oversized)) == (None, None)
+    assert asyncio.run(controller._build_alert_image_file(oversized)) == (None, oversized.url)
 
     unsupported = FakeAttachment(filename="scam.gif")
-    assert asyncio.run(controller._build_alert_image_file(unsupported)) == (None, None)
+    assert asyncio.run(controller._build_alert_image_file(unsupported)) == (None, unsupported.url)
 
     vanished = FakeAttachment(fail=True)
-    assert asyncio.run(controller._build_alert_image_file(vanished)) == (None, None)
+    assert asyncio.run(controller._build_alert_image_file(vanished)) == (None, vanished.url)
+    # The signed URL and the cached proxy are both tried before giving up.
+    assert vanished.reads == [False, True]
 
+    # Nothing to fall back to when there is no attachment at all.
     assert asyncio.run(controller._build_alert_image_file(None)) == (None, None)
 
 
@@ -148,7 +167,7 @@ def test_burst_embed_points_at_the_attached_copy():
         threshold=3,
         window_seconds=70,
         match_kind="sha256",
-        image_filename="flagged-image.png",
+        image_url="attachment://flagged-image.png",
     )
     assert embed.image.url == "attachment://flagged-image.png"
 
@@ -189,17 +208,20 @@ def test_image_button_offers_the_blocklist_action():
 
 
 def test_image_button_without_an_image_or_without_detection():
+    # No kept copy: still offer the add button, which asks for a URL instead.
     view = AlertActionView(FakeBot(build_controller()))
     empty = FakeInteraction(FakeMessage())
     asyncio.run(view.image_button.callback(empty))
-    assert "did not keep a copy" in empty.sent[0]["content"]
+    assert "kept no copy" in empty.sent[0]["embed"].description
+    assert empty.sent[0]["embed"].image.url is None
+    assert isinstance(empty.sent[0]["view"], AlertImagePreviewView)
+    assert empty.sent[0]["view"].image_url is None
 
-    # Detection offline: still show the picture, just without the add button.
+    # Detection offline: nothing to add it to, so say so.
     view = AlertActionView(FakeBot(None))
     interaction = FakeInteraction(FakeMessage(attachments=[FakeAttachment()]))
     asyncio.run(view.image_button.callback(interaction))
-    assert interaction.sent[0]["view"] is None
-    assert interaction.sent[0]["embed"].image.url
+    assert "not available" in interaction.sent[0]["content"]
 
 
 class FakeBurstMessage:
@@ -295,7 +317,8 @@ def test_preview_is_scoped_to_whoever_opened_it():
 
 if __name__ == "__main__":
     test_alert_keeps_a_copy_of_the_image()
-    test_no_copy_for_oversized_unsupported_or_vanished_images()
+    test_bytes_already_in_hand_are_not_re_downloaded()
+    test_uncopyable_images_fall_back_to_the_original_url()
     test_burst_embed_points_at_the_attached_copy()
     test_button_finds_the_image_on_attachment_or_embed()
     test_image_button_offers_the_blocklist_action()

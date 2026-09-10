@@ -816,7 +816,7 @@ class ScamImageController:
             delete_error = None
             # Copied from the bytes already in hand, before the delete below
             # takes the original out of reach.
-            image_file, image_filename = await self._build_alert_image_file(attachment, body)
+            image_file, image_url = await self._build_alert_image_file(attachment, body)
             logger.warning(
                 "Scam image match kind=%s label=%s user=%s channel=%s attachment=%s",
                 match.kind,
@@ -862,7 +862,7 @@ class ScamImageController:
                 deleted=deleted,
                 delete_error=delete_error,
                 image_file=image_file,
-                image_filename=image_filename,
+                image_url=image_url,
             )
             if alert_on_burst:
                 await self._maybe_send_cross_channel_alert(message, attachment, body)
@@ -962,7 +962,7 @@ class ScamImageController:
             # cooldown used to abort the whole thing, so a burst raised while a
             # previous alert was still cooling down was neither deleted nor
             # timed out and nothing said so.
-            image_file, image_filename = await self._build_alert_image_file(attachment)
+            image_file, image_url = await self._build_alert_image_file(attachment)
             action_results = await self._apply_repeated_image_burst_actions(message, confirmed_entries)
             logger.warning(
                 "Repeated image burst by %s (%s) across %d channels [%s]: %s",
@@ -981,7 +981,7 @@ class ScamImageController:
                     match_kind=match_kind,
                     action_results=action_results,
                     image_file=image_file,
-                    image_filename=image_filename,
+                    image_url=image_url,
                 )
             finally:
                 self._suppress_image_burst_user(confirmation_key)
@@ -998,7 +998,7 @@ class ScamImageController:
         match_kind: str,
         action_results: list[str],
         image_file,
-        image_filename: Optional[str],
+        image_url: Optional[str],
     ) -> None:
         """Post the burst alert for moderators.
 
@@ -1045,7 +1045,7 @@ class ScamImageController:
             window_seconds=self.image_burst_window_seconds,
             match_kind=match_kind,
             actions=action_results,
-            image_filename=image_filename,
+            image_url=image_url,
         )
         review_role_id = await self._get_review_role_id(message.guild)
         content = f"<@&{review_role_id}> Repeated image burst detected" if review_role_id else None
@@ -1247,25 +1247,49 @@ class ScamImageController:
         just read them to hash the image, and re-downloading risks racing the
         deletion.
 
-        Returns ``(None, None)`` whenever the copy cannot be made — an alert
-        without a picture is still worth sending.
+        Returns ``(file, url)`` where the URL is what the embed should show:
+        ``attachment://`` pointing at the copy when there is one, otherwise the
+        original CDN link, which keeps working for as long as the original
+        message does. Every failure to copy is logged with its reason, because
+        a silently pictureless alert cannot be told apart from a broken one.
         """
         if attachment is None:
+            logger.warning("No attachment to copy onto the alert")
             return None, None
+
+        fallback_url = getattr(attachment, "url", None)
         if getattr(attachment, "size", 0) > self.max_attachment_bytes:
-            return None, None
+            logger.warning(
+                "Flagged image %s is %s bytes, over the %s byte copy limit",
+                attachment.filename,
+                attachment.size,
+                self.max_attachment_bytes,
+            )
+            return None, fallback_url
         if not self.manager.is_supported_image(attachment.filename):
-            return None, None
+            logger.warning("Flagged image %s is not a supported image type", attachment.filename)
+            return None, fallback_url
 
         if body is None:
-            try:
-                body = await attachment.read()
-            except (discord.HTTPException, discord.NotFound) as e:
-                logger.warning("Could not copy the flagged image onto the alert: %s", e)
-                return None, None
+            # The direct URL is signed and can expire; proxy_url (use_cached)
+            # survives that, so try both before giving up on the picture.
+            for use_cached in (False, True):
+                try:
+                    body = await attachment.read(use_cached=use_cached)
+                    break
+                except Exception as e:
+                    logger.warning(
+                        "Could not download the flagged image %s (use_cached=%s): %s: %s",
+                        attachment.filename,
+                        use_cached,
+                        type(e).__name__,
+                        e,
+                    )
+            if body is None:
+                return None, fallback_url
 
         filename = f"flagged-image{Path(attachment.filename).suffix.lower()}"
-        return discord.File(io.BytesIO(body), filename=filename), filename
+        return discord.File(io.BytesIO(body), filename=filename), f"attachment://{filename}"
 
     def _build_alert_view(self, target_id: int, context: str):
         """Ban / kick / timeout / dismiss buttons for an alert.
@@ -1313,7 +1337,7 @@ class ScamImageController:
         deleted: bool,
         delete_error: Optional[str],
         image_file=None,
-        image_filename: Optional[str] = None,
+        image_url: Optional[str] = None,
     ):
         if not message.guild:
             return
@@ -1326,7 +1350,7 @@ class ScamImageController:
             match,
             deleted=deleted,
             delete_error=delete_error,
-            image_filename=image_filename,
+            image_url=image_url,
         )
         action_view = self._build_alert_view(message.author.id, "scam image detection")
         send_kwargs = {"embed": embed, "view": action_view}
@@ -1372,13 +1396,13 @@ class ScamImageController:
         log_channel = await self._get_moderation_log_channel(message.guild)
         if not log_channel:
             return
-        image_file, image_filename = await self._build_alert_image_file(attachment, body)
+        image_file, image_url = await self._build_alert_image_file(attachment, body)
         embed = scam_cross_channel_alert_embed(
             message,
             detections,
             threshold=self.cross_channel_threshold,
             window_seconds=self.cross_channel_window_seconds,
-            image_filename=image_filename,
+            image_url=image_url,
         )
         review_role_id = await self._get_review_role_id(message.guild)
         content = f"<@&{review_role_id}> Scam image burst detected" if review_role_id else None

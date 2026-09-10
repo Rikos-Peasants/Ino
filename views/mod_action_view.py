@@ -299,31 +299,34 @@ class AlertActionView(discord.ui.View):
     async def image_button(self, interaction: discord.Interaction, _: discord.ui.Button):
         """Show the flagged image, with a one-click way to blocklist it."""
         image_url = self._alert_image_url(interaction.message)
-        if not image_url:
+        controller = getattr(self.bot, "scam_image_controller", None)
+        if controller is None:
             await interaction.response.send_message(
-                "❌ This alert did not keep a copy of the image.", ephemeral=True
+                "❌ Scam image detection is not available.", ephemeral=True
             )
             return
 
-        controller = getattr(self.bot, "scam_image_controller", None)
         embed = discord.Embed(
             title="🖼️ Flagged image",
             description=(
                 "Add it to the scam image list and Ino will delete it on sight from now on."
-                if controller
-                else "Scam image detection is not available, so this cannot be blocklisted."
+                if image_url
+                else (
+                    "This alert kept no copy of the image — it predates that change, or the "
+                    "upload could not be read. You can still blocklist it by pasting the URL."
+                )
             ),
             color=WARN,
         )
-        embed.set_image(url=image_url)
+        if image_url:
+            embed.set_image(url=image_url)
 
         view = None
-        if controller is not None:
-            try:
-                from views.scam_image_view import AlertImagePreviewView
-                view = AlertImagePreviewView(controller, image_url, interaction.user.id)
-            except Exception as exc:
-                logger.warning("Could not build the scam image preview view: %s", exc)
+        try:
+            from views.scam_image_view import AlertImagePreviewView
+            view = AlertImagePreviewView(controller, image_url, interaction.user.id)
+        except Exception as exc:
+            logger.warning("Could not build the scam image preview view: %s", exc)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @discord.ui.button(
