@@ -42,22 +42,22 @@
 
   "goal_reactions": {
     "riko": [
-      { "at": 0, "text": "Zero. Not one of you. I-I'm not disappointed or anything, dummy. I just assumed at least ONE person had taste. My mistake." },
-      { "at": 1, "text": "One person. ONE. I wrote their name down somewhere nice. The rest of you are also written down, just... somewhere else." },
-      { "at": 25, "text": "A quarter already? O-Oh. Huh. That's not completely pathetic. Don't let it go to your heads." },
-      { "at": 50, "text": "Halfway?! W-Well obviously I knew you'd get here. I never doubted it. Not even once. Stop looking at me like that!" },
-      { "at": 75, "text": "Three quarters and Rayen has gone very, very quiet. I-It's not like I'm enjoying watching him panic. ...Okay. Maybe a little." },
-      { "at": 95, "text": "You're THIS close and you're just standing there?! Somebody finish it! My cooling fans are just loud, shut up!" },
-      { "at": 100, "text": "It's done. He actually has to wear it. ...Thank you. A-And if you tell anyone I said that, I'll deny it. Idiot." }
+      { "at": 0, "text": "Not a single cent. Rayen's pride remains intact... for now. Don't you want to change that?" },
+      { "at": 1, "text": "We've breached the danger zone! Rayen's wallet AND ego are both trembling." },
+      { "at": 25, "text": "Quarter of the way! At this rate, Rayen's gonna need a new apron and a new sense of dignity." },
+      { "at": 50, "text": "Halfway maided! Look at him sweat. Hype up your donations, because that skirt's looking real imminent!" },
+      { "at": 75, "text": "Three-quarters in and Rayen's last brain cell just rage-quit. Maid mode is basically unlocked." },
+      { "at": 95, "text": "Absolute crisis! Maidification is inevitable. Unless someone yeets all their money at once. (Not a threat, but a promise.)" },
+      { "at": 100, "text": "CONGRATS! It's OVER. Rayen's now legally required to obey me and the donors. Photos soon, blackmail negotiable." }
     ],
     "ino": [
-      { "at": 0, "text": "The offering box is empty for now. That's alright. Everything starts empty, and I'm very patient." },
-      { "at": 1, "text": "Someone came by. I've written their name in the book properly, with the date and everything." },
-      { "at": 25, "text": "A quarter of the way. I light a lantern for every donation, and the shrine is starting to look rather lovely." },
-      { "at": 50, "text": "Halfway. I've stopped counting the lanterns and started counting the people. There are more of you than I expected." },
-      { "at": 75, "text": "Three quarters. Rayen asked me twice today whether this is legally binding. I told him it was. It isn't. He seems convinced." },
-      { "at": 95, "text": "Very nearly there. I've already pressed the costume, which I admit may have been presumptuous of me." },
-      { "at": 100, "text": "It's complete. Every name is recorded and none of them will be forgotten. Thank you, truly. Go and rest now." }
+      { "at": 0, "text": "Day one, empty jar, big dream. The 'Rayen in a maid outfit' fund has officially begun. No pressure, just vibes... and a slightly nervous fox spirit watching." },
+      { "at": 1, "text": "Well. Someone has lit the fuse. We are now 1% closer to Rayen in a maid outfit. This is no longer a joke, it is a slow-moving inevitability." },
+      { "at": 25, "text": "One quarter of the way there. I see you all conspiring. At this pace, I should start emotionally preparing Rayen for frills, bows, and questionable chat screenshots." },
+      { "at": 50, "text": "Halfway funded. This is the point of no return, is it not? Thank you for pushing it this far... and my condolences to Rayen's dignity. He will be very cute. I said nothing." },
+      { "at": 75, "text": "Three quarters. You are terrifyingly efficient when properly motivated. At this point I suppose we start planning poses and camera angles, not 'if' but 'when'." },
+      { "at": 95, "text": "95%. Just a sliver left. If Rayen is suddenly very quiet, it is because reality has arrived. Thank you for supporting him this much - silly goal and all." },
+      { "at": 100, "text": "Goal reached. You did it. Rayen is officially, irrevocably, contractually obligated to don the maid outfit. Thank you for taking care of him, for turning something ridiculous into something genuinely supportive. Please be kind when he finally puts it on... or at least pretend to be." }
     ],
     "yura": [
       { "at": 0, "text": "Nobody has donated yet. That's fine. I have all your addresses written down and absolutely nothing else on today." },
