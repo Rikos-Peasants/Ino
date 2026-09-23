@@ -160,6 +160,8 @@ class Config:
     # Peer-to-peer thanks
     REP_THANK_AMOUNT = get_int_env('REP_THANK_AMOUNT', 10)
     REP_THANK_DAILY_LIMIT = get_int_env('REP_THANK_DAILY_LIMIT', 3)
+    # Rep taken from anyone who tries to /thank themselves
+    REP_SELF_THANK_PENALTY = get_int_env('REP_SELF_THANK_PENALTY', 10)
     # One-off bonuses
     REP_IMAGE_POST_BONUS = get_int_env('REP_IMAGE_POST_BONUS', 3)
     REP_QUEST_COMPLETE_BONUS = get_int_env('REP_QUEST_COMPLETE_BONUS', 15)

@@ -365,6 +365,19 @@ class RepEconomy:
         if getattr(target, "bot", False):
             return {"ok": False, "error": "Bots do not need your gratitude."}
         if giver.id == target.id:
+            penalty = Config.REP_SELF_THANK_PENALTY
+            if penalty > 0:
+                await self.grant(
+                    giver,
+                    guild_id,
+                    -penalty,
+                    "Tried to thank themselves",
+                    apply_multiplier=False,
+                )
+                return {
+                    "ok": False,
+                    "error": f"Thanking yourself? Ino is unimpressed. **-{penalty} InoRep.**",
+                }
             return {"ok": False, "error": "Thanking yourself? Ino is unimpressed."}
 
         giver_id = str(giver.id)
