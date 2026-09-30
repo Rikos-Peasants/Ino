@@ -1,8 +1,11 @@
 import asyncio
+import dataclasses
+import hashlib
 import io
 import ipaddress
 import logging
 import socket
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
@@ -13,16 +16,50 @@ import discord
 from discord import app_commands
 
 from config import Config
+from views.mod_action_view import alert_is_closed
 from views.scam_image_view import (
     ScamImageAddUrlModal,
     ScamImageStatusView,
+    detection_timeline_line,
     image_burst_alert_embed,
+    image_burst_timeline_line,
+    merged_alert_embed,
+    scam_burst_timeline_line,
     scam_cross_channel_alert_embed,
     scam_detection_embed,
     signature_embed,
 )
 
 logger = logging.getLogger(__name__)
+
+# How an alert ranks when several are folded into one message: the highest
+# decides which of them heads it. Ties go to the latest.
+DETECTION_SEVERITY = 1
+BURST_SEVERITY = 2
+
+
+@dataclass
+class AlertEvent:
+    """One alert for the moderation log, before it is posted or merged."""
+
+    context: str
+    severity: int
+    embed: discord.Embed
+    line: str
+    content: Optional[str] = None
+    files: list = field(default_factory=list)
+
+
+@dataclass
+class AlertIncident:
+    """The one alert message standing for a user's recent scam activity."""
+
+    channel_id: int
+    message_id: int
+    started_at: datetime
+    pinged: bool
+    events: list = field(default_factory=list)
+    image_digests: set = field(default_factory=set)
 
 
 class ScamImageController:
@@ -62,6 +99,13 @@ class ScamImageController:
         # A media gallery holds ten; four is what fits a spam message in
         # practice without turning the mod log into a wall of pictures.
         self.max_alert_images = 4
+        # Everything about one user inside this window lands on one alert
+        # message, edited as more arrives, instead of a fresh post and ping
+        # each time. A merged alert can carry up to a full gallery.
+        self.alert_merge_minutes = getattr(Config, "SCAM_IMAGE_ALERT_MERGE_MINUTES", 30)
+        self.max_merged_alert_images = 10
+        self._alert_incidents = {}
+        self._alert_locks = {}
 
     def register_commands(self):
         group = app_commands.Group(
@@ -1065,22 +1109,21 @@ class ScamImageController:
         )
         review_role_id = await self._get_review_role_id(message.guild)
         content = f"<@&{review_role_id}> Repeated image burst detected" if review_role_id else None
-        # Ban / kick / timeout buttons so a moderator can act straight from
-        # the alert instead of copying the ID into a command.
-        action_view = self._build_alert_view(message.author.id, "repeated image burst")
-        send_kwargs = {"content": content, "embed": embed, "view": action_view}
-        if image_files:
-            send_kwargs["files"] = image_files
-
-        try:
-            await log_channel.send(**send_kwargs)
-        except discord.Forbidden:
+        event = AlertEvent(
+            context="repeated image burst",
+            severity=BURST_SEVERITY,
+            embed=embed,
+            line=image_burst_timeline_line(
+                len(confirmed_channel_ids),
+                match_kind,
+                action_results,
+                when=datetime.now(timezone.utc),
+            ),
+            content=content,
+            files=image_files,
+        )
+        if not await self._publish_alert(message, log_channel, event):
             await self._release_alert_reservation(message, reservation_token)
-            logger.warning("Missing permission to send repeated image burst alert in %s", log_channel)
-            return
-        except discord.HTTPException as e:
-            await self._release_alert_reservation(message, reservation_token)
-            logger.warning("Could not send repeated image burst alert: %s", e)
             return
 
         await asyncio.to_thread(
@@ -1375,6 +1418,225 @@ class ScamImageController:
             logger.warning("Could not build alert action view: %s", e)
             return None
 
+    def alert_lock(self, guild_id: int, user_id: int) -> asyncio.Lock:
+        """Serializes every write to one user's alert message.
+
+        A spam run posts to several channels within a second or two, and each
+        message is scanned concurrently; without this they would all find no
+        open alert and post one each. The alert buttons take it too, so a
+        moderator closing the alert and a merge cannot overwrite each other.
+        """
+        return self._alert_locks.setdefault((int(guild_id), int(user_id)), asyncio.Lock())
+
+    async def _publish_alert(self, message: discord.Message, log_channel, event: AlertEvent) -> bool:
+        """Post an alert, or fold it into the one already open for this user.
+
+        Within ``alert_merge_minutes`` of a user's first alert, everything
+        else about them edits that message instead of posting a new one, and
+        edits ping nobody. The exception is the first alert that pings: if the
+        open one went up quietly (a lone scam match does), it is sent again
+        with the ping, because an edit cannot notify anyone, and the quiet
+        copy is deleted. Once a moderator resolves or dismisses the alert, or
+        it is deleted, the next one starts afresh.
+
+        Returns whether the alert reached the channel in either form.
+        """
+        key = (message.guild.id, message.author.id)
+        self._prune_alert_incidents()
+        async with self.alert_lock(*key):
+            incident, alert_message = await self._open_alert_incident(key, log_channel)
+            if incident is not None:
+                if event.content and not incident.pinged:
+                    merged = await self._repost_alert(incident, alert_message, event, log_channel, message.author.id)
+                else:
+                    merged = await self._merge_alert(incident, alert_message, event)
+                if merged:
+                    return True
+            return await self._send_new_alert(key, log_channel, event, message.author.id)
+
+    def _prune_alert_incidents(self) -> None:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=self.alert_merge_minutes)
+        for key, incident in list(self._alert_incidents.items()):
+            if incident.started_at < cutoff:
+                del self._alert_incidents[key]
+        # A held lock is never dropped, so nobody ends up holding a lock
+        # that a later caller no longer shares.
+        for key, lock in list(self._alert_locks.items()):
+            if key not in self._alert_incidents and not lock.locked():
+                del self._alert_locks[key]
+
+    async def _open_alert_incident(self, key: tuple, log_channel):
+        """The user's alert if it can still take more, fetched fresh, else (None, None)."""
+        incident = self._alert_incidents.get(key)
+        if incident is None:
+            return None, None
+        expired = datetime.now(timezone.utc) - incident.started_at > timedelta(minutes=self.alert_merge_minutes)
+        if expired or incident.channel_id != log_channel.id:
+            self._alert_incidents.pop(key, None)
+            return None, None
+        try:
+            alert_message = await log_channel.fetch_message(incident.message_id)
+        except discord.HTTPException as e:
+            # Deleted by a moderator, most likely. Either way there is nothing
+            # left to edit.
+            logger.info("Open scam alert %s is gone (%s); posting a new one", incident.message_id, e)
+            self._alert_incidents.pop(key, None)
+            return None, None
+        if alert_is_closed(alert_message):
+            self._alert_incidents.pop(key, None)
+            return None, None
+        return incident, alert_message
+
+    async def _send_new_alert(self, key: tuple, log_channel, event: AlertEvent, user_id: int) -> bool:
+        # Hashed before sending, which leaves the file read to the end.
+        digests = {self._file_digest(image_file) for image_file in event.files}
+        # Ban / kick / timeout buttons so a moderator can act straight from
+        # the alert instead of copying the ID into a command.
+        send_kwargs = {
+            "content": event.content,
+            "embed": event.embed,
+            "view": self._build_alert_view(user_id, event.context),
+        }
+        if event.files:
+            send_kwargs["files"] = event.files
+        try:
+            alert_message = await log_channel.send(**send_kwargs)
+        except discord.Forbidden:
+            logger.warning("Missing permission to send %s alert in %s", event.context, log_channel)
+            return False
+        except discord.HTTPException as e:
+            logger.warning("Could not send %s alert: %s", event.context, e)
+            return False
+
+        self._alert_incidents[key] = AlertIncident(
+            channel_id=log_channel.id,
+            message_id=alert_message.id,
+            started_at=datetime.now(timezone.utc),
+            pinged=bool(event.content),
+            events=[dataclasses.replace(event, files=[])],
+            image_digests=digests,
+        )
+        return True
+
+    async def _merge_alert(self, incident: AlertIncident, alert_message, event: AlertEvent) -> bool:
+        """Edit ``event`` into the open alert, adding any images it lacks."""
+        events = incident.events + [event]
+        existing_image = self._embed_image_url(alert_message.embeds[0] if alert_message.embeds else None)
+        new_images = self._fresh_alert_images(
+            incident, event.files, [attachment.filename for attachment in alert_message.attachments]
+        )
+        # With the new images first; if the upload is refused (too large,
+        # most likely), the timeline still gets its line without them.
+        for images in ([new_images, []] if new_images else [[]]):
+            image_url = existing_image or (images[0][1].uri if images else None)
+            edit_kwargs = {"embed": self._incident_embed(events, image_url)}
+            if images:
+                edit_kwargs["attachments"] = [*alert_message.attachments, *(f for _, f in images)]
+            try:
+                await alert_message.edit(**edit_kwargs)
+            except discord.HTTPException as e:
+                logger.warning("Could not merge %s into scam alert %s: %s", event.context, alert_message.id, e)
+                continue
+            incident.events.append(dataclasses.replace(event, files=[]))
+            incident.image_digests.update(digest for digest, _ in images)
+            return True
+        return False
+
+    async def _repost_alert(
+        self,
+        incident: AlertIncident,
+        alert_message,
+        event: AlertEvent,
+        log_channel,
+        user_id: int,
+    ) -> bool:
+        """Send the open alert again, merged and with a ping, then drop the old one."""
+        carried = []
+        for attachment in alert_message.attachments:
+            try:
+                carried.append(await attachment.to_file())
+            except discord.HTTPException as e:
+                logger.warning("Could not carry %s over to the reposted alert: %s", attachment.filename, e)
+        new_images = self._fresh_alert_images(incident, event.files, [image_file.filename for image_file in carried])
+        files = carried + [image_file for _, image_file in new_images]
+
+        send_kwargs = {
+            "content": event.content,
+            "embed": self._incident_embed(incident.events + [event], files[0].uri if files else None),
+            "view": self._build_alert_view(user_id, event.context),
+        }
+        if files:
+            send_kwargs["files"] = files
+        try:
+            reposted = await log_channel.send(**send_kwargs)
+        except discord.HTTPException as e:
+            logger.warning("Could not repost scam alert %s with its ping: %s", alert_message.id, e)
+            return False
+        try:
+            await alert_message.delete()
+        except discord.HTTPException as e:
+            logger.warning("Could not delete superseded scam alert %s: %s", alert_message.id, e)
+
+        incident.message_id = reposted.id
+        incident.pinged = True
+        incident.events.append(dataclasses.replace(event, files=[]))
+        incident.image_digests.update(digest for digest, _ in new_images)
+        return True
+
+    def _incident_embed(self, events: list[AlertEvent], image_url: Optional[str]) -> discord.Embed:
+        headline = max(reversed(events), key=lambda event: event.severity)
+        if image_url is None:
+            # No copy survived anywhere; an original CDN link is better than nothing.
+            image_url = next(
+                (url for url in (self._embed_image_url(event.embed) for event in events) if url),
+                None,
+            )
+        return merged_alert_embed(
+            headline.embed,
+            [event.line for event in events],
+            image_url=image_url,
+            updated_at=datetime.now(timezone.utc),
+        )
+
+    @staticmethod
+    def _embed_image_url(embed: Optional[discord.Embed]) -> Optional[str]:
+        """The embed's image if it is a real link, not an attachment:// reference."""
+        url = embed.image.url if embed is not None and embed.image else None
+        return url if url and url.startswith("https://") else None
+
+    def _fresh_alert_images(self, incident: AlertIncident, files: list, existing_names: list[str]) -> list[tuple]:
+        """``(digest, file)`` for each image not already on the alert.
+
+        Renamed clear of the alert's own copies, since every alert names its
+        first image flagged-image and two of those on one message would be
+        ambiguous.
+        """
+        fresh = []
+        seen = set(incident.image_digests)
+        names = set(existing_names)
+        for image_file in files:
+            if len(names) >= self.max_merged_alert_images:
+                break
+            digest = self._file_digest(image_file)
+            if digest in seen:
+                continue
+            seen.add(digest)
+            suffix = Path(image_file.filename).suffix
+            number = len(names) + 1
+            while f"flagged-image-{number}{suffix}" in names:
+                number += 1
+            image_file.filename = f"flagged-image-{number}{suffix}"
+            names.add(image_file.filename)
+            fresh.append((digest, image_file))
+        return fresh
+
+    @staticmethod
+    def _file_digest(image_file: discord.File) -> str:
+        position = image_file.fp.tell()
+        digest = hashlib.sha256(image_file.fp.read()).hexdigest()
+        image_file.fp.seek(position)
+        return digest
+
     async def _get_moderation_log_channel(self, guild: discord.Guild):
         moderation_manager = self._get_moderation_manager()
         if not moderation_manager:
@@ -1421,16 +1683,14 @@ class ScamImageController:
             delete_error=delete_error,
             image_url=image_url,
         )
-        action_view = self._build_alert_view(message.author.id, "scam image detection")
-        send_kwargs = {"embed": embed, "view": action_view}
-        if image_files:
-            send_kwargs["files"] = image_files
-        try:
-            await log_channel.send(**send_kwargs)
-        except discord.Forbidden:
-            logger.warning("Missing permission to send scam image detection log in %s", log_channel)
-        except discord.HTTPException as e:
-            logger.warning("Could not send scam image detection log: %s", e)
+        event = AlertEvent(
+            context="scam image detection",
+            severity=DETECTION_SEVERITY,
+            embed=embed,
+            line=detection_timeline_line(message, match, deleted=deleted, when=datetime.now(timezone.utc)),
+            files=image_files or [],
+        )
+        await self._publish_alert(message, log_channel, event)
 
     async def _maybe_send_cross_channel_alert(
         self,
@@ -1489,34 +1749,32 @@ class ScamImageController:
         if not reservation_token:
             return
 
-        action_view = self._build_alert_view(message.author.id, "scam image burst")
-        send_kwargs = {"content": content, "embed": embed, "view": action_view}
-        if image_files:
-            send_kwargs["files"] = image_files
-        try:
-            await log_channel.send(**send_kwargs)
+        event = AlertEvent(
+            context="scam image burst",
+            severity=BURST_SEVERITY,
+            embed=embed,
+            line=scam_burst_timeline_line(
+                len(channel_ids),
+                self.cross_channel_window_seconds,
+                when=datetime.now(timezone.utc),
+            ),
+            content=content,
+            files=image_files,
+        )
+        if await self._publish_alert(message, log_channel, event):
             await asyncio.to_thread(
                 self.manager.mark_cross_channel_alert_sent,
                 str(message.guild.id),
                 str(message.author.id),
                 reservation_token,
             )
-        except discord.Forbidden:
+        else:
             await asyncio.to_thread(
                 self.manager.release_cross_channel_alert_reservation,
                 str(message.guild.id),
                 str(message.author.id),
                 reservation_token,
             )
-            logger.warning("Missing permission to send scam image burst alert in %s", log_channel)
-        except discord.HTTPException as e:
-            await asyncio.to_thread(
-                self.manager.release_cross_channel_alert_reservation,
-                str(message.guild.id),
-                str(message.author.id),
-                reservation_token,
-            )
-            logger.warning("Could not send scam image burst alert: %s", e)
 
     async def add_url_from_modal(self, interaction: discord.Interaction, url: str, label: str):
         await self.add_urls_from_modal(interaction, [url], label)

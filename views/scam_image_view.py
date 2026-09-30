@@ -1,5 +1,7 @@
-import discord
+import copy
 from datetime import datetime
+
+import discord
 
 
 def signature_embed(title: str, signature) -> discord.Embed:
@@ -145,6 +147,58 @@ def image_burst_alert_embed(
     if image_url:
         embed.set_image(url=image_url)
     embed.set_footer(text=f"User ID: {message.author.id}")
+    return embed
+
+
+def _timeline_stamp(when: datetime) -> str:
+    return f"<t:{int(when.timestamp())}:T>"
+
+
+def detection_timeline_line(message, match, *, deleted: bool, when: datetime) -> str:
+    label = match.label if len(match.label) <= 40 else match.label[:39] + "…"
+    outcome = "deleted" if deleted else "not deleted"
+    return f"{_timeline_stamp(when)} Scam image in {message.channel.mention} · `{match.kind}` {label} · {outcome}"
+
+
+def scam_burst_timeline_line(channel_count: int, window_seconds: int, *, when: datetime) -> str:
+    return f"{_timeline_stamp(when)} Scam images in {channel_count} channels within {window_seconds}s"
+
+
+def image_burst_timeline_line(channel_count: int, match_kind: str, actions: list[str], *, when: datetime) -> str:
+    line = f"{_timeline_stamp(when)} Same image in {channel_count} channels ({match_kind})"
+    if actions:
+        line += " · " + "; ".join(actions)
+    return line
+
+
+def merged_alert_embed(
+    headline: discord.Embed,
+    lines: list[str],
+    *,
+    image_url: str | None,
+    updated_at: datetime,
+) -> discord.Embed:
+    """One alert standing in for several about the same user.
+
+    ``headline`` is the most serious alert's own embed, shown as it would have
+    been on its own; the timeline underneath lists every alert folded into it,
+    oldest first. When the timeline outgrows a field the oldest lines give way.
+    """
+    shown = list(lines)
+
+    def render() -> str:
+        hidden = len(lines) - len(shown)
+        return "\n".join(([f"+{hidden} earlier"] if hidden else []) + shown)
+
+    while len(shown) > 1 and len(render()) > 1024:
+        shown.pop(0)
+
+    # Not headline.copy(): that shares the fields list, so every merge would
+    # leave another timeline behind on the stored headline.
+    embed = discord.Embed.from_dict(copy.deepcopy(headline.to_dict()))
+    embed.add_field(name=f"Timeline · {len(lines)} alerts", value=render()[:1024], inline=False)
+    embed.set_image(url=image_url)
+    embed.timestamp = updated_at
     return embed
 
 

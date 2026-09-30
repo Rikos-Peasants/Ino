@@ -15,6 +15,7 @@ taken from a button is recorded exactly like one taken from a command.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 from datetime import timedelta
@@ -33,6 +34,21 @@ GOOD = 0x77DD77
 
 # The one-click option the user asked for on alerts.
 ALERT_TIMEOUT = timedelta(days=7)
+
+# Field names stamped on an alert once a moderator has dealt with it. The scam
+# image controller reads them back to decide whether a new alert may still be
+# folded into this one, so keep them stable.
+RESOLVED_FIELD = "✅ Resolved"
+DISMISSED_FIELD = "✅ Dismissed"
+
+
+def alert_is_closed(message: discord.Message) -> bool:
+    """Whether a moderator already resolved or dismissed this alert."""
+    return any(
+        field.name in (RESOLVED_FIELD, DISMISSED_FIELD)
+        for embed in message.embeds
+        for field in embed.fields
+    )
 
 
 async def is_moderator(bot, member: discord.Member) -> bool:
@@ -113,6 +129,11 @@ class AlertActionView(discord.ui.View):
     """
 
     FOOTER_PATTERN = re.compile(r"User ID:\s*(\d{15,25})")
+
+    # The buttons that act on the user. Image and History only look, so they
+    # stay usable once the alert is closed: the picture is still worth seeing,
+    # and still worth blocklisting, after the ban.
+    ACTION_CUSTOM_IDS = frozenset({"alert:ban", "alert:kick", "alert:timeout", "alert:dismiss"})
 
     def __init__(self, bot, target_id: int = 0, context: str = "scam alert"):
         super().__init__(timeout=None)
@@ -210,29 +231,60 @@ class AlertActionView(discord.ui.View):
         result: ActionResult,
         duration: Optional[timedelta],
     ) -> None:
-        """Disable the buttons and stamp the alert with what was done."""
-        for item in self.children:
-            item.disabled = True
-
+        """Disable the action buttons and stamp the alert with what was done."""
         summary = result.action.title()
         if duration:
             summary += f" ({format_duration(duration)})"
 
-        embed = interaction.message.embeds[0] if interaction.message.embeds else discord.Embed()
-        embed.add_field(
-            name="✅ Resolved",
+        await self._close_alert(
+            interaction,
+            name=RESOLVED_FIELD,
             value=(
                 f"**{summary}** by {moderator.mention}\n"
                 f"DM {'delivered' if result.dm_delivered else 'not delivered'}"
             ),
-            inline=False,
+            color=GOOD,
         )
-        embed.color = GOOD
 
-        try:
-            await interaction.message.edit(embed=embed, view=self)
-        except discord.HTTPException as exc:
-            logger.warning("Could not update alert after action: %s", exc)
+    async def _close_alert(
+        self,
+        interaction: discord.Interaction,
+        *,
+        name: str,
+        value: str,
+        color: int,
+    ) -> None:
+        """Stamp the alert closed, leaving only its look-only buttons live.
+
+        Scam image alerts are edited in place as more come in for the same
+        user, so the stamp is written under the controller's lock for that
+        user, onto a fresh copy of the message. Stamping the copy the click
+        arrived with could wipe out an alert merged in since, and a merge
+        landing between the two could wipe out the stamp.
+        """
+        for item in self.children:
+            if getattr(item, "custom_id", None) in self.ACTION_CUSTOM_IDS:
+                item.disabled = True
+
+        message = interaction.message
+        controller = getattr(self.bot, "scam_image_controller", None)
+        target_id = self._target_id_from(interaction) or self.target_id
+        lock = contextlib.nullcontext()
+        if controller is not None and interaction.guild and target_id:
+            lock = controller.alert_lock(interaction.guild.id, target_id)
+
+        async with lock:
+            try:
+                message = await message.channel.fetch_message(message.id)
+            except discord.HTTPException:
+                pass
+            embed = message.embeds[0] if message.embeds else discord.Embed()
+            embed.add_field(name=name, value=value, inline=False)
+            embed.color = color
+            try:
+                await message.edit(embed=embed, view=self)
+            except discord.HTTPException as exc:
+                logger.warning("Could not update alert after %s: %s", name, exc)
 
     # ------------------------------------------------------------------
 
@@ -261,20 +313,12 @@ class AlertActionView(discord.ui.View):
     )
     async def dismiss_button(self, interaction: discord.Interaction, _: discord.ui.Button):
         await interaction.response.defer()
-        for item in self.children:
-            item.disabled = True
-
-        embed = interaction.message.embeds[0] if interaction.message.embeds else discord.Embed()
-        embed.add_field(
-            name="✅ Dismissed",
+        await self._close_alert(
+            interaction,
+            name=DISMISSED_FIELD,
             value=f"Marked as a false positive by {interaction.user.mention}.",
-            inline=False,
+            color=0x9B8F95,
         )
-        embed.color = 0x9B8F95
-        try:
-            await interaction.message.edit(embed=embed, view=self)
-        except discord.HTTPException as exc:
-            logger.warning("Could not update dismissed alert: %s", exc)
 
     @staticmethod
     def _alert_image_urls(message: Optional[discord.Message]) -> list[str]:
