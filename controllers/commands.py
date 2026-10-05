@@ -3709,7 +3709,8 @@ class CommandsController:
                         'moderation_enabled': await moderation_manager.get_moderation_setting(str(ctx.guild.id), 'moderation_enabled', False),
                         'review_role_id': await moderation_manager.get_review_role_id(str(ctx.guild.id)),
                         'admin_role_id': await moderation_manager.get_admin_role_id(str(ctx.guild.id)),
-                        'moderation_log_channel_id': await moderation_manager.get_moderation_log_channel_id(str(ctx.guild.id))
+                        'moderation_log_channel_id': await moderation_manager.get_moderation_log_channel_id(str(ctx.guild.id)),
+                        'donation_nudge_enabled': await moderation_manager.get_moderation_setting(str(ctx.guild.id), 'donation_nudge_enabled', True)
                     }
                     
                     embed = EmbedViews.moderation_config_embed(str(ctx.guild.id), settings)
@@ -3719,11 +3720,13 @@ class CommandsController:
 • `review_role` - Set role that can review flagged content
 • `admin_role` - Set role that can overrule decisions
 • `log_channel` - Set channel for moderation logs
+• `donation_nudge` - Show the donation goal under command replies (true/false)
 
 **Examples:**
 • `/modconfig enable true`
 • `/modconfig review_role @Seraphs`
 • `/modconfig log_channel #mod-logs`
+• `/modconfig donation_nudge false`
                     """
                     embed.add_field(name="💡 Usage", value=help_text, inline=False)
                     
@@ -3803,6 +3806,19 @@ class CommandsController:
                     else:
                         response = "❌ Text channel not found. Use a channel mention or channel ID."
                 
+                elif setting.lower() == 'donation_nudge':
+                    if value and value.lower() in ['true', '1', 'on', 'yes']:
+                        success = await moderation_manager.set_moderation_setting(str(ctx.guild.id), 'donation_nudge_enabled', True)
+                        response = "☕ Donation goal note under command replies **enabled**."
+                    elif value and value.lower() in ['false', '0', 'off', 'no']:
+                        success = await moderation_manager.set_moderation_setting(str(ctx.guild.id), 'donation_nudge_enabled', False)
+                        response = "☕ Donation goal note under command replies **disabled**."
+                    else:
+                        response = "❌ Invalid value. Use `true` or `false`."
+                    nudge = getattr(self.bot, 'donation_nudge', None)
+                    if success and nudge:
+                        nudge.invalidate()
+
                 else:
                     response = "❌ Unknown setting. Use `/modconfig` without parameters to see available settings."
                 

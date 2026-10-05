@@ -1158,6 +1158,10 @@ class EmbedViews:
             embed.add_field(name="📋 Log Channel", value=f"<#{log_channel_id}>", inline=True)
         else:
             embed.add_field(name="📋 Log Channel", value="❌ Not configured", inline=True)
+
+        # Donation goal note under command replies
+        nudge = settings.get('donation_nudge_enabled', True)
+        embed.add_field(name="☕ Donation Nudge", value="✅ Enabled" if nudge else "❌ Disabled", inline=True)
         
         embed.add_field(name="ℹ️ Note", value="Use `/modconfig` to change these settings.", inline=False)
         embed.set_footer(text=f"Guild ID: {guild_id}")

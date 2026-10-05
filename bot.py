@@ -89,6 +89,7 @@ class RikoBot(commands.Bot):
         # preferences recorded" and deliver anyway.
         self.notification_preferences: Optional[object] = None
         self.donation_controller: Optional[object] = None
+        self.donation_nudge: Optional[object] = None
         self.web_server: Optional[object] = None
         self.utility_controller: Optional[object] = None
         
@@ -285,6 +286,15 @@ class RikoBot(commands.Bot):
                 logger.error(f"❌ Failed to initialize donation controller: {e}")
                 self.donation_controller = None
 
+        # Goal progress and a Ko-fi button under every command reply
+        if self.donation_manager:
+            try:
+                from controllers.donation_nudge import DonationNudge
+                self.donation_nudge = DonationNudge(self)
+                logger.info("✅ Donation nudge initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize donation nudge: {e}")
+
         # Initialize the public web server (leaderboards, donations, Ko-fi hook)
         if Config.WEB_ENABLED:
             try:
@@ -318,6 +328,8 @@ class RikoBot(commands.Bot):
             if self.scam_image_controller else None,
             Registration("donation commands", self.donation_controller.register_commands)
             if self.donation_controller else None,
+            Registration("donation nudge", self.donation_nudge.register)
+            if self.donation_nudge else None,
             Registration("rep commands", RepCommandsController(self).register_commands),
             Registration("fun commands", FunCommandsController(self).register_commands),
             Registration("system commands", SystemCommandsController(self).register_commands),
