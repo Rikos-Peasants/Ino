@@ -137,12 +137,17 @@ class InoRepManager:
             logger.error(f"Error adding rep history: {e}")
 
     async def get_user_rep_history(self, user_id: str, guild_id: str, limit: int = 10) -> List[Dict]:
-        """Get a user's reputation change history"""
+        """Get a user's reputation change history, newest first"""
+        projection = {
+            "_id": 0, "amount": 1, "reason": 1, "moderator_id": 1,
+            "moderator_name": 1, "new_rep": 1, "created_at": 1,
+        }
+
         def _query():
             return list(self.inorep_history_collection.find({
                 "user_id": user_id,
                 "guild_id": guild_id
-            }).sort("created_at", DESCENDING).limit(limit))
+            }, projection).sort("created_at", DESCENDING).limit(limit))
 
         try:
             return await asyncio.to_thread(_query)

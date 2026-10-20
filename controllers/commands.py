@@ -5989,9 +5989,10 @@ class CommandsController:
                 await ctx.send("💭 **InoRep System** - Track who's been rude to Ino (just for fun!)\n\n"
                                "**Commands:**\n"
                                "• `/inorep check [@user]` - Check InoRep score\n"
+                               "• `/inorep changes` - See what raised or lowered your InoRep\n"
                                "• `/inorep statuses` - List all InoRep statuses\n"
                                "• `/inorep warn @user [amount] [reason]` - [STAFF] Warn and remove InoRep\n"
-                               "• `/inorep leaderboard [worst:True]` - View leaderboard\n"
+                               "• `/leaderboard type:inorep` - View leaderboard\n"
                                "• `/inorep add @user amount reason` - [MODS] Add rep\n"
                                "• `/inorep remove @user amount reason` - [MODS] Remove rep",
                                ephemeral=True)
@@ -6027,6 +6028,59 @@ class CommandsController:
             except Exception as e:
                 logger.error(f"Error checking InoRep: {e}")
                 await ctx.send(f"❌ Failed to check InoRep: {str(e)}", ephemeral=True)
+
+        @inorep_group.command(name='changes', description='See what raised or lowered your InoRep, grouped into a timeline')
+        @public_command
+        async def inorep_changes_cmd(ctx, user: discord.Member = None):
+            """Show recent InoRep changes, with repeats folded together
+
+            Args:
+                user: [MODERATOR] Whose changes to look at. Defaults to you.
+            """
+            from models.rep_changes import group_changes
+            from views.rep_changes_view import RepChangesView
+
+            scan_limit = 1000
+            try:
+                if not ctx.guild:
+                    await ctx.send("❌ Sorry, this bot only works in discord.gg/RayenAI")
+                    return
+
+                leaderboard_manager = self.get_leaderboard_manager()
+                if not leaderboard_manager or not leaderboard_manager.inorep_manager:
+                    await ctx.send("❌ InoRep system is not available.", ephemeral=True)
+                    return
+
+                target_user = user or ctx.author
+                # Reasons can name moderation flags, so other people's history
+                # is for staff only.
+                if target_user.id != ctx.author.id:
+                    is_mod, _ = await CommandSecurity.check_permissions(ctx, SecurityLevel.MODERATOR)
+                    if not is_mod:
+                        await ctx.send("❌ You can only look at your own InoRep changes.", ephemeral=True)
+                        return
+
+                await ctx.defer(ephemeral=True)
+                inorep = leaderboard_manager.inorep_manager
+                guild_id = str(ctx.guild.id)
+                history, current_rep = await asyncio.gather(
+                    inorep.get_user_rep_history(str(target_user.id), guild_id, limit=scan_limit),
+                    inorep.get_user_rep(str(target_user.id), guild_id),
+                )
+
+                view = RepChangesView(
+                    target=target_user,
+                    viewer_id=ctx.author.id,
+                    groups=group_changes(history),
+                    raw_count=len(history),
+                    scan_limit=scan_limit,
+                    current_rep=current_rep,
+                )
+                view.message = await ctx.send(embed=view.build_embed(), view=view, ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error showing InoRep changes: {e}", exc_info=True)
+                await ctx.send("❌ Failed to load InoRep changes.", ephemeral=True)
 
         @inorep_group.command(name='statuses', description='List all available InoRep statuses')
         @public_command

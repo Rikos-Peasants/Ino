@@ -865,6 +865,37 @@ table.board .empty { text-align: center; color: var(--ink-soft); padding: 3.5rem
 .stat-row span { color: var(--ink-soft); }
 .stat-row strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 
+/* ---------------------------------------------------------------- rep timeline
+   Grouped InoRep history: one row per run of the same kind of change. */
+.changes { list-style: none; margin: 0; padding: 0; }
+.change {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.9rem 0.25rem;
+  border-bottom: 1px solid var(--line-soft);
+}
+.change-amt {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.change--gain, .change--gain .change-amt { color: #77dd77; }
+.change--loss, .change--loss .change-amt { color: #ff6b6b; }
+.change--flat .change-amt { color: var(--ink-soft); }
+.change-what { margin: 0; color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.change-count { color: var(--ink-soft); font-weight: 500; font-variant-numeric: tabular-nums; }
+.change-meta { margin: 0.2rem 0 0; color: var(--ink-soft); font-size: 0.88rem; overflow-wrap: anywhere; }
+.changes-empty { color: var(--ink-soft); margin: 0; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1.5rem; }
+.pager:empty { display: none; }
+.pager-pos { color: var(--ink-soft); font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+@media (max-width: 620px) {
+  .change { grid-template-columns: 4rem minmax(0, 1fr); gap: 0.75rem; }
+}
+
 /* ---------------------------------------------------------------- footer
    Structured columns. The old version was one flex row of links, which on a
    phone collapsed into a cramped strip of 22px targets wrapping into itself. */

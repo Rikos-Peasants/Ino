@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InoRep changes · Ino</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="/static/img/ino-mark.png">
+<link rel="preload" href="/static/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/css/riko.css?v={{V}}">
+</head>
+<body>
+
+<!--NAV-->
+
+<main class="wrap" id="main">
+  <p class="eyebrow"><a href="/me">{{NAME}}</a></p>
+  <h1>InoRep changes</h1>
+
+  <section class="rep-card" style="--tier: {{REP_COLOR}}; margin-top:1.25rem">
+    <div class="rep-head">
+      <span class="rep-label">InoRep</span>
+      <span class="rep-value">{{REP}}</span>
+    </div>
+    <p class="rep-status">{{REP_STATUS}}</p>
+    <p class="rep-msg">Across {{SCOPE}}: <strong class="change--gain">{{GAINED}}</strong> earned,
+      <strong class="change--loss">{{LOST}}</strong> lost. Repeats in a row are folded into one line,
+      so a busy afternoon of chatting reads as one entry, not fifty.</p>
+  </section>
+
+  <section class="section">
+    <!--CHANGES-->
+    <nav class="pager" aria-label="Pages"><!--PAGER--></nav>
+  </section>
+</main>
+
+<!--FOOT-->
+<script src="/static/js/site.js?v={{V}}" defer></script>
+</body>
+</html>

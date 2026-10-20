@@ -102,6 +102,8 @@ class RepCommandsController:
                 hints.append("`/daily` is ready to claim")
             if profile["thanks_left"]:
                 hints.append(f"{profile['thanks_left']} `/thank` left today")
+            if target.id == ctx.author.id:
+                hints.append("/inorep changes shows what moved it")
             if hints:
                 embed.set_footer(text=" • ".join(hints))
 

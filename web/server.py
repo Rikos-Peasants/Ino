@@ -33,6 +33,7 @@ from web.characters import text as ctext
 from web.mailer import send_thank_you
 from web.discord_log import send_donation_log
 from web.kofi import KofiError, parse_payload
+from models.rep_changes import group_changes, summarize
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,46 @@ def _relative_time(dt: Optional[datetime]) -> str:
     return f"{seconds // 86400}d ago"
 
 
+# How far back the rep timeline reads. Grouping happens after the fetch, so
+# this is raw history rows, not timeline rows.
+REP_HISTORY_SCAN = 1000
+CHANGES_PER_PAGE = 30
+
+
+def _changes_list(groups) -> str:
+    """The grouped InoRep timeline as an ordered list."""
+    if not groups:
+        return (
+            '<p class="changes-empty">Nothing on record yet. Chat in the server, '
+            'run <code>/daily</code>, or get thanked, and it shows up here.</p>'
+        )
+    items = []
+    for group in groups:
+        tone = "gain" if group.total > 0 else "loss" if group.total < 0 else "flat"
+        count = f' <span class="change-count">&times;{group.count:,}</span>' if group.count > 1 else ""
+        meta = []
+        if group.detail_text:
+            meta.append(html.escape(group.detail_text))
+        if group.staff:
+            meta.append(f"by {html.escape(group.staff)}")
+        when = _relative_time(group.newest)
+        if when:
+            stamp = group.newest.strftime("%Y-%m-%d %H:%M UTC")
+            meta.append(f'<time datetime="{group.newest.isoformat()}" title="{stamp}">{when}</time>')
+        if group.rep_after is not None:
+            meta.append(f"now {group.rep_after:,}")
+        items.append(
+            f'<li class="change change--{tone}">'
+            f'<span class="change-amt">{html.escape(group.signed_total)}</span>'
+            f'<div class="change-body">'
+            f'<p class="change-what"><span aria-hidden="true">{group.emoji}</span> '
+            f'{html.escape(group.label)}{count}</p>'
+            f'<p class="change-meta">{" · ".join(meta)}</p>'
+            f'</div></li>'
+        )
+    return f'<ol class="changes">{"".join(items)}</ol>'
+
+
 class RikoWebServer:
     """Owns the aiohttp runner and all request handling."""
 
@@ -151,6 +192,7 @@ class RikoWebServer:
         self.app.router.add_get("/how-it-works", self.handle_how)
         self.app.router.add_get("/healthz", self.handle_health)
         self.app.router.add_get("/me", self.handle_me)
+        self.app.router.add_get("/me/changes", self.handle_me_changes)
         self.app.router.add_get("/auth/login", self.handle_login)
         self.app.router.add_get("/auth/discord", self.handle_oauth_callback)
         self.app.router.add_get("/auth/logout", self.handle_logout)
@@ -838,6 +880,8 @@ class RikoWebServer:
         user_id = user["id"]
         stats = await self._user_stats(user_id)
         rep, tier = await self._user_rep(user_id)
+        # Six rows of timeline rarely need more than a couple hundred entries.
+        groups, _ = await self._user_changes(user_id, limit=200)
 
         rows = []
         for label, value in (
@@ -880,8 +924,71 @@ class RikoWebServer:
             .replace("{{REP_MESSAGE}}", html.escape(str(tier.get("message", ""))))
             .replace("{{REP_COLOR}}", f"#{int(tier.get('color', 0xAD1457)):06x}")
             .replace("<!--STAT_ROWS-->", "\n".join(rows))
+            .replace("<!--CHANGES-->", _changes_list(groups[:6]))
         )
         return web.Response(text=page, content_type="text/html")
+
+    async def handle_me_changes(self, request: web.Request) -> web.Response:
+        """Every recent InoRep change, grouped, a page at a time."""
+        user = self._current_user(request)
+        if not user:
+            return web.HTTPFound("/auth/login")
+
+        user_id = user["id"]
+        (rep, tier), (groups, raw_count) = await asyncio.gather(
+            self._user_rep(user_id), self._user_changes(user_id)
+        )
+
+        pages = max(1, -(-len(groups) // CHANGES_PER_PAGE))
+        try:
+            page_no = min(pages, max(1, int(request.query.get("page", "1"))))
+        except ValueError:
+            page_no = 1
+        start = (page_no - 1) * CHANGES_PER_PAGE
+        gained, lost = summarize(groups)
+
+        pager = []
+        if page_no > 1:
+            pager.append(f'<a class="btn btn--ghost" href="/me/changes?page={page_no - 1}">Newer</a>')
+        if pages > 1:
+            pager.append(f'<span class="pager-pos">Page {page_no} of {pages}</span>')
+        if page_no < pages:
+            pager.append(f'<a class="btn btn--ghost" href="/me/changes?page={page_no + 1}">Older</a>')
+
+        scope = f"{raw_count:,} changes"
+        if raw_count >= REP_HISTORY_SCAN:
+            scope = f"your most recent {REP_HISTORY_SCAN:,} changes"
+
+        page = (
+            self._template("changes.html")
+            .replace("<!--NAV-->", await self._nav(request, "/me"))
+            .replace("<!--FOOT-->", self._footer(request))
+            .replace("{{NAME}}", html.escape(user["name"]))
+            .replace("{{REP}}", f"{rep:,}")
+            .replace("{{REP_STATUS}}", html.escape(str(tier.get("status", ""))))
+            .replace("{{REP_COLOR}}", f"#{int(tier.get('color', 0xAD1457)):06x}")
+            .replace("{{GAINED}}", f"+{gained:,}")
+            .replace("{{LOST}}", f"{lost:,}")
+            .replace("{{SCOPE}}", scope)
+            .replace("<!--CHANGES-->", _changes_list(groups[start:start + CHANGES_PER_PAGE]))
+            .replace("<!--PAGER-->", "".join(pager))
+        )
+        return web.Response(text=page, content_type="text/html")
+
+    async def _user_changes(self, user_id: str, limit: int = REP_HISTORY_SCAN):
+        """Grouped InoRep timeline, newest first, plus how many rows fed it."""
+        manager = self.leaderboard_manager
+        inorep = getattr(manager, "inorep_manager", None) if manager else None
+        if not inorep:
+            return [], 0
+        try:
+            history = await inorep.get_user_rep_history(
+                str(user_id), str(Config.GUILD_ID), limit=limit
+            )
+        except Exception as e:
+            logger.error(f"Error reading InoRep history for {user_id}: {e}")
+            return [], 0
+        return group_changes(history), len(history)
 
     async def _user_rep(self, user_id: str):
         """InoRep total plus the tier it falls in."""
