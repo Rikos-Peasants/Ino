@@ -437,8 +437,12 @@ class RikoBot(commands.Bot):
         # around two minutes, during which the bot ignored commands and the web
         # server took 19 seconds to answer a request that normally takes 0.2.
         # They run in the background instead and report when they finish.
-        asyncio.create_task(self.check_all_achievements_on_startup())
-        asyncio.create_task(self.scan_historical_images())
+        # on_ready fires again after every gateway re-identify; two overlapping
+        # scans both see an image as new and count it twice.
+        if not getattr(self, "_startup_scans_started", False):
+            self._startup_scans_started = True
+            asyncio.create_task(self.check_all_achievements_on_startup())
+            asyncio.create_task(self.scan_historical_images())
 
         # Send language prompt DMs to opted-in users who haven't set their languages yet
         if self.events_controller:

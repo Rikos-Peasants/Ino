@@ -13,7 +13,7 @@ from models.mod_offline_manager import ModOfflineManager
 from models.inorep_status import INOREP_TIERS
 from views.embeds import EmbedViews, PurgeConfirmationView, QuestView, QuestSelectionView
 from config import Config
-from controllers.security import CommandSecurity, SecurityLevel, public_command, moderator_command, admin_command, owner_command
+from controllers.security import CommandSecurity, SecurityLevel, public_command, moderator_command, admin_command, owner_command, nsfwban_access
 
 logger = logging.getLogger(__name__)
 
@@ -1608,7 +1608,7 @@ class CommandsController:
         
 
         @self.bot.hybrid_command(name="nsfwban", description="Ban a user from NSFW content (Admins/NSFWBAN role only)")
-        @admin_command
+        @nsfwban_access
         async def nsfwban_command(ctx, user: discord.Member, *, reason: str = "No reason provided"):
             """Ban a user from NSFW content"""
             try:
@@ -1751,7 +1751,7 @@ class CommandsController:
                     await ctx.send(embed=error_embed)
 
         @self.bot.hybrid_command(name="nsfwunban", description="Remove NSFW ban from a user (Admins/NSFWBAN role only)")
-        @admin_command
+        @nsfwban_access
         async def nsfwunban_command(ctx, user: discord.Member):
             """Remove NSFW ban from a user"""
             try:
@@ -1894,6 +1894,16 @@ class CommandsController:
                     else:
                         await ctx.send(error_msg)
                     return
+
+                # Warnings escalate to timeouts and a kick, so staff must not
+                # be able to warn someone of equal or higher rank.
+                can_modify, rank_error = await CommandSecurity.can_modify_user(ctx.author, user, self.bot)
+                if not can_modify:
+                    await ctx.send(rank_error.replace("modify the reputation of", "warn"), ephemeral=True)
+                    return
+
+                # The reason lands in embed fields, which cap at 1024 characters.
+                reason = reason[:1000]
                 
                 # Add the warning to database
                 leaderboard_manager = self.get_leaderboard_manager()
@@ -3230,6 +3240,7 @@ class CommandsController:
                 await ctx.send_help(twitch_group)
 
         @twitch_group.command(name="list", description="Show all monitored Twitch channels")
+        @owner_command
         async def twitch_list(ctx):
             """List all monitored Twitch channels"""
             try:
@@ -3297,6 +3308,7 @@ class CommandsController:
                     await ctx.send(embed=error_embed)
 
         @twitch_group.command(name="add", description="Add a Twitch channel to monitor")
+        @owner_command
         async def twitch_add(ctx, twitch_username: str, discord_channel: discord.TextChannel, role: discord.Role = None):
             """Add a Twitch channel to monitor"""
             try:
@@ -3356,6 +3368,7 @@ class CommandsController:
                     await ctx.send(embed=error_embed)
 
         @twitch_group.command(name="remove", description="Remove a Twitch channel from monitoring")
+        @owner_command
         async def twitch_remove(ctx, twitch_username: str):
             """Remove a Twitch channel from monitoring"""
             try:
@@ -3412,6 +3425,7 @@ class CommandsController:
                 await ctx.send_help(youtube_group)
 
         @youtube_group.command(name="list", description="Show all monitored YouTube channels")
+        @owner_command
         async def youtube_list(ctx):
             """List all monitored YouTube channels"""
             try:
@@ -3476,6 +3490,7 @@ class CommandsController:
                     await ctx.send(embed=error_embed)
 
         @youtube_group.command(name="add", description="Add a YouTube channel to monitor")
+        @owner_command
         async def youtube_add(ctx, youtube_channel_id: str, discord_channel: discord.TextChannel):
             """Add a YouTube channel to monitor"""
             try:
@@ -3738,6 +3753,12 @@ class CommandsController:
                 
                 # Handle setting changes
                 success = False
+
+                # Every branch below reads `value`; without one they crashed
+                # with "'NoneType' object has no attribute 'lower'".
+                if value is None:
+                    await ctx.send(f"❌ Provide a value for `{setting}`. Run `/modconfig` with no arguments for usage.", ephemeral=True)
+                    return
                 
                 if setting.lower() == 'enable':
                     if value.lower() in ['true', '1', 'on', 'yes']:
@@ -3992,6 +4013,7 @@ class CommandsController:
                         await ctx.send(embed=error_embed)
 
         @youtube_group.command(name="remove", description="Remove a YouTube channel from monitoring")
+        @owner_command
         async def youtube_remove(ctx, youtube_channel_id: str):
             """Remove a YouTube channel from monitoring"""
             try:
@@ -4041,6 +4063,7 @@ class CommandsController:
                     await ctx.send(embed=error_embed)
 
         @youtube_group.command(name="test", description="Test Ino's response to a YouTube channel's latest video")
+        @owner_command
         async def youtube_test(ctx, youtube_channel_id: str):
             """Test Ino's response generation for a YouTube channel"""
             try:
@@ -4095,6 +4118,7 @@ class CommandsController:
                     await ctx.send(embed=error_embed)
 
         @youtube_group.command(name="help", description="Show YouTube monitoring help and setup guide")
+        @owner_command
         async def youtube_help(ctx):
             """Show help for YouTube monitoring commands"""
             try:
@@ -4144,6 +4168,7 @@ class CommandsController:
                     await ctx.send(embed=error_embed)
 
         @youtube_group.command(name="validate", description="Validate a YouTube channel ID without adding it")
+        @owner_command
         async def youtube_validate(ctx, youtube_channel_id: str):
             """Validate a YouTube channel ID without adding it to monitoring"""
             try:
@@ -4563,11 +4588,13 @@ class CommandsController:
                 
                 # Get liked images from the database
                 per_page = 5
+                total_liked = await leaderboard_manager.get_user_liked_images_count(target_user.id)
+                max_pages = (total_liked + per_page - 1) // per_page
+                # Out-of-range pages came back empty and read as "no likes yet".
+                page = max(1, min(page, max(1, max_pages)))
                 skip = (page - 1) * per_page
                 
                 liked_images_data = await leaderboard_manager.get_user_liked_images(target_user.id, per_page, skip)
-                total_liked = await leaderboard_manager.get_user_liked_images_count(target_user.id)
-                max_pages = (total_liked + per_page - 1) // per_page
                 
                 liked_images = {
                     'images': liked_images_data,
@@ -6172,7 +6199,7 @@ class CommandsController:
                 )
                 
                 if not success:
-                    await ctx.send("❌ Failed to warn user.", ephemeral=True)
+                    await ctx.send("❌ No InoRep was taken. Either they have mod mode on, which makes them immune to reductions, or the database write failed.", ephemeral=True)
                     return
                 
                 # Get new rep
@@ -6284,7 +6311,7 @@ class CommandsController:
                 )
                 
                 if not success:
-                    await ctx.send("❌ Failed to remove rep.", ephemeral=True)
+                    await ctx.send("❌ No InoRep was taken. Either they have mod mode on, which makes them immune to reductions, or the database write failed.", ephemeral=True)
                     return
                 
                 # Get new rep
@@ -7068,7 +7095,7 @@ class CommandsController:
                     from views.art_challenge_view import ArtChallengeEmbed
                     embed = ArtChallengeEmbed.create_submission_result_embed(result, ctx.author)
                     # Send and schedule deletion after 1 minute
-                    msg = await ctx.followup.send(embed=embed, wait=True)
+                    msg = await ctx.send(embed=embed)
                     asyncio.create_task(self._delete_after(msg, 60))
                     
                     # Award general points if verified (art challenge leaderboard is updated in submit_entry)
@@ -7085,17 +7112,14 @@ class CommandsController:
                             )
                             logger.info(f"Awarded {points} general points to {ctx.author.display_name} for art challenge")
                 else:
-                    await ctx.followup.send(f"❌ {result.get('error', 'Failed to submit entry')}", ephemeral=True)
+                    await ctx.send(f"❌ {result.get('error', 'Failed to submit entry')}", ephemeral=True)
                 
             except Exception as e:
-                logger.error(f"Error in artsubmit command: {e}")
-                if ctx.interaction and not ctx.interaction.response.is_done():
+                logger.error(f"Error in artsubmit command: {e}", exc_info=True)
+                try:
                     await ctx.send("❌ An error occurred.", ephemeral=True)
-                else:
-                    try:
-                        await ctx.followup.send("❌ An error occurred.", ephemeral=True)
-                    except:
-                        pass
+                except discord.HTTPException:
+                    pass
 
         # ==================== CHALLENGE MODE (1v1 DUELS) ====================
 

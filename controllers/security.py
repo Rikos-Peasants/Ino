@@ -258,3 +258,25 @@ def admin_command(func):
 def owner_command(func):
     """Decorator for owner-only commands"""
     return CommandSecurity.require_security_level(SecurityLevel.OWNER)(func)
+def nsfwban_access(func):
+    """Decorator for /nsfwban and /nsfwunban: owners, admins, or the NSFWBAN role.
+
+    Narrower than moderator_command on purpose: Manage Server alone is not
+    enough, but the dedicated role is, which admin_command did not allow.
+    """
+    @wraps(func)
+    async def wrapper(ctx, *args, **kwargs):
+        author = ctx.author
+        allowed = await ctx.bot.is_owner(author) or (
+            isinstance(author, discord.Member)
+            and (
+                author.guild_permissions.administrator
+                or author.get_role(Config.NSFWBAN_MODERATOR_ROLE_ID) is not None
+            )
+        )
+        if not allowed:
+            await ctx.send("You need **Administrator** or the NSFWBAN moderator role to use this command.", ephemeral=True)
+            return
+        return await func(ctx, *args, **kwargs)
+
+    return wrapper

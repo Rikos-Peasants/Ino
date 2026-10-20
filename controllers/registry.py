@@ -87,15 +87,19 @@ class CommandSyncer:
     def fingerprint(self) -> str:
         """Hash everything Discord would care about in the command payload.
 
-        Name, description, and the full parameter list, so a renamed argument or
-        a changed description still triggers a sync — but an unchanged restart
-        does not.
+        Uses the exact payload discord.py sends, so choices, min/max values,
+        default permissions and the like count as changes too — a hand-picked
+        subset missed those and skipped syncs that were needed. An unchanged
+        restart still hashes the same.
         """
         entries = []
         for command in sorted(self.bot.tree.get_commands(), key=lambda c: c.name):
-            entries.append(self._describe(command))
+            try:
+                entries.append(command.to_dict(self.bot.tree))
+            except Exception:
+                entries.append(self._describe(command))
 
-        blob = json.dumps(entries, sort_keys=True, ensure_ascii=False)
+        blob = json.dumps(entries, sort_keys=True, ensure_ascii=False, default=str)
         return hashlib.sha256(blob.encode()).hexdigest()
 
     def _describe(self, command: Any) -> dict[str, Any]:

@@ -437,8 +437,10 @@ class ModerationActions:
 
     async def get_log_channel(self, guild: discord.Guild):
         """The configured moderation log channel, if there is one."""
-        events = getattr(self.bot, "events_controller", None)
-        manager = getattr(events, "moderation_manager", None) if events else None
+        # The moderation manager hangs off the leaderboard manager; the events
+        # controller never had one, so looking there meant no action was logged.
+        leaderboard = getattr(self.bot, "leaderboard_manager", None)
+        manager = getattr(leaderboard, "moderation_manager", None) if leaderboard else None
         if manager:
             try:
                 channel_id = await manager.get_moderation_log_channel_id(str(guild.id))

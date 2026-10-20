@@ -2254,6 +2254,7 @@ def add_profile_embeds():
     @staticmethod
     def bookmarks_embed(bookmarks, user_name):
         """Create an embed for user bookmarks"""
+        from config import Config
         embed = discord.Embed(
             title=f"📚 {user_name}'s Bookmarks",
             description=f"You have **{len(bookmarks)}** bookmarked images",
@@ -2262,8 +2263,13 @@ def add_profile_embeds():
         )
         
         for idx, bookmark in enumerate(bookmarks[:10], 1):
-            message_url = f"https://discord.com/channels/{bookmark.get('guild_id', '@me')}/{bookmark.get('channel_id', '0')}/{bookmark.get('message_id', '0')}"
-            bookmarked_at = bookmark.get('bookmarked_at', datetime.utcnow())
+            # Bookmarks store jump_url and created_at; there is no guild_id,
+            # so building the link by hand pointed every one at /@me/.
+            message_url = bookmark.get('jump_url') or (
+                f"https://discord.com/channels/{Config.GUILD_ID}/"
+                f"{bookmark.get('channel_id', '0')}/{bookmark.get('message_id', '0')}"
+            )
+            bookmarked_at = bookmark.get('created_at') or bookmark.get('bookmarked_at')
             time_str = bookmarked_at.strftime("%Y-%m-%d") if isinstance(bookmarked_at, datetime) else "Unknown"
             
             embed.add_field(

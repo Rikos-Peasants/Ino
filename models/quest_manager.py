@@ -3,8 +3,8 @@ import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Union
 import logging
-from pymongo import MongoClient, DESCENDING
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from pymongo import MongoClient, DESCENDING, ReturnDocument
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError, DuplicateKeyError
 from pymongo.collection import Collection
 from pymongo.database import Database
 import random
@@ -332,6 +332,7 @@ class QuestManager:
                 "category": "special",
                 "difficulty": "hard",
                 "target_count": 1,
+                "min_likes": 6,  # likes one image needs to count
                 "reward_points": 50,
                 "rarity_chance": 0.45,  # 45% chance
                 "is_daily": True
@@ -404,6 +405,7 @@ class QuestManager:
                 "category": "special",
                 "difficulty": "very_hard",
                 "target_count": 1,
+                "min_likes": 10,  # likes one image needs to count
                 "reward_points": 85,
                 "rarity_chance": 0.25,  # 25% chance
                 "is_daily": True
@@ -505,6 +507,7 @@ class QuestManager:
                 "category": "engagement",
                 "difficulty": "easy",
                 "target_count": 1,
+                "min_likes": 3,  # likes one image needs to count
                 "reward_points": 22,
                 "rarity_chance": 0.8,
                 "is_daily": True
@@ -517,6 +520,7 @@ class QuestManager:
                 "category": "engagement",
                 "difficulty": "medium",
                 "target_count": 1,
+                "min_likes": 5,  # likes one image needs to count
                 "reward_points": 38,
                 "rarity_chance": 0.6,
                 "is_daily": True
@@ -529,6 +533,7 @@ class QuestManager:
                 "category": "engagement",
                 "difficulty": "hard",
                 "target_count": 1,
+                "min_likes": 8,  # likes one image needs to count
                 "reward_points": 60,
                 "rarity_chance": 0.4,
                 "is_daily": True
@@ -541,6 +546,7 @@ class QuestManager:
                 "category": "engagement",
                 "difficulty": "very_hard",
                 "target_count": 1,
+                "min_likes": 12,  # likes one image needs to count
                 "reward_points": 95,
                 "rarity_chance": 0.2,
                 "is_daily": True
@@ -804,6 +810,7 @@ class QuestManager:
                 "category": "special",
                 "difficulty": "very_hard",
                 "target_count": 1,
+                "min_likes": 4,  # likes one image needs to count
                 "reward_points": 56,
                 "rarity_chance": 0.55,
                 "is_daily": True
@@ -816,6 +823,7 @@ class QuestManager:
                 "category": "special",
                 "difficulty": "hard",
                 "target_count": 1,
+                "min_likes": 7,  # likes one image needs to count
                 "reward_points": 55,
                 "rarity_chance": 0.4,
                 "is_daily": True
@@ -1805,9 +1813,9 @@ class QuestManager:
             
             for quest in quests_to_check:
                 if quest["current_count"] >= quest["target_count"]:
-                    # Mark quest as completed
-                    self.user_quests_collection.update_one(
-                        {"_id": quest["_id"]},
+                    # Mark quest as completed (guarded so a concurrent call can't complete it twice)
+                    result = self.user_quests_collection.update_one(
+                        {"_id": quest["_id"], "completed": False},
                         {
                             "$set": {
                                 "completed": True,
@@ -1815,7 +1823,8 @@ class QuestManager:
                             }
                         }
                     )
-                    completed_quests.append(quest)
+                    if result.modified_count == 1:
+                        completed_quests.append(quest)
             
             # Update streak if any quest was completed
             if completed_quests:
@@ -1909,8 +1918,8 @@ class QuestManager:
             
             for quest in quests_to_check:
                 if quest["current_count"] >= quest["target_count"]:
-                    self.user_quests_collection.update_one(
-                        {"_id": quest["_id"]},
+                    result = self.user_quests_collection.update_one(
+                        {"_id": quest["_id"], "completed": False},
                         {
                             "$set": {
                                 "completed": True,
@@ -1918,8 +1927,9 @@ class QuestManager:
                             }
                         }
                     )
-                    completed_quests.append(quest)
-                    logger.info(f"User {user_id} completed diverse_reactions quest! ({unique_count} unique users)")
+                    if result.modified_count == 1:
+                        completed_quests.append(quest)
+                        logger.info(f"User {user_id} completed diverse_reactions quest! ({unique_count} unique users)")
             
             if completed_quests:
                 self._sync_update_quest_streak(user_id)
@@ -2027,8 +2037,8 @@ class QuestManager:
             
             for quest in quests_to_check:
                 if quest["current_count"] >= quest["target_count"]:
-                    self.user_quests_collection.update_one(
-                        {"_id": quest["_id"]},
+                    result = self.user_quests_collection.update_one(
+                        {"_id": quest["_id"], "completed": False},
                         {
                             "$set": {
                                 "completed": True,
@@ -2036,8 +2046,9 @@ class QuestManager:
                             }
                         }
                     )
-                    completed_quests.append(quest)
-                    logger.info(f"User {user_id} completed explore_channels quest! ({channel_count} channels)")
+                    if result.modified_count == 1:
+                        completed_quests.append(quest)
+                        logger.info(f"User {user_id} completed explore_channels quest! ({channel_count} channels)")
             
             if completed_quests:
                 self._sync_update_quest_streak(user_id)
@@ -2053,199 +2064,80 @@ class QuestManager:
         return await asyncio.to_thread(self._sync_track_viral_image, user_id, message_id, like_count)
 
     def _sync_track_viral_image(self, user_id: int, message_id: str, like_count: int) -> List[Dict]:
-        """Track viral images (15+ likes) for the 'viral_image' quest"""
-        try:
-            today = datetime.now().date()
-            tracking_key = f"viral_images_{today.isoformat()}"
-            
-            # Get or create tracking document for today
-            track_doc = self.user_stats_collection.find_one({
-                "user_id": str(user_id),
-                "tracking_key": tracking_key
-            })
-            
-            viral_messages = []
-            if not track_doc:
-                # Create new tracking document
-                track_doc = {
-                    "user_id": str(user_id),
-                    "tracking_key": tracking_key,
-                    "viral_message_ids": [message_id],
-                    "viral_count": 1,
-                    "created_at": datetime.now()
-                }
-                self.user_stats_collection.insert_one(track_doc)
-                viral_count = 1
-            else:
-                # Check if this message was already tracked as viral today
-                viral_messages = track_doc.get("viral_message_ids", [])
-                if message_id not in viral_messages:
-                    viral_messages.append(message_id)
-                    viral_count = len(viral_messages)
-                    
-                    self.user_stats_collection.update_one(
-                        {"_id": track_doc["_id"]},
-                        {
-                            "$set": {
-                                "viral_message_ids": viral_messages,
-                                "viral_count": viral_count
-                            }
-                        }
-                    )
-                else:
-                    return []  # Already tracked this viral image today
-            
-            # Update the viral_image quest
-            result = self.user_quests_collection.update_many(
-                {
-                    "user_id": str(user_id),
-                    "quest_type": "viral_image",
-                    "date": today.isoformat(),
-                    "completed": False
-                },
-                {"$set": {"current_count": viral_count}}
-            )
-            
-            # Check for completed quests
-            completed_quests = []
-            quests_to_check = self.user_quests_collection.find({
-                "user_id": str(user_id),
-                "quest_type": "viral_image",
-                "date": today.isoformat(),
-                "completed": False
-            })
-            
-            for quest in quests_to_check:
-                if quest["current_count"] >= quest["target_count"]:
-                    self.user_quests_collection.update_one(
-                        {"_id": quest["_id"]},
-                        {
-                            "$set": {
-                                "completed": True,
-                                "completed_at": datetime.now()
-                            }
-                        }
-                    )
-                    completed_quests.append(quest)
-                    logger.info(f"User {user_id} completed viral_image quest! (Image got {like_count} likes)")
-            
-            if completed_quests:
-                self._sync_update_quest_streak(user_id)
-            
-            return completed_quests
-            
-        except Exception as e:
-            logger.error(f"Error tracking viral image: {e}")
-            return []
+        """Track 'viral_image' quests ("Get N likes on a single image").
+
+        Safe to call on every like change: each quest only advances once the
+        image reaches that quest's own min_likes, and only once per image.
+        """
+        return self._sync_track_like_threshold_quests(user_id, "viral_image", message_id, like_count)
     
-    async def track_quality_post(self, user_id: int, message_id: str, like_count: int, min_likes: int) -> List[Dict]:
+    async def track_quality_post(self, user_id: int, message_id: str, like_count: int, min_likes: Optional[int] = None) -> List[Dict]:
         """Runs the blocking implementation on a worker thread."""
         return await asyncio.to_thread(self._sync_track_quality_post, user_id, message_id, like_count, min_likes)
 
-    def _sync_track_quality_post(self, user_id: int, message_id: str, like_count: int, min_likes: int) -> List[Dict]:
-        """Track quality posts (images with specific minimum likes) for the 'quality_post' quest
-        
+    def _sync_track_quality_post(self, user_id: int, message_id: str, like_count: int, min_likes: Optional[int] = None) -> List[Dict]:
+        """Track 'quality_post' quests ("Post 1 image with at least N likes").
+
+        Safe to call on every like change: each quest only advances once the
+        image reaches that quest's own min_likes, and only once per image.
+
         Args:
             user_id: ID of the user who posted the image
             message_id: ID of the message containing the image
             like_count: Current number of likes on the image
-            min_likes: Minimum number of likes required for the quest
-            
+            min_likes: Ignored. Each quest's threshold comes from its definition;
+                kept so older callers still work.
+
         Returns:
             List of completed quests
         """
+        return self._sync_track_like_threshold_quests(user_id, "quality_post", message_id, like_count)
+
+    def _sync_track_like_threshold_quests(self, user_id: int, quest_type: str, message_id: str, like_count: int) -> List[Dict]:
+        """Advance today's quests of quest_type whose min_likes this image has reached.
+
+        Counted images are stored on the quest itself (counted_message_ids), and
+        the push is guarded on the id being absent, so one image advances a
+        given quest at most once even when likes arrive concurrently.
+        """
         try:
             today = datetime.now().date()
-            tracking_key = f"quality_posts_{min_likes}likes_{today.isoformat()}"
-            
-            # Get or create tracking document for today
-            track_doc = self.user_stats_collection.find_one({
-                "user_id": str(user_id),
-                "tracking_key": tracking_key
-            })
-            
-            quality_messages = []
-            if not track_doc:
-                # Create new tracking document
-                track_doc = {
-                    "user_id": str(user_id),
-                    "tracking_key": tracking_key,
-                    "quality_message_ids": [message_id],
-                    "quality_count": 1,
-                    "min_likes": min_likes,
-                    "created_at": datetime.now()
-                }
-                try:
-                    self.user_stats_collection.insert_one(track_doc)
-                    quality_count = 1
-                except Exception:
-                    # Race condition: document was created by another process
-                    track_doc = self.user_stats_collection.find_one({
-                        "user_id": str(user_id),
-                        "tracking_key": tracking_key
-                    })
-                    if track_doc:
-                        quality_messages = track_doc.get("quality_message_ids", [])
-                        if message_id not in quality_messages:
-                            quality_messages.append(message_id)
-                            quality_count = len(quality_messages)
-                            self.user_stats_collection.update_one(
-                                {"_id": track_doc["_id"]},
-                                {
-                                    "$set": {
-                                        "quality_message_ids": quality_messages,
-                                        "quality_count": quality_count
-                                    }
-                                }
-                            )
-                        else:
-                            return []  # Already tracked this quality post today
-                    else:
-                        quality_count = 1
-            else:
-                # Check if this message was already tracked as quality post today
-                quality_messages = track_doc.get("quality_message_ids", [])
-                if message_id not in quality_messages:
-                    quality_messages.append(message_id)
-                    quality_count = len(quality_messages)
-                    
-                    self.user_stats_collection.update_one(
-                        {"_id": track_doc["_id"]},
-                        {
-                            "$set": {
-                                "quality_message_ids": quality_messages,
-                                "quality_count": quality_count
-                            }
-                        }
-                    )
-                else:
-                    return []  # Already tracked this quality post today
-            
-            # Update the quality_post quest
-            result = self.user_quests_collection.update_many(
-                {
-                    "user_id": str(user_id),
-                    "quest_type": "quality_post",
-                    "date": today.isoformat(),
-                    "completed": False
-                },
-                {"$set": {"current_count": quality_count}}
-            )
-            logger.debug(f"Updated {result.modified_count} quality_post quest(s) for user {user_id}")
-            
-            # Check for completed quests
+            thresholds = {q["quest_id"]: q.get("min_likes") for q in self.daily_quests}
+
             completed_quests = []
             quests_to_check = self.user_quests_collection.find({
                 "user_id": str(user_id),
-                "quest_type": "quality_post",
+                "quest_type": quest_type,
                 "date": today.isoformat(),
                 "completed": False
             })
-            
+
             for quest in quests_to_check:
-                if quest["current_count"] >= quest["target_count"]:
-                    self.user_quests_collection.update_one(
-                        {"_id": quest["_id"]},
+                min_likes = thresholds.get(quest.get("quest_id"))
+                if min_likes is None:
+                    logger.warning(f"No min_likes defined for {quest_type} quest {quest.get('quest_id')}, skipping")
+                    continue
+                if like_count < min_likes:
+                    continue
+
+                updated = self.user_quests_collection.find_one_and_update(
+                    {
+                        "_id": quest["_id"],
+                        "completed": False,
+                        "counted_message_ids": {"$ne": message_id}
+                    },
+                    {
+                        "$addToSet": {"counted_message_ids": message_id},
+                        "$inc": {"current_count": 1}
+                    },
+                    return_document=ReturnDocument.AFTER
+                )
+                if not updated:
+                    continue  # Already counted this image, or completed meanwhile
+
+                if updated["current_count"] >= updated["target_count"]:
+                    result = self.user_quests_collection.update_one(
+                        {"_id": quest["_id"], "completed": False},
                         {
                             "$set": {
                                 "completed": True,
@@ -2253,8 +2145,9 @@ class QuestManager:
                             }
                         }
                     )
-                    completed_quests.append(quest)
-                    logger.info(f"User {user_id} completed quality_post quest! (Image got {like_count} likes, needed {min_likes})")
+                    if result.modified_count == 1:
+                        completed_quests.append(updated)
+                        logger.info(f"User {user_id} completed {quest_type} quest {quest.get('quest_id')}! (Image got {like_count} likes, needed {min_likes})")
             
             if completed_quests:
                 self._sync_update_quest_streak(user_id)
@@ -2262,7 +2155,7 @@ class QuestManager:
             return completed_quests
             
         except Exception as e:
-            logger.error(f"Error tracking quality post: {e}")
+            logger.error(f"Error tracking {quest_type} quest: {e}")
             return []
     
     async def get_user_total_quest_points(self, user_id: int) -> int:
@@ -2499,9 +2392,12 @@ class QuestManager:
                         "icon": achievement.get("icon", "🏆")
                     }
                     
-                    await asyncio.to_thread(
-                        self.user_achievements_collection.insert_one, achievement_record
-                    )
+                    try:
+                        await asyncio.to_thread(
+                            self.user_achievements_collection.insert_one, achievement_record
+                        )
+                    except DuplicateKeyError:
+                        continue  # A concurrent check already awarded it
                     new_achievements.append(achievement_record)
             
             # Only log if achievements were actually awarded

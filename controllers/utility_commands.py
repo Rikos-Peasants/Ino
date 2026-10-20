@@ -47,6 +47,13 @@ MAX_REMINDERS_PER_USER = 10
 MAX_POLL_OPTIONS = 5
 
 
+def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """pymongo returns naive datetimes that are already UTC."""
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
 class PollView(discord.ui.View):
     """Button voting with live counts. One vote per person, changeable."""
 
@@ -579,6 +586,12 @@ class UtilityCommandsController:
         if self.afk is None or not message.guild or message.author.bot:
             return
 
+        # Commands run before this, so on `R!afk` itself the record was just
+        # written; clearing it here would undo the command straight away.
+        ctx = await self.bot.get_context(message)
+        if ctx.valid and ctx.command and ctx.command.name == "afk":
+            return
+
         guild_id = str(message.guild.id)
         silent = discord.AllowedMentions.none()
 
@@ -588,7 +601,7 @@ class UtilityCommandsController:
                 {"user_id": str(message.author.id), "guild_id": guild_id},
             )
             if own:
-                since = own.get("since")
+                since = _as_utc(own.get("since"))
                 away = ""
                 if since:
                     away = f" You were away for {format_duration(datetime.now(timezone.utc) - since)}."
@@ -611,7 +624,7 @@ class UtilityCommandsController:
                 )
                 if not entry:
                     continue
-                since = entry.get("since")
+                since = _as_utc(entry.get("since"))
                 ago = f" (<t:{int(since.timestamp())}:R>)" if since else ""
                 name = discord.utils.escape_markdown(mentioned.display_name)[:32]
                 away_names.append(f"**{name}**{ago}")

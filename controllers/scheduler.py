@@ -2,11 +2,18 @@ import discord
 from discord.ext import commands, tasks
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, time as dtime, timedelta, timezone
 from typing import Optional, Tuple, List, Union, Any
 from config import Config
 from models.notification_preferences import should_dm
 from views.embeds import EmbedViews
+
+_JUST_AFTER_MIDNIGHT = dtime(hour=0, minute=1, tzinfo=timezone.utc)
+
+
+def _utcnow_naive() -> datetime:
+    """Naive UTC, to compare against the naive UTC datetimes pymongo returns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 logger = logging.getLogger(__name__)
 
@@ -121,21 +128,23 @@ class SchedulerController:
         if self.check_debuffs.is_running():
             self.check_debuffs.cancel()
     
-    @tasks.loop(hours=24)  # Check daily
+    # A plain 24h loop ticks at whatever hour the bot happened to start, so the
+    # midnight checks below almost never passed. Pin the runs to just after
+    # midnight UTC instead.
+    @tasks.loop(time=_JUST_AFTER_MIDNIGHT)
     async def weekly_best_image(self):
         """Post the best image of the week every Sunday"""
         try:
-            now = datetime.now()
+            now = _utcnow_naive()
             logger.debug(f"Weekly best image task check: {now.strftime('%A %Y-%m-%d %H:%M')} (weekday: {now.weekday()}, hour: {now.hour})")
             
             # Check if it's Sunday (weekday 6) AND it's around midnight to avoid running multiple times
             if now.weekday() == 6 and now.hour == 0:  # Sunday at midnight
                 logger.info("✅ Starting weekly best image selection...")
                 
-                # Get the date range for the PREVIOUS complete week (Monday to Sunday)
-                # Sunday is the end of the week, so we want last Monday to last Sunday
+                # The seven full days before today: last Sunday through yesterday
                 end_date = now.replace(hour=0, minute=0, second=0, microsecond=0)  # Start of today (Sunday)
-                start_date = end_date - timedelta(days=6)  # Monday of last week
+                start_date = end_date - timedelta(days=7)  # Last Sunday; the query's end is exclusive
                 
                 logger.info(f"Looking for best images from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
                 
@@ -146,11 +155,11 @@ class SchedulerController:
         except Exception as e:
             logger.error(f"Error in weekly best image task: {e}")
     
-    @tasks.loop(hours=24)  # Check daily
+    @tasks.loop(time=_JUST_AFTER_MIDNIGHT)
     async def monthly_best_image(self):
         """Post the best image of the month on the first day of each month"""
         try:
-            now = datetime.now()
+            now = _utcnow_naive()
             # Check if it's the first day of the month AND it's around midnight
             if now.day == 1 and now.hour == 0:
                 logger.info("Starting monthly best image selection...")
@@ -171,11 +180,11 @@ class SchedulerController:
         except Exception as e:
             logger.error(f"Error in monthly best image task: {e}")
     
-    @tasks.loop(hours=24)  # Check daily
+    @tasks.loop(time=_JUST_AFTER_MIDNIGHT)
     async def yearly_best_image(self):
         """Post the best image of the year on the first day of January"""
         try:
-            now = datetime.now()
+            now = _utcnow_naive()
             # Check if it's the first day of January AND it's around midnight
             if now.month == 1 and now.day == 1 and now.hour == 0:
                 logger.info("Starting yearly best image selection...")
@@ -339,17 +348,11 @@ class SchedulerController:
     async def before_weekly_task(self):
         """Wait until the bot is ready before starting weekly task"""
         await self.bot.wait_until_ready()
-        # Add a small delay to prevent immediate execution on startup
-        import asyncio
-        await asyncio.sleep(60)  # Wait 1 minute after bot is ready
     
     @monthly_best_image.before_loop
     async def before_monthly_task(self):
         """Wait until the bot is ready before starting monthly task"""
         await self.bot.wait_until_ready()
-        # Add a small delay to prevent immediate execution on startup
-        import asyncio
-        await asyncio.sleep(60)  # Wait 1 minute after bot is ready
     
     @tasks.loop(hours=1)  # Check every hour
     async def check_expired_events(self):
@@ -403,9 +406,6 @@ class SchedulerController:
     async def before_yearly_task(self):
         """Wait until the bot is ready before starting yearly task"""
         await self.bot.wait_until_ready()
-        # Add a small delay to prevent immediate execution on startup
-        import asyncio
-        await asyncio.sleep(60)  # Wait 1 minute after bot is ready
     
     @check_expired_events.before_loop
     async def before_expired_events_task(self):

@@ -14,7 +14,7 @@ import logging
 import asyncio
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import Counter
 from typing import Dict, List, Optional, Set
 
@@ -35,10 +35,6 @@ def _with_opt_out_hint(embed: discord.Embed) -> discord.Embed:
     return embed.set_footer(text=OPT_OUT_HINT)
 
 
-# Quest tracking constants
-QUALITY_POST_MIN_LIKES = 4  # Minimum likes for "Quality Control (Expert)" quest
-TRENDING_POST_MIN_LIKES = 7  # Minimum likes for "Trending Creator" quest
-VIRAL_IMAGE_MIN_LIKES = 15  # Minimum likes for "viral_image" quest
 AI_MODERATION_TIMEOUT_THRESHOLD = 0.85  # 85% confidence required for auto-timeout
 AI_MODERATION_TIMEOUT_DURATION = timedelta(minutes=5)
 INO_INSULT_ROAST_CHANCE = 5
@@ -1734,6 +1730,15 @@ class EventsController:
         recent_messages.append(now)
         self._repeated_message_history[key] = recent_messages
 
+        # Keys are per distinct message, so without a sweep every message
+        # anyone ever sent stayed in memory until the process restarted.
+        if len(self._repeated_message_history) > 5000:
+            self._repeated_message_history = {
+                history_key: stamps
+                for history_key, stamps in self._repeated_message_history.items()
+                if stamps and stamps[-1] > cutoff
+            }
+
         if len(recent_messages) < REPEATED_MESSAGE_SPAM_LIMIT:
             return False
 
@@ -1837,7 +1842,9 @@ class EventsController:
                 # Before timing out, check if the target has replied in the channel.
                 # Use a wider lookback (10 min) so conversations that started before
                 # the 2-minute spam window are still detected as legitimate.
-                conversation_since = now - timedelta(minutes=10)
+                # discord.py reads a naive datetime as local time, so pass an
+                # aware one or the window shifts on any non-UTC host.
+                conversation_since = datetime.now(timezone.utc) - timedelta(minutes=10)
                 if await self._has_target_replied(message.channel, target_id, author_id, conversation_since):
                     logger.info(
                         f"Ping spam check: {message.author.display_name} pinged user {target_id} "
@@ -2716,14 +2723,10 @@ class EventsController:
             elif str(reaction.emoji) == '👎':
                 score_change = -1 if added else 1
             
-            # Track the user reaction (for scoring channels)
-            await self.bot.leaderboard_manager.track_user_reaction(
-                user_id=user.id,
-                message_id=str(message.id),
-                emoji=str(reaction.emoji),
-                added=added
-            )
-            
+            # The reaction itself and the quest progress it earns were already
+            # recorded by _register_image_reaction_immediately; repeating them
+            # here counted every vote twice.
+
             # Update the leaderboard for the image author
             if score_change != 0:
                 self.bot.leaderboard_manager.update_image_score(
@@ -2758,20 +2761,6 @@ class EventsController:
                     thumbs_up=thumbs_up,
                     thumbs_down=thumbs_down
                 )
-                
-                # Update quest progress for earning likes (for image author)
-                if str(reaction.emoji) == '👍' and added:
-                    await self._update_quest_progress_likes(message.author, message, thumbs_up)
-                
-                # Update quest progress for rating images (for the person who reacted)
-                # Only track when reaction is ADDED, not removed
-                if added:
-                    await self._update_quest_progress_rating(user, message)
-                    
-                    # Update quest progress for giving likes (for the person who reacted)
-                    # Only track thumbs up reactions when ADDED
-                    if str(reaction.emoji) == '👍':
-                        await self._update_quest_progress_giving_likes(user, message)
                 
                 action = "added" if added else "removed"
                 logger.info(f"Reaction {action}: {reaction.emoji} on {message.author.display_name}'s image (score change: {score_change:+d}), thumbs_up: {thumbs_up}, thumbs_down: {thumbs_down}")
@@ -3038,34 +3027,19 @@ class EventsController:
                 count=1
             )
             
-            # Check for "viral_image" quest (15+ likes on a single image)
-            if thumbs_up_count >= VIRAL_IMAGE_MIN_LIKES:
-                viral_completed = await self.quest_manager.track_viral_image(
-                    user_id=user.id,
-                    message_id=str(message.id),
-                    like_count=thumbs_up_count
-                )
-                completed_quests.extend(viral_completed)
-            
-            # Check for "quality_post" quest (4+ likes on a single image) - Quality Control (Expert)
-            if thumbs_up_count >= QUALITY_POST_MIN_LIKES:
-                quality_completed = await self.quest_manager.track_quality_post(
-                    user_id=user.id,
-                    message_id=str(message.id),
-                    like_count=thumbs_up_count,
-                    min_likes=QUALITY_POST_MIN_LIKES
-                )
-                completed_quests.extend(quality_completed)
-            
-            # Check for "quality_post" quest (7+ likes on a single image) - Trending Creator
-            if thumbs_up_count >= TRENDING_POST_MIN_LIKES:
-                trending_completed = await self.quest_manager.track_quality_post(
-                    user_id=user.id,
-                    message_id=str(message.id),
-                    like_count=thumbs_up_count,
-                    min_likes=TRENDING_POST_MIN_LIKES
-                )
-                completed_quests.extend(trending_completed)
+            # Like-threshold quests ("get N likes on one image"). Each quest
+            # checks its own min_likes and counts an image at most once, so
+            # call on every like change rather than gating on a fixed count.
+            completed_quests.extend(await self.quest_manager.track_viral_image(
+                user_id=user.id,
+                message_id=str(message.id),
+                like_count=thumbs_up_count
+            ))
+            completed_quests.extend(await self.quest_manager.track_quality_post(
+                user_id=user.id,
+                message_id=str(message.id),
+                like_count=thumbs_up_count
+            ))
             
             await self._notify_quests(user, completed_quests)
 
@@ -4292,6 +4266,34 @@ class EventsController:
         except Exception as e:
             logger.debug(f"Could not announce rep tier change: {e}")
 
+    async def _payout_voice(self, member: discord.Member, channel) -> None:
+        """Stop tracking a member and pay points and InoRep for the time tracked."""
+        info = self.voice_tracking.pop(member.id, None)
+        if not info:
+            return
+        time_spent = (datetime.now() - info["join_time"]).total_seconds() / 60
+        # Minimum 1 minute to get anything
+        if time_spent < 1:
+            return
+
+        channel_name = getattr(channel, "name", "voice")
+        points = int(time_spent * Config.POINTS_PER_MINUTE_VC)
+        await self.bot.leaderboard_manager.add_points(
+            user_id=member.id,
+            user_name=member.display_name,
+            points=points,
+            point_type="voice",
+            reason=f"Voice chat for {time_spent:.1f} minutes in {channel_name}"
+        )
+        logger.debug(f"Awarded {points} voice points to {member.display_name} for {time_spent:.1f} minutes")
+
+        economy = getattr(self.bot, 'rep_economy', None)
+        if economy:
+            try:
+                await economy.award_voice_minutes(member, str(member.guild.id), time_spent)
+            except Exception as e:
+                logger.error(f"Error awarding voice rep: {e}")
+
     async def _handle_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         """Handle voice channel state changes for point tracking"""
         try:
@@ -4329,118 +4331,41 @@ class EventsController:
                 
                 return True
             
-            # User joined a voice channel
-            if before.channel is None and after.channel is not None:
-                if _should_earn_points(after, after.channel):
-                    self.voice_tracking[user_id] = {
-                        "channel_id": after.channel.id,
-                        "join_time": datetime.now(),
-                        "user_name": member.display_name
-                    }
-                    logger.debug(f"{member.display_name} joined voice channel {after.channel.name} and is eligible for points")
-                else:
-                    logger.debug(f"{member.display_name} joined voice channel {after.channel.name} but is not eligible for points (muted, alone, or excluded)")
-            
-            # User left a voice channel
-            elif before.channel is not None and after.channel is None:
-                if user_id in self.voice_tracking:
-                    # Calculate time spent
-                    join_time = self.voice_tracking[user_id]["join_time"]
-                    leave_time = datetime.now()
-                    time_spent = (leave_time - join_time).total_seconds() / 60  # Convert to minutes
-                    
-                    # Award points (minimum 1 minute to get points)
-                    if time_spent >= 1:
-                        points = int(time_spent * Config.POINTS_PER_MINUTE_VC)
-                        await self.bot.leaderboard_manager.add_points(
-                            user_id=user_id,
-                            user_name=member.display_name,
-                            points=points,
-                            point_type="voice",
-                            reason=f"Voice chat for {time_spent:.1f} minutes in {before.channel.name}"
-                        )
-                        logger.debug(f"Awarded {points} voice points to {member.display_name} for {time_spent:.1f} minutes")
+            def _start(target: discord.Member, channel) -> None:
+                self.voice_tracking[target.id] = {
+                    "channel_id": channel.id,
+                    "join_time": datetime.now(),
+                    "user_name": target.display_name
+                }
 
-                        economy = getattr(self.bot, 'rep_economy', None)
-                        if economy:
-                            try:
-                                await economy.award_voice_minutes(
-                                    member, str(member.guild.id), time_spent
-                                )
-                            except Exception as e:
-                                logger.error(f"Error awarding voice rep: {e}")
-
-                    # Remove from tracking
-                    del self.voice_tracking[user_id]
-            
-            # User switched channels
-            elif before.channel is not None and after.channel is not None and before.channel != after.channel:
-                # Award points for previous channel if tracked
-                if user_id in self.voice_tracking:
-                    join_time = self.voice_tracking[user_id]["join_time"]
-                    switch_time = datetime.now()
-                    time_spent = (switch_time - join_time).total_seconds() / 60
-                    
-                    if time_spent >= 1:
-                        points = int(time_spent * Config.POINTS_PER_MINUTE_VC)
-                        await self.bot.leaderboard_manager.add_points(
-                            user_id=user_id,
-                            user_name=member.display_name,
-                            points=points,
-                            point_type="voice",
-                            reason=f"Voice chat for {time_spent:.1f} minutes in {before.channel.name}"
-                        )
-                        logger.debug(f"Awarded {points} voice points to {member.display_name} for {time_spent:.1f} minutes")
-                
-                # Start tracking new channel if eligible
+            # Settle the member whose state changed. Leaving, switching and
+            # going ineligible all pay out the stretch they just finished.
+            channel_changed = before.channel != after.channel
+            if user_id in self.voice_tracking and (
+                channel_changed or not _should_earn_points(after, after.channel)
+            ):
+                await self._payout_voice(member, before.channel)
+            if after.channel is not None and user_id not in self.voice_tracking:
                 if _should_earn_points(after, after.channel):
-                    self.voice_tracking[user_id] = {
-                        "channel_id": after.channel.id,
-                        "join_time": datetime.now(),
-                        "user_name": member.display_name
-                    }
-                    logger.debug(f"{member.display_name} switched to voice channel {after.channel.name} and is eligible for points")
-                else:
-                    # Remove from tracking if switched to ineligible channel
-                    if user_id in self.voice_tracking:
-                        del self.voice_tracking[user_id]
-                    logger.debug(f"{member.display_name} switched to voice channel {after.channel.name} but is not eligible for points")
-            
-            # Handle mute/unmute or other state changes within the same channel
-            elif before.channel is not None and after.channel is not None and before.channel == after.channel:
-                # Check if eligibility changed
-                was_eligible = user_id in self.voice_tracking
-                is_eligible = _should_earn_points(after, after.channel)
-                
-                if was_eligible and not is_eligible:
-                    # User became ineligible (muted or channel became empty)
-                    join_time = self.voice_tracking[user_id]["join_time"]
-                    current_time = datetime.now()
-                    time_spent = (current_time - join_time).total_seconds() / 60
-                    
-                    if time_spent >= 1:
-                        points = int(time_spent * Config.POINTS_PER_MINUTE_VC)
-                        await self.bot.leaderboard_manager.add_points(
-                            user_id=user_id,
-                            user_name=member.display_name,
-                            points=points,
-                            point_type="voice",
-                            reason=f"Voice chat for {time_spent:.1f} minutes in {after.channel.name}"
-                        )
-                        logger.debug(f"Awarded {points} voice points to {member.display_name} before becoming ineligible")
-                    
-                    del self.voice_tracking[user_id]
-                    logger.debug(f"{member.display_name} became ineligible for points in {after.channel.name}")
-                
-                elif not was_eligible and is_eligible:
-                    # User became eligible (unmuted or someone joined)
-                    self.voice_tracking[user_id] = {
-                        "channel_id": after.channel.id,
-                        "join_time": datetime.now(),
-                        "user_name": member.display_name
-                    }
-                    logger.debug(f"{member.display_name} became eligible for points in {after.channel.name}")
-            
+                    _start(member, after.channel)
+                    logger.debug(f"{member.display_name} is earning voice points in {after.channel.name}")
+
+            # Someone arriving or leaving changes who else is eligible: the
+            # first person in a channel only qualifies once a second joins,
+            # and the last one left stops qualifying when the other leaves.
+            if channel_changed:
+                for channel in (before.channel, after.channel):
+                    if channel is None:
+                        continue
+                    for other in channel.members:
+                        if other.bot or other.id == user_id:
+                            continue
+                        eligible = _should_earn_points(other.voice, channel)
+                        if eligible and other.id not in self.voice_tracking:
+                            _start(other, channel)
+                        elif not eligible and other.id in self.voice_tracking:
+                            await self._payout_voice(other, channel)
+
         except Exception as e:
             logger.error(f"Error handling voice state update: {e}")
     

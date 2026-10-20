@@ -1,5 +1,6 @@
 import os
 import asyncio
+import hashlib
 import logging
 import re
 import string
@@ -20,6 +21,54 @@ except ImportError:
     HAS_GENAI = False
 
 logger = logging.getLogger(__name__)
+
+# Phrases checked against the space-preserving normalized text. Each letter may be
+# separated by optional whitespace (catches "k y s"), but the phrase must start and
+# end on a word boundary, so "lets go diego" does not match "godie".
+_PHRASE_PATTERNS = {
+    # Suicide encouragement
+    'killyourself': 'suicide encouragement',
+    'killedyourself': 'suicide encouragement',
+    'killurself': 'suicide encouragement',
+    'kys': 'suicide encouragement',
+    'neckyourself': 'suicide encouragement',
+    'ropeyourself': 'suicide encouragement',
+    'hangyourself': 'suicide encouragement',
+    'drinbleach': 'suicide encouragement',
+    'drinkbleach': 'suicide encouragement',
+    'endyourlife': 'suicide encouragement',
+    'godie': 'suicide encouragement',
+    # Violent threats
+    'illkillyou': 'violent threat',
+    'imgonnakillyou': 'violent threat',
+    'illmurderyou': 'violent threat',
+    'imgoingtokillyou': 'violent threat',
+    'iwillkillyou': 'violent threat',
+    'iwillmurderyou': 'violent threat',
+    'iwillfindyou': 'doxxing/stalking threat',
+    'iknowwhereyoulive': 'doxxing/stalking threat',
+    'illdoxyou': 'doxxing threat',
+    'getswatted': 'swatting threat',
+    # CSAM solicitation
+    'sendnudeskid': 'CSAM solicitation',
+    'sendcpof': 'CSAM solicitation',
+}
+
+# Phrases that are everyday wording when followed by more words
+# ("I will find you a better link"), so they only count at the end of the message.
+_PHRASE_END_ONLY = {'iwillfindyou'}
+
+_COMPILED_PHRASE_PATTERNS = [
+    (
+        pattern,
+        re.compile(
+            r'\b' + r'\s*'.join(map(re.escape, pattern))
+            + (r'\s*$' if pattern in _PHRASE_END_ONLY else r'\b')
+        ),
+        reason,
+    )
+    for pattern, reason in _PHRASE_PATTERNS.items()
+]
 
 class ModerationManager:
     """Manages AI-powered content moderation using OpenAI's Moderation API"""
@@ -150,18 +199,19 @@ class ModerationManager:
         if phonetic != normalized:
             variants.add(phonetic)
         
-        # Variant 4: First and last chars only (extreme shortening)
-        if len(normalized) >= 4:
-            extreme_short = normalized[0] + normalized[-1]
-            variants.add(extreme_short)
-        
-        # Variant 5: Consonant skeleton (keep only consonants in order)
+        # Variant 4: Consonant skeleton (keep only consonants in order)
         consonants = re.sub(r'[aeiou]', '', normalized)
         if consonants and len(consonants) >= 2:
             variants.add(consonants)
         
         return variants
-    
+
+    @staticmethod
+    def _content_hash(text: str) -> int:
+        """Stable hash for decision keys (builtin hash() is randomized per process).
+        15 hex digits keeps it inside Mongo's int64."""
+        return int(hashlib.sha256(text.encode('utf-8')).hexdigest()[:15], 16)
+
     def _calculate_similarity(self, text1: str, text2: str) -> float:
         """Calculate similarity between two texts using SequenceMatcher"""
         return SequenceMatcher(None, text1, text2).ratio()
@@ -183,7 +233,8 @@ class ModerationManager:
             '7': 't', '+': 't',
             '8': 'b', '9': 'g', '6': 'g',
         }
-        spaced_normalized = content_lower
+        # A "!" ending a word is punctuation, not a leet "i" ("go die!!" shouldn't become "go diei")
+        spaced_normalized = re.sub(r'!+(?=\s|$)', ' ', content_lower)
         for leet, normal in substitutions.items():
             spaced_normalized = spaced_normalized.replace(leet, normal)
         
@@ -233,38 +284,7 @@ class ModerationManager:
         
         # Now check with ALL spaces removed for evasion like "n i g g e r"
         no_space_normalized = spaced_normalized.replace(' ', '')
-        
-        # Patterns to check on space-removed version (catches "k y s" -> "kys")
-        no_space_patterns = {
-            # Suicide encouragement
-            'killyourself': 'suicide encouragement',
-            'killedyourself': 'suicide encouragement',
-            'killurself': 'suicide encouragement',
-            'kys': 'suicide encouragement',
-            'neckyourself': 'suicide encouragement',
-            'ropeyourself': 'suicide encouragement',
-            'hangyourself': 'suicide encouragement',
-            'drinbleach': 'suicide encouragement',
-            'drinkbleach': 'suicide encouragement',
-            'endyourlife': 'suicide encouragement',
-            'godie': 'suicide encouragement',
-            # Violent threats
-            'illkillyou': 'violent threat',
-            'imgonnakillyou': 'violent threat',
-            'illmurderyou': 'violent threat',
-            'imgoingtokillyou': 'violent threat',
-            'iwillkillyou': 'violent threat',
-            'iwillmurderyou': 'violent threat',
-            'iwillfindyou': 'doxxing/stalking threat',
-            'iknowwhereyoulive': 'doxxing/stalking threat',
-            'illdoxyou': 'doxxing threat',
-            'illswat': 'swatting threat',
-            'getswatted': 'swatting threat',
-            # CSAM solicitation
-            'sendnudeskid': 'CSAM solicitation',
-            'sendcpof': 'CSAM solicitation',
-        }
-        
+
         # Flexible regex patterns checked on the SPACED version
         # These catch phrases with extra words in between, e.g. "drink some bleach"
         flexible_patterns = [
@@ -274,6 +294,8 @@ class ModerationManager:
             (r'\bneck\s+(your|ur)\s*self\b', 'suicide encouragement'),
             (r'\brope\s+(your|ur)\s*self\b', 'suicide encouragement'),
             (r'\bend\s+(your|ur)\s+(own\s+)?life\b', 'suicide encouragement'),
+            # Needs a target so "ill swat that fly" doesn't count
+            (r'\bill\s*swat\s*(you|u|ur|your)\b', 'swatting threat'),
         ]
         
         for pattern, reason in flexible_patterns:
@@ -281,24 +303,13 @@ class ModerationManager:
                 logger.warning(f"Detected harmful content via flexible pattern: '{pattern}' -> {reason}")
                 return True, reason
         
-        # Check patterns - short patterns use word boundary on the SPACED version
-        # (so "just kys already" matches) while long patterns use substring on
-        # the no-space version (so "k i l l y o u r s e l f" matches).
-        for pattern, reason in no_space_patterns.items():
-            if len(pattern) <= 4:
-                # Short patterns: check on SPACED version with word boundaries
-                # e.g. "just kys already" → "just kys already" has \bkys\b
-                # Also check no-space version as exact match for pure evasion
-                if re.search(r'\b' + re.escape(pattern) + r'\b', spaced_normalized):
-                    logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
-                    return True, reason
-                if no_space_normalized == pattern:
-                    logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
-                    return True, reason
-            else:
-                if pattern in no_space_normalized:
-                    logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
-                    return True, reason
+        # Check phrases on the SPACED version with word boundaries, allowing optional
+        # whitespace between letters (so "just kys already" and "k i l l y o u r s e l f"
+        # match, but "lets go diego" and "that skill kill your build" don't).
+        for pattern, compiled, reason in _COMPILED_PHRASE_PATTERNS:
+            if compiled.search(spaced_normalized):
+                logger.warning(f"Detected harmful content via phrase matching: '{pattern}' -> {reason}")
+                return True, reason
         
         # Special check: If a slur appears with spaces between EVERY letter (evasion)
         # e.g., "n i g g e r" becomes "nigger" after removing spaces
@@ -320,7 +331,7 @@ class ModerationManager:
             
             # First, check for exact hash matches on any variant
             for variant in content_variants:
-                variant_hash = hash(variant)
+                variant_hash = self._content_hash(variant)
                 existing_decision = await self.get_moderation_decision(variant_hash)
                 if existing_decision:
                     logger.info(f"Found exact hash match for content variant: '{variant}'")
@@ -745,7 +756,7 @@ Respond with ONLY valid JSON (no markdown, no code fences):
                 # Generate hash for tracking
                 content_variants = self._generate_content_variants(clean_content)
                 primary_variant = self._normalize_content(clean_content)
-                content_hash = hash(primary_variant)
+                content_hash = self._content_hash(primary_variant)
                 
                 # Create moderation data with maximum severity
                 moderation_data = {
@@ -912,7 +923,7 @@ Respond with ONLY valid JSON (no markdown, no code fences):
                     # Generate primary content hash from the best normalized variant
                     content_variants = self._generate_content_variants(clean_content)
                     primary_variant = self._normalize_content(clean_content)
-                    content_hash = hash(primary_variant)
+                    content_hash = self._content_hash(primary_variant)
                     
                     # Determine moderation source label
                     if gemini_verdict and google_result:
@@ -1028,7 +1039,7 @@ Respond with ONLY valid JSON (no markdown, no code fences):
             if original_content:
                 content_variants = self._generate_content_variants(original_content)
                 for variant in content_variants:
-                    variant_hash = hash(variant)
+                    variant_hash = self._content_hash(variant)
                     if variant_hash != content_hash:  # Avoid duplicates
                         hash_variants.append(variant_hash)
             
@@ -1197,10 +1208,12 @@ Respond with ONLY valid JSON (no markdown, no code fences):
     async def get_moderation_setting(self, guild_id: str, setting_name: str, default_value=None):
         """Get a moderation setting for a guild"""
         try:
-            result = self.moderation_settings_collection.find_one({
-                "guild_id": guild_id,
-                "setting_name": setting_name
-            })
+            # Runs for every guild message via is_moderation_enabled, so keep the
+            # blocking pymongo call off the event loop
+            result = await asyncio.to_thread(
+                self.moderation_settings_collection.find_one,
+                {"guild_id": guild_id, "setting_name": setting_name}
+            )
             return result["setting_value"] if result else default_value
         except Exception as e:
             logger.error(f"Error getting moderation setting: {e}")

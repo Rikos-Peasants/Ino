@@ -105,6 +105,9 @@ class RepEconomy:
         self._message_cooldown: dict[str, float] = {}
         # user_id -> accumulated whole minutes of voice time not yet paid out
         self._voice_progress: dict[str, float] = {}
+        # (user_id, guild_id) -> lock around read-then-write claims. Without
+        # it, `/daily` sent twice in quick succession paid out twice.
+        self._claim_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
         if self.meta is not None:
             try:
@@ -194,6 +197,9 @@ class RepEconomy:
 
     async def get_rep(self, user_id: str, guild_id: str) -> int:
         return await self.inorep.get_user_rep(user_id, guild_id)
+
+    def _claim_lock(self, user_id: str, guild_id: str) -> asyncio.Lock:
+        return self._claim_locks.setdefault((user_id, guild_id), asyncio.Lock())
 
     @staticmethod
     def _is_patreon(user: Any) -> bool:
@@ -302,6 +308,10 @@ class RepEconomy:
         ``{"claimed": bool, "amount": int, "streak": int, "next_available": dt}``
         """
         user_id = str(user.id)
+        async with self._claim_lock(user_id, guild_id):
+            return await self._claim_daily_locked(user, user_id, guild_id)
+
+    async def _claim_daily_locked(self, user: Any, user_id: str, guild_id: str) -> dict[str, Any]:
         meta = await self._get_meta(user_id, guild_id)
         today = _today_key()
         last_claim = meta.get("daily_last_claim")
@@ -367,35 +377,36 @@ class RepEconomy:
         if giver.id == target.id:
             penalty = Config.REP_SELF_THANK_PENALTY
             if penalty > 0:
-                await self.grant(
+                award = await self.grant(
                     giver,
                     guild_id,
                     -penalty,
                     "Tried to thank themselves",
                     apply_multiplier=False,
                 )
-                return {
-                    "ok": False,
-                    "error": f"Thanking yourself? Ino is unimpressed. **-{penalty} InoRep.**",
-                }
+                # Mod mode makes people immune, in which case nothing was taken.
+                if award.granted:
+                    return {
+                        "ok": False,
+                        "error": f"Thanking yourself? Ino is unimpressed. **-{penalty} InoRep.**",
+                    }
             return {"ok": False, "error": "Thanking yourself? Ino is unimpressed."}
 
         giver_id = str(giver.id)
-        remaining = await self._remaining_daily_budget(
-            giver_id, guild_id, "thank", Config.REP_THANK_DAILY_LIMIT
-        )
-        if remaining <= 0:
-            return {
-                "ok": False,
-                "error": (
-                    f"You have used all {Config.REP_THANK_DAILY_LIMIT} of today's "
-                    f"thanks. They reset at midnight UTC."
-                ),
-            }
-
-        await self._consume_daily_budget(
-            giver_id, guild_id, "thank", Config.REP_THANK_DAILY_LIMIT
-        )
+        async with self._claim_lock(giver_id, guild_id):
+            remaining = await self._remaining_daily_budget(
+                giver_id, guild_id, "thank", Config.REP_THANK_DAILY_LIMIT
+            )
+            if remaining <= 0 or not await self._consume_daily_budget(
+                giver_id, guild_id, "thank", Config.REP_THANK_DAILY_LIMIT
+            ):
+                return {
+                    "ok": False,
+                    "error": (
+                        f"You have used all {Config.REP_THANK_DAILY_LIMIT} of today's "
+                        f"thanks. They reset at midnight UTC."
+                    ),
+                }
 
         reason = f"Thanked by {getattr(giver, 'display_name', giver)}"
         if note:

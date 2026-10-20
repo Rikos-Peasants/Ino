@@ -1488,6 +1488,11 @@ class ScamImageController:
         return incident, alert_message
 
     async def _send_new_alert(self, key: tuple, log_channel, event: AlertEvent, user_id: int) -> bool:
+        # This is also the fallback after a failed merge or repost, whose
+        # upload already read the files to the end. Rewind them, or the hashes
+        # below are all of b"" and the alert goes out with empty images.
+        for image_file in event.files:
+            image_file.reset()
         # Hashed before sending, which leaves the file read to the end.
         digests = {self._file_digest(image_file) for image_file in event.files}
         # Ban / kick / timeout buttons so a moderator can act straight from

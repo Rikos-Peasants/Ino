@@ -257,10 +257,13 @@ class UserSafetyMonitor:
     def _normalize_message_for_spam(self, text: str) -> str:
         if not text:
             return ""
-        cleaned = text.strip().lower()
-        cleaned = re.sub(r"\s+", " ", cleaned)
-        cleaned = re.sub(r"[^a-z0-9\s]", "", cleaned)
-        return cleaned
+        # \w is Unicode-aware: an ASCII-only class reduced every Cyrillic, CJK
+        # or emoji message to the same " " key, so two different messages in
+        # three channels read as spam. Very short leftovers ("lol", "gm") are
+        # too common to judge on.
+        cleaned = re.sub(r"[^\w\s]", "", text.lower())
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned if len(cleaned) >= 5 else ""
 
     def _prune_records(self, user_id: int, now: datetime) -> None:
         records = self._recent_messages.get(user_id, [])

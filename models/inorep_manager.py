@@ -71,7 +71,10 @@ class InoRepManager:
                 )
                 if user_data and user_data.get('mod_mode', False):
                     logger.info(f"Skipped negative rep for {user_name} because mod_mode is enabled (immune from point reduction).")
-                    return True  # Pretend it was successful
+                    # Nothing changed, so say so: callers that report the
+                    # change would otherwise announce a deduction that never
+                    # happened.
+                    return False
 
             updated = await asyncio.to_thread(
                 self.inorep_collection.find_one_and_update,
