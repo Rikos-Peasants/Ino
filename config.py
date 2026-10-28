@@ -223,14 +223,18 @@ class Config:
     YOUTUBE_SUB_ROLE_TIERS = [
         {"min_subs": 0, "max_subs": 49, "role_id": 1498718228707410132, "label": "0 - 50 subs"},
         {"min_subs": 50, "max_subs": 99, "role_id": 1498720787224330292, "label": "50 - 100 subs"},
-        {"min_subs": 100, "max_subs": 499, "role_id": 1498720952614256711, "label": "100 - 500 subs"},
+        {"min_subs": 100, "max_subs": 499, "role_id": 1498720875443388476, "label": "100 - 500 subs"},
         {"min_subs": 500, "max_subs": 999, "role_id": 1498720952614256711, "label": "500 - 1000 subs"},
         {"min_subs": 1000, "max_subs": 1999, "role_id": 1498721031810973696, "label": "1000 - 2000 subs"},
         {"min_subs": 2000, "max_subs": 4999, "role_id": 1498721488914616360, "label": "2000 - 5000 subs"},
         {"min_subs": 5000, "max_subs": 9999, "role_id": 1498721627712782478, "label": "5000 - 10000 subs"},
         {"min_subs": 10000, "max_subs": 19999, "role_id": 1498721717462503514, "label": "10000 - 20000 subs"},
         {"min_subs": 20000, "max_subs": 49999, "role_id": 1498721915458814053, "label": "20000 - 50000 subs"},
-        {"min_subs": 50000, "max_subs": None, "role_id": 1498723293044146228, "label": "50000+ subs"},
+        {"min_subs": 50000, "max_subs": 99999, "role_id": 1498723293044146228, "label": "50000 - 100000 subs"},
+        {"min_subs": 100000, "max_subs": 199999, "role_id": 1564931803981291572, "label": "100000 - 200000 subs"},
+        {"min_subs": 200000, "max_subs": 499999, "role_id": 1564931807827197993, "label": "200000 - 500000 subs"},
+        {"min_subs": 500000, "max_subs": 999999, "role_id": 1564931811216457809, "label": "500000 - 1000000 subs"},
+        {"min_subs": 1000000, "max_subs": None, "role_id": 1564931816979439626, "label": "1000000+ subs"},
     ]
     # Historical milestones. Null dates are ignored until filled in.
     YOUTUBE_SUB_MILESTONE_DATES = [
