@@ -443,6 +443,8 @@ class RikoBot(commands.Bot):
             self._startup_scans_started = True
             asyncio.create_task(self.check_all_achievements_on_startup())
             asyncio.create_task(self.scan_historical_images())
+            if self.events_controller:
+                asyncio.create_task(self.events_controller.sweep_honeypot_role())
 
         # Send language prompt DMs to opted-in users who haven't set their languages yet
         if self.events_controller:

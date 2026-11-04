@@ -102,6 +102,10 @@ class Config:
     # NSFWBAN system role IDs
     NSFWBAN_MODERATOR_ROLE_ID = 1372477845997359244  # Role that can use nsfwban commands
     NSFWBAN_BANNED_ROLE_ID = get_int_env('BANNED_ROLE_ID')  # Role given to NSFWBAN'd users (same as BANNED_ROLE_ID)
+
+    # Self-assignable bait role. Only bots and raiders pick it, so anyone who
+    # gets it is kicked on the spot. Set to 0 to turn the trap off.
+    HONEYPOT_ROLE_ID = get_int_env('HONEYPOT_ROLE_ID', 1512768285785985186)
     
     # Patreon system
     PATREON_ROLE_ID = get_int_env('PATREON_ROLE_ID', None)  # "Riko's Agent" role for Patreon supporters (1.5x quest points)

@@ -1094,17 +1094,53 @@ class EventsController:
 
         return self._message_has_media(referenced_msg, include_video=include_video)
     
+    HONEYPOT_KICK_REASON = "Self-assigned the honeypot role"
+
+    async def kick_honeypot_member(self, member: discord.Member) -> None:
+        """Kick a member who took the honeypot role, through the normal kick path
+        so it is DMed, recorded in /modlogs and posted to the moderation log."""
+        if member.bot:
+            return
+
+        mod_actions = getattr(self.bot, 'mod_actions', None)
+        guild = member.guild
+        if mod_actions is None or guild.me is None:
+            logger.error(f"Honeypot: cannot kick {member} ({member.id}), moderation actions unavailable")
+            return
+
+        result = await mod_actions.kick(guild, guild.me, member, self.HONEYPOT_KICK_REASON)
+        if result.ok:
+            logger.info(f"Honeypot: kicked {member} ({member.id})")
+            await mod_actions.post_log(
+                guild, guild.me, member, result, self.HONEYPOT_KICK_REASON, source="honeypot role"
+            )
+        else:
+            logger.warning(f"Honeypot: could not kick {member} ({member.id}): {result.message}")
+
+    async def sweep_honeypot_role(self) -> None:
+        """Kick anyone who picked up the honeypot role while Ino was offline."""
+        guild = self.bot.get_guild(Config.GUILD_ID)
+        role = guild.get_role(Config.HONEYPOT_ROLE_ID) if guild else None
+        if role is None:
+            return
+        for member in list(role.members):
+            await self.kick_honeypot_member(member)
+
     async def _handle_member_update(self, before: discord.Member, after: discord.Member):
         """Handle member role updates"""
         # Only process events from the configured guild
         if after.guild.id != Config.GUILD_ID:
             return
 
-        await self.user_safety_monitor.handle_member_update(before, after)
-        
         # Get role changes
         roles_added = set(after.roles) - set(before.roles)
-        
+
+        if any(role.id == Config.HONEYPOT_ROLE_ID for role in roles_added):
+            await self.kick_honeypot_member(after)
+            return
+
+        await self.user_safety_monitor.handle_member_update(before, after)
+
         # Check if the restricted role was added
         restricted_role = RoleManager.get_restricted_role(after.guild)
         if restricted_role in roles_added:
